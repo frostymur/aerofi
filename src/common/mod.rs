@@ -2,4 +2,3 @@
 
 pub mod config;
 pub mod ipc_protocol;
-pub mod script_item;

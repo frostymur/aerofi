@@ -1,6 +1,7 @@
-//! Pure business logic: script parsing, directory indexing, fuzzy search.
-//! Knows nothing about GPUI or platform FFI.
+//! Pure business logic: target parsing, directory indexing, fuzzy search,
+//! execution. Knows nothing about GPUI or platform FFI.
 
+pub mod executor;
 pub mod item;
 pub mod scanner;
 pub mod search;

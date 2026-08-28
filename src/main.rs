@@ -14,29 +14,43 @@ use gpui::App;
 use gpui_platform::application;
 
 fn main() {
-    // Scan the scripts folder and print the parsed metadata so the parser can
-    // be verified at startup.
-    let scripts_dir = std::path::Path::new("examples/scripts");
-    let scripts = core::scanner::scan_scripts(scripts_dir);
+    // Index all targets (applications + scripts) and print a summary plus the
+    // parsed script metadata, so the parser can be verified at startup.
+    let targets = core::scanner::scan_all();
+    let app_count = targets
+        .iter()
+        .filter(|t| matches!(t, core::item::Target::App { .. }))
+        .count();
     println!(
-        "aerofi: parsed {} script(s) from {}",
-        scripts.len(),
-        scripts_dir.display()
+        "aerofi: indexed {} target(s) ({} app(s), {} script(s))",
+        targets.len(),
+        app_count,
+        targets.len() - app_count
     );
-    for (i, item) in scripts.iter().enumerate() {
-        println!(
-            "  {}. {} | mode={} | icon={:?} | path={}",
-            i + 1,
-            item.name,
-            item.mode.as_str(),
-            item.icon,
-            item.path.display()
-        );
+    let mut script_i = 0;
+    for item in &targets {
+        if let core::item::Target::Script {
+            name,
+            mode,
+            icon,
+            path,
+        } = item
+        {
+            script_i += 1;
+            println!(
+                "  {}. {} | mode={} | icon={:?} | path={}",
+                script_i,
+                name,
+                mode.as_str(),
+                icon,
+                path.display()
+            );
+        }
     }
 
     application().run(|cx: &mut App| {
         let config = common::config::Config::default();
-        let view = ui::window::create_launcher_window(cx, scripts, config);
+        let view = ui::window::create_launcher_window(cx, targets, config);
 
         // Route every keystroke into the launcher while the window is visible.
         // `detach()` keeps the observer alive for the app's lifetime without

@@ -56,8 +56,8 @@ Conventional Commits since the last tag. Releases are cut from `main` only.
 
 ## Testing
 
-- `common/` (metadata parser): unit-test against fixture scripts — at
-  minimum one native-format script (`# @name`), one `@raycast.*`-format
+- `core/` (metadata parser, `item.rs`): unit-test against fixture scripts —
+  at minimum one native-format script (`# @name`), one `@raycast.*`-format
   script, one malformed/missing-metadata script (must fail gracefully, not
   panic).
 - `core/` (scanner + search): unit-test the indexer (directory scan,

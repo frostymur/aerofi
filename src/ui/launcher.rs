@@ -1,26 +1,32 @@
-//! The launcher UI: a keyboard-driven, fuzzy-filterable list of scripts.
+//! The launcher UI: a keyboard-driven, fuzzy-filterable list of targets
+//! (applications and scripts).
 //!
 //! There is no ready-made `InputText` in this GPUI revision, so the filter
 //! query is owned here as a plain string and driven from the global
 //! `observe_keystrokes` handler (see `main.rs`). That keeps us to an
 //! append-only, backspace-only text model, which is all a launcher needs.
 
-use gpui::{Context, CursorStyle, Render, Window, div, prelude::*, px, rgb, rgba};
+use gpui::{
+    Context, CursorStyle, Render, ScrollStrategy, UniformListScrollHandle, Window, div, prelude::*,
+    px, rgb, rgba, uniform_list,
+};
 
 use crate::common::config::ThemeColors;
-use crate::common::script_item::ScriptItem;
+use crate::core::item::Target;
 use crate::core::search::SearchIndex;
 
-/// Root view: renders the filter field and the ranked list of scripts.
+/// Root view: renders the filter field and the ranked list of targets.
 pub struct Launcher {
-    /// Every parsed script, kept in name-sorted order (the "unfiltered" order).
-    all: Vec<ScriptItem>,
+    /// Every indexed target, kept in name-sorted order (the "unfiltered" order).
+    all: Vec<Target>,
     /// Indices into `all`, ranked by match score (best first).
     filtered: Vec<usize>,
     /// Current filter query.
     query: String,
     /// Position of the highlighted row within `filtered`.
     selected: usize,
+    /// Scroll state of the targets list (wheel scrolling + arrow auto-scroll).
+    list: UniformListScrollHandle,
     /// Reused nucleo matcher (it allocates a working set up front).
     search: SearchIndex,
     /// Palette for the dark launcher surface.
@@ -28,13 +34,14 @@ pub struct Launcher {
 }
 
 impl Launcher {
-    pub fn new(all: Vec<ScriptItem>, theme: ThemeColors) -> Self {
+    pub fn new(all: Vec<Target>, theme: ThemeColors) -> Self {
         let filtered = (0..all.len()).collect();
         Self {
             all,
             filtered,
             query: String::new(),
             selected: 0,
+            list: UniformListScrollHandle::new(),
             search: SearchIndex::new(),
             theme,
         }
@@ -110,47 +117,45 @@ impl Launcher {
         }
         let len = self.filtered.len() as isize;
         self.selected = (self.selected as isize + delta).clamp(0, len - 1) as usize;
+        // Non-strict: scrolls only if the selected row is out of view.
+        self.list
+            .scroll_to_item(self.selected, ScrollStrategy::Nearest);
     }
 
     /// Re-run the fuzzy match for the current query and rebuild `filtered`.
     fn refilter(&mut self) {
-        let names: Vec<&str> = self.all.iter().map(|i| i.name.as_str()).collect();
+        let names: Vec<&str> = self.all.iter().map(|t| t.name()).collect();
         self.filtered = self.search.search(&names, &self.query);
         if self.selected >= self.filtered.len() {
             self.selected = 0;
         }
+        // A new query re-ranks the list, so start at the top.
+        self.list.scroll_to_item(0, ScrollStrategy::Top);
     }
 
-    fn selected_item(&self) -> Option<&ScriptItem> {
+    fn selected_item(&self) -> Option<&Target> {
         self.filtered.get(self.selected).map(|&i| &self.all[i])
     }
 
-    /// Run the highlighted script. Its stdout+stderr inherit the parent's, so
-    /// output lands in the terminal (stderr) instead of the GUI.
+    /// Run the highlighted target (apps open, scripts run via `sh`).
     fn execute_selected(&mut self) {
         let Some(item) = self.selected_item() else {
             return;
         };
-        let path = item.path.clone();
-        let name = item.name.clone();
-        match std::process::Command::new(&path)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::inherit())
-            .stderr(std::process::Stdio::inherit())
-            .spawn()
-        {
-            Ok(_) => {}
-            Err(e) => eprintln!("aerofi: failed to run {name}: {e}"),
-        }
+        crate::core::executor::execute(item);
     }
 
     /// Open the highlighted script in `$EDITOR` (defaulting to `vim`).
+    /// Applications have no source to edit, so this is a no-op for them.
     fn open_in_editor(&mut self) {
         let Some(item) = self.selected_item() else {
             return;
         };
-        let path = item.path.clone();
-        let name = item.name.clone();
+        let path = match item {
+            Target::Script { path, .. } => path.clone(),
+            Target::App { .. } => return,
+        };
+        let name = item.name().to_string();
         let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vim".to_string());
         // `EDITOR` may be "cmd -arg ..."; split into program + initial args.
         let mut parts = editor.split_whitespace();
@@ -170,7 +175,7 @@ impl Launcher {
 }
 
 impl Render for Launcher {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let query_view = if self.query.is_empty() {
             div()
                 .text_color(rgb(self.theme.dim))
@@ -183,21 +188,30 @@ impl Render for Launcher {
                 .into_any()
         };
 
-        let rows: Vec<gpui::AnyElement> = if self.filtered.is_empty() {
-            vec![
-                div()
-                    .px_2()
-                    .py_1()
-                    .text_color(rgb(self.theme.dim))
-                    .child(format!("No matches for “{}”", self.query))
-                    .into_any(),
-            ]
+        // Lazy-rendered, scrollable list of targets. Wheel scrolling is
+        // handled by the list element (macOS-native direction); the scroll
+        // handle is what `move_selection`/`refilter` use to follow the
+        // selection.
+        let list_view = if self.filtered.is_empty() {
+            div()
+                .flex_1()
+                .px_2()
+                .py_1()
+                .text_color(rgb(self.theme.dim))
+                .child(format!("No matches for “{}”", self.query))
+                .into_any()
         } else {
-            self.filtered
-                .iter()
-                .enumerate()
-                .map(|(pos, &i)| self.render_row(i, pos == self.selected))
-                .collect()
+            uniform_list(
+                "targets",
+                self.filtered.len(),
+                cx.processor(|this, range: std::ops::Range<usize>, _window, _cx| {
+                    range.map(|ix| this.render_row(ix)).collect()
+                }),
+            )
+            .track_scroll(&self.list)
+            .flex_1()
+            .w_full()
+            .into_any()
         };
 
         div()
@@ -221,33 +235,28 @@ impl Render for Launcher {
                     .child(div().text_color(rgb(self.theme.accent)).child("❯"))
                     .child(query_view),
             )
-            .child(
-                div()
-                    .flex_1()
-                    .flex()
-                    .flex_col()
-                    .gap_1()
-                    .overflow_hidden()
-                    .children(rows),
-            )
+            .child(list_view)
             .child(
                 div()
                     .text_size(px(11.))
                     .text_color(rgb(self.theme.dim))
-                    .child("↑↓ select · ⏎ run · ⌘E edit · esc close"),
+                    .child("↑↓ scroll · ⏎ run · ⌘E edit · esc close"),
             )
     }
 }
 
 impl Launcher {
-    /// Build a single list row for the script at `all_idx`.
-    fn render_row(&self, all_idx: usize, is_selected: bool) -> gpui::AnyElement {
+    /// Build a single list row for `filtered_ix` (position within `filtered`).
+    fn render_row(&self, filtered_ix: usize) -> gpui::AnyElement {
+        let all_idx = self.filtered[filtered_ix];
         let item = &self.all[all_idx];
-        let icon = item.icon.as_deref().unwrap_or("•");
+        let is_selected = filtered_ix == self.selected;
+        let icon = item.icon().unwrap_or("•");
         div()
             .flex()
             .items_center()
             .gap_2()
+            .w_full()
             .px_2()
             .py_1()
             .rounded_sm()
@@ -270,7 +279,7 @@ impl Launcher {
                     } else {
                         rgb(self.theme.text_muted)
                     })
-                    .child(item.name.clone()),
+                    .child(item.name().to_string()),
             )
             .into_any()
     }
@@ -282,10 +291,10 @@ mod tests {
     use gpui::{Keystroke, Modifiers};
     use std::path::PathBuf;
 
-    fn item(name: &str) -> ScriptItem {
-        ScriptItem {
+    fn item(name: &str) -> Target {
+        Target::Script {
             name: name.to_string(),
-            mode: crate::common::script_item::ScriptMode::FullOutput,
+            mode: crate::core::item::ScriptMode::FullOutput,
             icon: None,
             path: PathBuf::from(name),
         }
@@ -301,7 +310,10 @@ mod tests {
     }
 
     fn names(l: &Launcher) -> Vec<String> {
-        l.filtered.iter().map(|&i| l.all[i].name.clone()).collect()
+        l.filtered
+            .iter()
+            .map(|&i| l.all[i].name().to_string())
+            .collect()
     }
 
     #[test]
@@ -373,5 +385,37 @@ mod tests {
         assert!(l.handle_keystroke(&key("escape")));
         assert_eq!(l.query, "");
         assert_eq!(l.selected, 0);
+    }
+
+    /// The actual scroll math (wheel direction, clamping, minimal
+    /// auto-scroll) lives inside GPUI's `UniformList`; here we only verify
+    /// that our input handlers hand the right deferred scrolls to the list.
+    fn deferred(l: &Launcher) -> Option<(usize, ScrollStrategy)> {
+        l.list
+            .0
+            .borrow()
+            .deferred_scroll_to_item
+            .clone()
+            .map(|d| (d.item_index, d.strategy))
+    }
+
+    #[test]
+    fn arrow_key_defers_scroll_to_selected_item() {
+        let mut l = Launcher::new(
+            vec![item("Git Status"), item("Grep"), item("Copy")],
+            ThemeColors::default(),
+        );
+        l.handle_keystroke(&key("down"));
+        assert_eq!(deferred(&l), Some((1, ScrollStrategy::Nearest)));
+    }
+
+    #[test]
+    fn typing_defers_scroll_back_to_top() {
+        let mut l = Launcher::new(
+            vec![item("Git Status"), item("Grep")],
+            ThemeColors::default(),
+        );
+        l.handle_keystroke(&key("g"));
+        assert_eq!(deferred(&l), Some((0, ScrollStrategy::Top)));
     }
 }

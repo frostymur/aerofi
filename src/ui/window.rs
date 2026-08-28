@@ -10,7 +10,7 @@ use gpui::{
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::common::config::Config;
-use crate::common::script_item::ScriptItem;
+use crate::core::item::Target;
 use crate::sys::appkit;
 use crate::ui::launcher::Launcher;
 
@@ -76,7 +76,7 @@ pub fn toggle() {
 /// (aerospace) ignore, so it won't get tiled.
 pub fn create_launcher_window(
     cx: &mut App,
-    scripts: Vec<ScriptItem>,
+    targets: Vec<Target>,
     config: Config,
 ) -> Entity<Launcher> {
     let bounds = Bounds::centered(
@@ -99,7 +99,7 @@ pub fn create_launcher_window(
             |window, cx| {
                 appkit::hide_chrome(window);
                 appkit::store_ns_window(window);
-                cx.new(|_| Launcher::new(scripts, config.theme))
+                cx.new(|_| Launcher::new(targets, config.theme))
             },
         )
         .unwrap();

@@ -13,14 +13,14 @@ src/
 ├── main.rs              # GPUI initialization, hotkey registration, event loop
 ├── common/              # Shared types (no GPUI, no platform FFI)
 │   ├── config.rs        # Config, ThemeColors, WindowConfig
-│   ├── script_item.rs   # ScriptItem, ExecutionMode, @raycast.* metadata
 │   └── ipc_protocol.rs  # PromptReq, IpcResponse (unused in v0.1, reserved for v0.2)
 ├── ui/                  # Everything that renders (depends on GPUI)
 │   ├── window.rs        # Window setup (borderless, focus management)
 │   └── launcher.rs      # Input field, search list, keyboard handlers
 ├── core/                # Pure business logic (knows nothing about GPUI)
-│   ├── item.rs          # ScriptItem parsing, metadata extraction
-│   ├── scanner.rs       # Filesystem watcher, directory indexing
+│   ├── item.rs          # Target (App/Script), ScriptMode, @raycast.* parsing
+│   ├── scanner.rs       # Directory indexing: /Applications* + scripts folder
+│   ├── executor.rs      # Launching targets (open / sh)
 │   └── search.rs        # nucleo-matcher wrapper
 └── sys/                 # System calls (macOS-only for v0.1, so flat — no per-OS nesting)
     ├── carbon.rs        # Carbon RegisterEventHotKey binding
@@ -88,10 +88,9 @@ bundled with feature work — that must (a) pass the full test suite and
 
 ## Script execution: terminal-based output in v0.1
 
-Scripts run in a spawned terminal (default: $TERMINAL or WezTerm) via
-`open -a <terminal> -- bash -c "<script>"`. The script's stdout/stderr are
-visible in the terminal window, which remains open until the user closes it
-or runs another command.
+Scripts run as `sh <script>`, a child of aerofi with stdio inherited, so the
+script's stdout/stderr are visible in the terminal aerofi was launched from.
+Applications open via `open <path>`.
 
 **Rationale:** This is simple, honest, and defers UI complexity. If a
 script needs interactive output (a menu, a prompt), it can use its own
