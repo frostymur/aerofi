@@ -23,6 +23,9 @@ nucleo-matcher = "0.3"
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 
+# Home/config directory resolution
+dirs = "5.0"
+
 # macOS AppKit bindings (per PROJECT_RULES.md) - used to strip window chrome.
 # objc2-app-kit ships per-class feature gates; enable the classes we touch.
 objc2 = "0.5.2"
