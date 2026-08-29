@@ -87,6 +87,10 @@ fn main() {
     }
 
     application().run(|cx: &mut App| {
+        // Run as a background accessory (no Dock icon). GPUI's
+        // applicationDidFinishLaunching just forced the Regular policy, and
+        // we are still inside it, so the Dock icon never appears.
+        sys::appkit::hide_from_dock();
         let config = common::config::Config::default();
         let view = ui::window::create_launcher_window(cx, targets, config, app_config, history);
         // Route every keystroke into the launcher while the window is visible.

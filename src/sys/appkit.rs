@@ -5,7 +5,9 @@
 
 use gpui::Window;
 use objc2::rc::Id;
-use objc2_app_kit::{NSApplication, NSView, NSWindow, NSWindowButton};
+use objc2_app_kit::{
+    NSApplication, NSApplicationActivationPolicy, NSView, NSWindow, NSWindowButton,
+};
 use objc2_foundation::MainThreadMarker;
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::ffi::c_void;
@@ -61,6 +63,18 @@ pub fn make_immovable(window: &Window) {
     let window = unsafe { &*(ptr as *const NSWindow) };
     window.setMovable(false);
     window.setMovableByWindowBackground(false);
+}
+
+/// Run aerofi as a background accessory: no Dock icon, no Cmd-Tab entry,
+/// like Raycast/Alfred. Must be called after GPUI's own
+/// `applicationDidFinishLaunching` (which forces the Regular policy), i.e.
+/// from the `on_finish_launching` closure, and on the main thread.
+pub fn hide_from_dock() {
+    let Some(mtm) = MainThreadMarker::new() else {
+        return;
+    };
+    let app = NSApplication::sharedApplication(mtm);
+    app.setActivationPolicy(NSApplicationActivationPolicy::Accessory);
 }
 
 /// Hide the whole application, returning focus to the previously active app

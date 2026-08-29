@@ -34,6 +34,7 @@ objc2-app-kit = { version = "0.2.2", features = [
   "NSApplication",
   "NSButton",
   "NSControl",
+  "NSRunningApplication",
   "NSView",
   "NSWindow",
 ] }
