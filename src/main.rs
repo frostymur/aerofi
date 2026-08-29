@@ -16,7 +16,8 @@ use gpui_platform::application;
 fn main() {
     // Index all targets (applications + scripts) and print a summary plus the
     // parsed script metadata, so the parser can be verified at startup.
-    let targets = core::scanner::scan_all();
+    let app_config = core::config::AppConfig::load();
+    let targets = core::scanner::scan_all(&app_config);
     let app_count = targets
         .iter()
         .filter(|t| matches!(t, core::item::Target::App { .. }))
@@ -50,8 +51,7 @@ fn main() {
 
     application().run(|cx: &mut App| {
         let config = common::config::Config::default();
-        let view = ui::window::create_launcher_window(cx, targets, config);
-
+        let view = ui::window::create_launcher_window(cx, targets, config, app_config);
         // Route every keystroke into the launcher while the window is visible.
         // `detach()` keeps the observer alive for the app's lifetime without
         // requiring us to hold the `Subscription` handle.
