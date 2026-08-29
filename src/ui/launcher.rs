@@ -302,7 +302,7 @@ impl Render for Launcher {
             .size_full()
             .bg(rgb(self.theme.bg))
             .text_color(rgb(self.theme.text))
-            .text_size(px(15.))
+            .text_size(px(17.))
             .flex()
             .flex_col()
             .p_3()
@@ -322,7 +322,7 @@ impl Render for Launcher {
             .child(list_view)
             .child(
                 div()
-                    .text_size(px(11.))
+                    .text_size(px(13.))
                     .text_color(rgb(self.theme.dim))
                     .child("↑↓ scroll · ⏎ run · ⌘E edit · esc close"),
             )
@@ -335,7 +335,7 @@ impl Launcher {
         let item = &self.filtered[filtered_ix];
         let is_selected = filtered_ix == self.selected;
         let icon = item.icon().unwrap_or("•");
-        div()
+        let row = div()
             .flex()
             .items_center()
             .gap_2()
@@ -357,15 +357,111 @@ impl Launcher {
             )
             .child(
                 div()
+                    .flex_1()
                     .text_color(if is_selected {
                         rgb(self.theme.text)
                     } else {
                         rgb(self.theme.text_muted)
                     })
                     .child(item.name().to_string()),
-            )
-            .into_any()
+            );
+        // Right-aligned badge with the target's bound shortcuts, if any.
+        let row = match self.shortcut_label(item.name()) {
+            Some(label) => row.child(
+                div()
+                    .text_size(px(14.))
+                    .text_color(rgb(self.theme.text_muted))
+                    .child(label),
+            ),
+            None => row,
+        };
+        row.into_any()
     }
+
+    /// The shortcuts bound to a target, for display next to its row: the
+    /// global combo first, then the launcher-local one, in macOS glyph form
+    /// (e.g. `"⌥G  ⌘R"`). `None` when the target has no bound shortcut.
+    fn shortcut_label(&self, name: &str) -> Option<String> {
+        let global = self
+            .app_config
+            .global_shortcuts
+            .iter()
+            .find(|(_, target)| target.as_str() == name)
+            .map(|(combo, _)| combo.clone());
+        let local = self
+            .app_config
+            .shortcuts
+            .iter()
+            .find(|(_, target)| target.as_str() == name)
+            .map(|(combo, _)| combo.clone());
+        let labels = [global, local]
+            .into_iter()
+            .flatten()
+            .map(|combo| format_combo(&combo))
+            .collect::<Vec<_>>();
+        (!labels.is_empty()).then(|| labels.join("  "))
+    }
+}
+
+/// Render a config combo (`"cmd+shift+r"`, `"opt+space"`) in macOS glyph
+/// form: modifiers in the canonical order ⌃⌥⇧⌘, then the key glyph
+/// (`"⌃⇧⌘R"`, `"⌥␣"`).
+fn format_combo(combo: &str) -> String {
+    let mut ctrl = false;
+    let mut alt = false;
+    let mut shift = false;
+    let mut cmd = false;
+    let mut key = String::new();
+    for token in combo.split('+') {
+        let token = token.trim().to_ascii_lowercase();
+        match token.as_str() {
+            "ctrl" | "control" => ctrl = true,
+            "alt" | "option" | "opt" => alt = true,
+            "shift" => shift = true,
+            "cmd" | "command" | "super" => cmd = true,
+            other if !other.is_empty() => key = other.to_string(),
+            _ => {}
+        }
+    }
+    let mut label = String::new();
+    if ctrl {
+        label.push('⌃');
+    }
+    if alt {
+        label.push('⌥');
+    }
+    if shift {
+        label.push('⇧');
+    }
+    if cmd {
+        label.push('⌘');
+    }
+    label.push_str(&key_glyph(&key));
+    label
+}
+
+/// macOS glyph for a key name (`"space"` -> `"␣"`, `"f12"` -> `"F12"`);
+/// letters and digits are uppercased as-is.
+fn key_glyph(key: &str) -> String {
+    if let Some(digits) = key.strip_prefix('f')
+        && let Ok(n) = digits.parse::<u8>()
+        && (1..=12).contains(&n)
+    {
+        return format!("F{n}");
+    }
+    match key {
+        "space" => "␣",
+        "return" | "enter" => "⏎",
+        "escape" | "esc" => "⎋",
+        "tab" => "⇥",
+        "backspace" => "⌫",
+        "left" => "←",
+        "right" => "→",
+        "up" => "↑",
+        "down" => "↓",
+        _ => return key.to_uppercase(),
+    }
+    .to_string()
 }
 
 /// True when `combo` (e.g. "cmd+r" or "ctrl+shift+x") matches the pressed
@@ -598,6 +694,43 @@ mod tests {
         );
         l.handle_keystroke(&key("down"));
         assert_eq!(deferred(&l), Some((1, ScrollStrategy::Nearest)));
+    }
+
+    #[test]
+    fn format_combo_uses_macos_glyphs_in_canonical_order() {
+        assert_eq!(format_combo("cmd+r"), "⌘R");
+        assert_eq!(format_combo("opt+d"), "⌥D");
+        assert_eq!(format_combo("ctrl+alt+f12"), "⌃⌥F12");
+        assert_eq!(format_combo("cmd+shift+space"), "⇧⌘␣");
+        assert_eq!(format_combo("alt+return"), "⌥⏎");
+        assert_eq!(format_combo("cmd+f1"), "⌘F1");
+        assert_eq!(format_combo("ctrl+left"), "⌃←");
+    }
+
+    #[test]
+    fn shortcut_label_shows_global_then_local_combos() {
+        let mut app_config = AppConfig::default();
+        app_config
+            .global_shortcuts
+            .insert("opt+g".to_string(), "Marker".to_string());
+        app_config
+            .shortcuts
+            .insert("cmd+r".to_string(), "Reload Configuration".to_string());
+        app_config
+            .global_shortcuts
+            .insert("opt+m".to_string(), "Reload Configuration".to_string());
+        let l = Launcher::new(
+            vec![item("Marker"), item("Grep")],
+            ThemeColors::default(),
+            app_config,
+            History::test_new(PathBuf::new(), Vec::new()),
+        );
+        assert_eq!(l.shortcut_label("Marker").as_deref(), Some("⌥G"));
+        assert_eq!(l.shortcut_label("Grep").as_deref(), None);
+        assert_eq!(
+            l.shortcut_label("Reload Configuration").as_deref(),
+            Some("⌥M  ⌘R")
+        );
     }
 
     #[test]
