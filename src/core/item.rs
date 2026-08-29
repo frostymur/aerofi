@@ -1,4 +1,5 @@
-//! The unified launcher element: an application or a shell script.
+//! The unified launcher element: an application, a shell script, or a
+//! built-in action.
 //!
 //! [`Target`] is the single type the scanner produces, the search ranks and
 //! the UI renders. Script metadata (`@raycast.*` comment tags) is extracted
@@ -10,6 +11,7 @@
 //! - `# @raycast.mode <mode>`  -> `compact` | `fullOutput`
 //! - `# @raycast.icon <icon>`  -> emoji or icon identifier
 
+use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 
 /// Output mode of a script (from `@raycast.mode`).
@@ -37,7 +39,16 @@ impl ScriptMode {
     }
 }
 
-/// A single launchable element: an application bundle or a shell script.
+/// Built-in launcher actions: list entries with no on-disk target behind
+/// them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BuiltinAction {
+    /// Re-read `config.toml` and rescan the target list.
+    ReloadConfig,
+}
+
+/// A single launchable element: an application bundle, a shell script, or
+/// a built-in action.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Target {
     /// An application bundle (`.app`).
@@ -60,13 +71,37 @@ pub enum Target {
         /// Icon (emoji or identifier) from `@raycast.icon`, if present.
         icon: Option<String>,
     },
+    /// A built-in action (e.g. reloading the configuration).
+    Builtin {
+        /// Display name.
+        name: String,
+        /// The action to run.
+        action: BuiltinAction,
+    },
 }
 
 impl Target {
+    /// The built-in "Reload Configuration" target.
+    pub fn reload_config() -> Self {
+        Self::Builtin {
+            name: "Reload Configuration".to_string(),
+            action: BuiltinAction::ReloadConfig,
+        }
+    }
+
     /// Display name.
     pub fn name(&self) -> &str {
         match self {
-            Self::App { name, .. } | Self::Script { name, .. } => name,
+            Self::App { name, .. } | Self::Script { name, .. } | Self::Builtin { name, .. } => name,
+        }
+    }
+
+    /// Stable identifier for history/frecency: the path on disk, or the
+    /// display name for built-in actions.
+    pub fn identifier(&self) -> Cow<'_, str> {
+        match self {
+            Self::App { path, .. } | Self::Script { path, .. } => path.to_string_lossy(),
+            Self::Builtin { name, .. } => Cow::Borrowed(name),
         }
     }
 
@@ -74,6 +109,7 @@ impl Target {
     pub fn icon(&self) -> Option<&str> {
         match self {
             Self::App { icon, .. } | Self::Script { icon, .. } => icon.as_deref(),
+            Self::Builtin { .. } => None,
         }
     }
 

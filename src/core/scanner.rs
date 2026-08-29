@@ -119,10 +119,12 @@ pub fn scan_applications(config: &AppConfig) -> Vec<Target> {
     items
 }
 
-/// All launchable targets: applications + scripts, name-sorted.
+/// All launchable targets: applications + scripts + the built-in reload
+/// action, name-sorted.
 pub fn scan_all(config: &AppConfig) -> Vec<Target> {
     let mut targets = scan_applications(config);
     targets.extend(scan_scripts(config));
+    targets.push(Target::reload_config());
     sort_by_name(&mut targets);
     targets
 }

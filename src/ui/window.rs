@@ -11,6 +11,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::common::config::Config;
 use crate::core::config::AppConfig;
+use crate::core::history::History;
 use crate::core::item::Target;
 use crate::sys::appkit;
 use crate::ui::launcher::Launcher;
@@ -80,6 +81,7 @@ pub fn create_launcher_window(
     targets: Vec<Target>,
     config: Config,
     app_config: AppConfig,
+    history: History,
 ) -> Entity<Launcher> {
     let bounds = Bounds::centered(
         None,
@@ -101,14 +103,7 @@ pub fn create_launcher_window(
             |window, cx| {
                 appkit::hide_chrome(window);
                 appkit::store_ns_window(window);
-                cx.new(|_| {
-                    Launcher::new(
-                        targets,
-                        config.theme,
-                        app_config.aliases.clone(),
-                        app_config.general.max_results,
-                    )
-                })
+                cx.new(|_| Launcher::new(targets, config.theme, app_config, history))
             },
         )
         .unwrap();

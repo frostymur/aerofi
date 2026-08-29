@@ -1,17 +1,18 @@
 //! nucleo-matcher wrapper: ranks targets (by display name or configured
-//! aliases) against a filter query.
+//! aliases) against a filter query, boosted by frecency.
 
 use std::collections::HashMap;
 
 use nucleo_matcher::{Config, Matcher, Utf32Str};
 
+use crate::core::history::History;
 use crate::core::item::Target;
 
 /// A reusable fuzzy matcher. Holds the nucleo `Matcher` (it allocates a
 /// working set up front, so it is built once and reused), a reverse alias
 /// index (target display name -> the aliases that point to it), and the
 /// UTF-32 scratch buffers. Everything is allocated once in `new` and
-/// reused across `search()` calls.
+/// reused across `filter_and_rank()` calls.
 pub struct SearchIndex {
     matcher: Matcher,
     aliases_by_target: HashMap<String, Vec<String>>,
@@ -43,38 +44,60 @@ impl SearchIndex {
         }
     }
 
-    /// Rank `targets` against `query` and return the best-matching ones
-    /// (up to `max_results`) as a ready-to-render `Vec<Target>`, best
-    /// match first.
+    /// Rank `targets` against `query`, boosted by the frecency scores
+    /// from `history`, and return the best-matching ones (up to
+    /// `max_results`) as a ready-to-render `Vec<Target>`, best match
+    /// first.
     ///
-    /// A target matches when either its display name or one of its aliases
-    /// fuzzy-matches the query; the best of those scores is used for
-    /// ranking; ties keep the original order. An empty query scores 0 and
-    /// matches everything (see nucleo docs).
-    pub fn search(&mut self, targets: &[Target], query: &str) -> Vec<Target> {
+    /// - Empty query: every target matches with a zero fuzzy score, so
+    ///   the order is by frecency, descending. Targets with frecency 0
+    ///   keep their original order (stable sort).
+    /// - Non-empty query: a target matches when its display name or one
+    ///   of its aliases fuzzy-matches the query; the frecency score is
+    ///   added to the best fuzzy score before ranking.
+    ///
+    /// Ties keep the original order.
+    pub fn filter_and_rank(
+        &mut self,
+        history: &History,
+        targets: &[Target],
+        query: &str,
+    ) -> Vec<Target> {
         self.needle_buf.clear();
         self.hay_buf.clear();
         let needle = Utf32Str::new(query, &mut self.needle_buf);
 
-        let mut scored: Vec<(u16, usize)> = Vec::with_capacity(targets.len().min(self.max_results));
+        let mut scored: Vec<(u32, usize)> = Vec::with_capacity(targets.len().min(self.max_results));
         for (i, target) in targets.iter().enumerate() {
-            // Disjoint field borrows: `aliases_by_target` (shared),
-            // `hay_buf` and `matcher` (`fuzzy_match` takes `&mut self`).
             let name = target.name();
             let aliases = self.aliases_by_target.get(name);
-            let mut hay = Utf32Str::new(name, &mut self.hay_buf);
-            let mut best = self.matcher.fuzzy_match(hay, needle);
-            if let Some(list) = aliases {
+
+            // Disjoint field borrows: `aliases_by_target` (shared),
+            // `hay_buf` and `matcher` (`fuzzy_match` takes `&mut self`).
+            // An empty query matches everything with a zero fuzzy score;
+            // then frecency alone decides the order.
+            let mut fuzzy: Option<u16> = if query.is_empty() {
+                Some(0)
+            } else {
+                let hay = Utf32Str::new(name, &mut self.hay_buf);
+                self.matcher.fuzzy_match(hay, needle)
+            };
+            if !query.is_empty()
+                && let Some(list) = aliases
+            {
                 for alias in list {
-                    hay = Utf32Str::new(alias, &mut self.hay_buf);
+                    let hay = Utf32Str::new(alias, &mut self.hay_buf);
                     if let Some(score) = self.matcher.fuzzy_match(hay, needle) {
-                        best = Some(best.map_or(score, |b| b.max(score)));
+                        fuzzy = Some(fuzzy.map_or(score, |b| b.max(score)));
                     }
                 }
             }
-            if let Some(score) = best {
-                scored.push((score, i));
-            }
+
+            let Some(fuzzy_score) = fuzzy else {
+                continue;
+            };
+            let frecency = history.calculate_frecency(&target.identifier());
+            scored.push((u32::from(fuzzy_score) + frecency, i));
         }
         scored.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
         scored
@@ -89,6 +112,9 @@ impl SearchIndex {
 mod tests {
     use super::*;
     use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use crate::core::history::ExecutionRecord;
 
     fn aliases(pairs: &[(&str, &str)]) -> HashMap<String, String> {
         pairs
@@ -110,58 +136,122 @@ mod tests {
         results.iter().map(Target::name).collect()
     }
 
+    fn empty_history() -> History {
+        History::test_new(PathBuf::new(), Vec::new())
+    }
+
+    /// A launch recorded "just now" (100 frecency points).
+    fn fresh_record(identifier: &str) -> ExecutionRecord {
+        ExecutionRecord {
+            target_identifier: identifier.to_string(),
+            timestamp: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0),
+        }
+    }
+
     #[test]
     fn matches_names_without_aliases() {
         let mut idx = SearchIndex::new(&HashMap::new(), 20);
+        let history = empty_history();
         let targets = [target("Git Status"), target("Grep")];
-        assert_eq!(names(&idx.search(&targets, "gr")), vec!["Grep"]);
-        assert_eq!(names(&idx.search(&targets, "")), vec!["Git Status", "Grep"]);
+        assert_eq!(
+            names(&idx.filter_and_rank(&history, &targets, "gr")),
+            vec!["Grep"]
+        );
+        assert_eq!(
+            names(&idx.filter_and_rank(&history, &targets, "")),
+            vec!["Git Status", "Grep"]
+        );
     }
 
     #[test]
     fn alias_matches_when_name_does_not() {
         let mut idx = SearchIndex::new(&aliases(&[("rm", "Uninstaller")]), 20);
+        let history = empty_history();
         let targets = [target("Uninstaller")];
-        assert_eq!(names(&idx.search(&targets, "rm")), vec!["Uninstaller"]);
-        assert_eq!(names(&idx.search(&targets, "inst")), vec!["Uninstaller"]);
-        assert!(idx.search(&targets, "zzz").is_empty());
+        assert_eq!(
+            names(&idx.filter_and_rank(&history, &targets, "rm")),
+            vec!["Uninstaller"]
+        );
+        assert_eq!(
+            names(&idx.filter_and_rank(&history, &targets, "inst")),
+            vec!["Uninstaller"]
+        );
+        assert!(idx.filter_and_rank(&history, &targets, "zzz").is_empty());
     }
 
     #[test]
     fn name_still_matches_with_alias_configured() {
         let mut idx = SearchIndex::new(&aliases(&[("notes", "TextEdit")]), 20);
+        let history = empty_history();
         let targets = [target("TextEdit")];
-        assert_eq!(names(&idx.search(&targets, "edit")), vec!["TextEdit"]);
-        assert_eq!(names(&idx.search(&targets, "note")), vec!["TextEdit"]);
+        assert_eq!(
+            names(&idx.filter_and_rank(&history, &targets, "edit")),
+            vec!["TextEdit"]
+        );
+        assert_eq!(
+            names(&idx.filter_and_rank(&history, &targets, "note")),
+            vec!["TextEdit"]
+        );
     }
 
     #[test]
     fn alias_only_match_ranks_first() {
         let mut idx = SearchIndex::new(&aliases(&[("un", "Unpack"), ("extract", "Unpack")]), 20);
+        let history = empty_history();
         let targets = [target("Unpack"), target("Grep")];
-        assert_eq!(names(&idx.search(&targets, "extract"))[0], "Unpack");
+        assert_eq!(
+            names(&idx.filter_and_rank(&history, &targets, "extract"))[0],
+            "Unpack"
+        );
     }
 
     #[test]
     fn alias_to_missing_target_never_matches() {
         let mut idx = SearchIndex::new(&aliases(&[("zz", "Ghost App")]), 20);
+        let history = empty_history();
         let targets = [target("Grep")];
-        assert!(idx.search(&targets, "zz").is_empty());
+        assert!(idx.filter_and_rank(&history, &targets, "zz").is_empty());
     }
 
     #[test]
     fn results_capped_at_max_results() {
         let mut idx = SearchIndex::new(&HashMap::new(), 2);
+        let history = empty_history();
         let targets = [
             target("Alpha"),
             target("Bravo"),
             target("Charlie"),
             target("Delta"),
         ];
-        let results = idx.search(&targets, "");
+        let results = idx.filter_and_rank(&history, &targets, "");
         assert_eq!(names(&results), vec!["Alpha", "Bravo"]);
-        let results = idx.search(&targets, "a");
+        let results = idx.filter_and_rank(&history, &targets, "a");
         assert_eq!(results.len(), 2);
         assert_eq!(results[0].name(), "Alpha");
+    }
+
+    #[test]
+    fn empty_query_sorts_by_frecency_desc() {
+        let mut idx = SearchIndex::new(&HashMap::new(), 20);
+        let history = History::test_new(PathBuf::new(), vec![fresh_record("B")]);
+        let targets = [target("A"), target("B"), target("C")];
+        // B has a recent launch; A and C (frecency 0) keep their order.
+        let results = idx.filter_and_rank(&history, &targets, "");
+        assert_eq!(names(&results), vec!["B", "A", "C"]);
+    }
+
+    #[test]
+    fn frecency_boosts_fuzzy_ranking() {
+        let mut idx = SearchIndex::new(&HashMap::new(), 20);
+        // Five recent launches of "Zebra" (500 points) beat the stronger
+        // fuzzy match of "Zed".
+        let records = (0..5).map(|_| fresh_record("Zebra")).collect();
+        let history = History::test_new(PathBuf::new(), records);
+        let targets = [target("Zed"), target("Zebra")];
+        let results = idx.filter_and_rank(&history, &targets, "z");
+        assert_eq!(results[0].name(), "Zebra");
     }
 }

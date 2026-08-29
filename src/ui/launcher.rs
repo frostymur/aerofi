@@ -6,15 +6,15 @@
 //! `observe_keystrokes` handler (see `main.rs`). That keeps us to an
 //! append-only, backspace-only text model, which is all a launcher needs.
 
-use std::collections::HashMap;
-
 use gpui::{
     Context, CursorStyle, Render, ScrollStrategy, UniformListScrollHandle, Window, div, prelude::*,
     px, rgb, rgba, uniform_list,
 };
 
 use crate::common::config::ThemeColors;
-use crate::core::item::Target;
+use crate::core::config::AppConfig;
+use crate::core::history::History;
+use crate::core::item::{BuiltinAction, Target};
 use crate::core::search::SearchIndex;
 
 /// Root view: renders the filter field and the ranked list of targets.
@@ -32,6 +32,11 @@ pub struct Launcher {
     list: UniformListScrollHandle,
     /// Reused nucleo matcher (it allocates a working set up front).
     search: SearchIndex,
+    /// Launch history, appended to on every execution (frecency source).
+    history: History,
+    /// The app configuration this launcher was built from (re-read by
+    /// "Reload Configuration").
+    app_config: AppConfig,
     /// Palette for the dark launcher surface.
     theme: ThemeColors,
 }
@@ -40,9 +45,10 @@ impl Launcher {
     pub fn new(
         all: Vec<Target>,
         theme: ThemeColors,
-        aliases: HashMap<String, String>,
-        max_results: usize,
+        app_config: AppConfig,
+        history: History,
     ) -> Self {
+        let max_results = app_config.general.max_results;
         let filtered = all.iter().take(max_results).cloned().collect();
         Self {
             all,
@@ -50,7 +56,9 @@ impl Launcher {
             query: String::new(),
             selected: 0,
             list: UniformListScrollHandle::new(),
-            search: SearchIndex::new(&aliases, max_results),
+            search: SearchIndex::new(&app_config.aliases, max_results),
+            history,
+            app_config,
             theme,
         }
     }
@@ -58,6 +66,20 @@ impl Launcher {
     /// Handle a keystroke. Returns `true` when the window should be hidden
     /// afterwards (Esc, Enter after running, Cmd+E after opening the editor).
     pub fn handle_keystroke(&mut self, ks: &gpui::Keystroke) -> bool {
+        // A configured key-combo shortcut (e.g. "cmd+r") runs its target
+        // immediately; explicit config overrides the built-in bindings.
+        if let Some((_, name)) = self
+            .app_config
+            .shortcuts
+            .iter()
+            .find(|(combo, _)| combo_matches(combo, ks))
+            && let Some(item) = self.all.iter().find(|t| t.name() == name)
+        {
+            let item = item.clone();
+            self.execute_item(&item);
+            self.reset();
+            return true;
+        }
         let cmd = ks.modifiers.platform;
         match (ks.key.as_str(), cmd) {
             ("escape", _) => {
@@ -99,6 +121,14 @@ impl Launcher {
                     self.query.push_str(c);
                     self.refilter();
                     self.selected = 0;
+                    // A configured alias: typing it exactly runs its target
+                    // immediately (no Enter needed).
+                    if let Some(item) = self.alias_target() {
+                        let item = item.clone();
+                        self.execute_item(&item);
+                        self.reset();
+                        return true;
+                    }
                 }
                 false
             }
@@ -132,7 +162,9 @@ impl Launcher {
 
     /// Re-run the fuzzy match for the current query and rebuild `filtered`.
     fn refilter(&mut self) {
-        self.filtered = self.search.search(&self.all, &self.query);
+        self.filtered = self
+            .search
+            .filter_and_rank(&self.history, &self.all, &self.query);
         if self.selected >= self.filtered.len() {
             self.selected = 0;
         }
@@ -144,12 +176,56 @@ impl Launcher {
         self.filtered.get(self.selected)
     }
 
-    /// Run the highlighted target (apps open, scripts run via `sh`).
+    /// The target an alias points at, when the current query exactly
+    /// matches the alias (typing it runs the target immediately).
+    fn alias_target(&self) -> Option<&Target> {
+        let name = self.app_config.aliases.get(&self.query)?;
+        self.all.iter().find(|t| t.name() == name)
+    }
+
+    /// Run the highlighted target.
     fn execute_selected(&mut self) {
         let Some(item) = self.selected_item() else {
             return;
         };
-        crate::core::executor::execute(item);
+        let item = item.clone();
+        self.execute_item(&item);
+    }
+
+    /// Run a target: built-in actions act in place, apps open and scripts
+    /// run via `sh`. On-disk launches are recorded in the history for
+    /// frecency ranking.
+    fn execute_item(&mut self, item: &Target) {
+        match item {
+            Target::Builtin {
+                action: BuiltinAction::ReloadConfig,
+                ..
+            } => self.reload(),
+            _ => {
+                // Clone the identifier out before the mutable borrow for
+                // `record_launch`.
+                let identifier = item.identifier().into_owned();
+                crate::core::executor::execute(item);
+                self.history.record_launch(&identifier);
+            }
+        }
+    }
+
+    /// Re-read `config.toml`, rescan the targets and rebuild the search
+    /// index (aliases, `max_results`, sources, ignored apps, script dirs).
+    fn reload(&mut self) {
+        let config = crate::core::config::AppConfig::load();
+        let targets = crate::core::scanner::scan_all(&config);
+        self.app_config = config;
+        self.all = targets;
+        self.search = SearchIndex::new(
+            &self.app_config.aliases,
+            self.app_config.general.max_results,
+        );
+        self.query.clear();
+        self.refilter();
+        self.selected = 0;
+        println!("aerofi: configuration reloaded");
     }
 
     /// Open the highlighted script in `$EDITOR` (defaulting to `vim`).
@@ -160,7 +236,8 @@ impl Launcher {
         };
         let path = match item {
             Target::Script { path, .. } => path.clone(),
-            Target::App { .. } => return,
+            // Applications and built-in actions have no source to edit.
+            Target::App { .. } | Target::Builtin { .. } => return,
         };
         let name = item.name().to_string();
         let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vim".to_string());
@@ -291,6 +368,27 @@ impl Launcher {
     }
 }
 
+/// True when `combo` (e.g. "cmd+r" or "ctrl+shift+x") matches the pressed
+/// keystroke: the same key and exactly the listed modifiers. Modifier
+/// names: `cmd`/`command`/`super`, `ctrl`/`control`, `alt`/`option`/`opt`,
+/// `shift`; the key is the remaining token (case-insensitive).
+fn combo_matches(combo: &str, ks: &gpui::Keystroke) -> bool {
+    let mut want = gpui::Modifiers::default();
+    let mut key: Option<String> = None;
+    for token in combo.split('+') {
+        let token = token.trim().to_ascii_lowercase();
+        match token.as_str() {
+            "cmd" | "command" | "super" => want.platform = true,
+            "ctrl" | "control" => want.control = true,
+            "alt" | "option" | "opt" => want.alt = true,
+            "shift" => want.shift = true,
+            other if !other.is_empty() => key = Some(other.to_string()),
+            _ => {}
+        }
+    }
+    matches!(key.as_deref(), Some(k) if k == ks.key.to_ascii_lowercase()) && want == ks.modifiers
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -319,13 +417,79 @@ mod tests {
         l.filtered.iter().map(|t| t.name().to_string()).collect()
     }
 
+    fn cap_config(max_results: usize) -> AppConfig {
+        let mut config = AppConfig::default();
+        config.general.max_results = max_results;
+        config
+    }
+
+    #[test]
+    fn alias_resolves_target_by_exact_query() {
+        let mut app_config = AppConfig::default();
+        app_config
+            .aliases
+            .insert("rc".to_string(), "Reload Configuration".to_string());
+        let mut l = Launcher::new(
+            vec![item("Grep"), Target::reload_config()],
+            ThemeColors::default(),
+            app_config,
+            History::test_new(PathBuf::new(), Vec::new()),
+        );
+        l.query = "rc".to_string();
+        assert_eq!(
+            l.alias_target().map(|t| t.name()),
+            Some("Reload Configuration")
+        );
+        l.query = "r".to_string();
+        assert_eq!(l.alias_target(), None);
+    }
+
+    fn keystroke(key: &str, modifiers: Modifiers) -> Keystroke {
+        Keystroke {
+            modifiers,
+            key: key.to_string(),
+            key_char: (key.len() == 1).then(|| key.to_string()),
+        }
+    }
+
+    #[test]
+    fn combo_matches_key_combinations() {
+        let cmd_r = keystroke(
+            "r",
+            Modifiers {
+                platform: true,
+                ..Default::default()
+            },
+        );
+        assert!(combo_matches("cmd+r", &cmd_r));
+        assert!(combo_matches("command+r", &cmd_r));
+        assert!(!combo_matches("ctrl+r", &cmd_r));
+        assert!(!combo_matches("cmd+x", &cmd_r));
+        assert!(!combo_matches("cmd+shift+r", &cmd_r));
+
+        let plain_r = keystroke("r", Modifiers::default());
+        assert!(combo_matches("r", &plain_r));
+        assert!(!combo_matches("cmd+r", &plain_r));
+
+        let ctrl_shift_x = keystroke(
+            "x",
+            Modifiers {
+                control: true,
+                shift: true,
+                ..Default::default()
+            },
+        );
+        assert!(combo_matches("ctrl+shift+x", &ctrl_shift_x));
+        assert!(combo_matches("shift+ctrl+x", &ctrl_shift_x));
+    }
+
     #[test]
     fn empty_query_shows_all_in_order() {
         let l = Launcher::new(
             vec![item("Git Status"), item("Clipboard History")],
             ThemeColors::default(),
-            HashMap::new(),
-            20,
+            AppConfig::default(),
+            History::test_new(PathBuf::new(), Vec::new()),
         );
         assert_eq!(
             names(&l),
@@ -338,8 +502,8 @@ mod tests {
         let mut l = Launcher::new(
             vec![item("Git Status"), item("Clipboard History"), item("Grep")],
             ThemeColors::default(),
-            HashMap::new(),
-            20,
+            AppConfig::default(),
+            History::test_new(PathBuf::new(), Vec::new()),
         );
         l.handle_keystroke(&key("g"));
         let n = names(&l);
@@ -353,8 +517,8 @@ mod tests {
         let mut l = Launcher::new(
             vec![item("Git Status"), item("Grep")],
             ThemeColors::default(),
-            HashMap::new(),
-            20,
+            AppConfig::default(),
+            History::test_new(PathBuf::new(), Vec::new()),
         );
         l.handle_keystroke(&key("g"));
         assert_eq!(names(&l).len(), 2);
@@ -369,8 +533,8 @@ mod tests {
         let mut l = Launcher::new(
             vec![item("Git Status"), item("Grep"), item("Copy")],
             ThemeColors::default(),
-            HashMap::new(),
-            20,
+            AppConfig::default(),
+            History::test_new(PathBuf::new(), Vec::new()),
         );
         assert_eq!(l.selected, 0);
         l.handle_keystroke(&key("down"));
@@ -388,8 +552,8 @@ mod tests {
         let mut l = Launcher::new(
             vec![item("A One"), item("A Two"), item("A Three")],
             ThemeColors::default(),
-            HashMap::new(),
-            2,
+            cap_config(2),
+            History::test_new(PathBuf::new(), Vec::new()),
         );
         assert_eq!(names(&l), vec!["A One".to_string(), "A Two".to_string()]);
         l.handle_keystroke(&key("a"));
@@ -403,8 +567,8 @@ mod tests {
         let mut l = Launcher::new(
             vec![item("Git Status"), item("Grep")],
             ThemeColors::default(),
-            HashMap::new(),
-            20,
+            AppConfig::default(),
+            History::test_new(PathBuf::new(), Vec::new()),
         );
         l.handle_keystroke(&key("g"));
         assert_eq!(l.query, "g");
@@ -429,8 +593,8 @@ mod tests {
         let mut l = Launcher::new(
             vec![item("Git Status"), item("Grep"), item("Copy")],
             ThemeColors::default(),
-            HashMap::new(),
-            20,
+            AppConfig::default(),
+            History::test_new(PathBuf::new(), Vec::new()),
         );
         l.handle_keystroke(&key("down"));
         assert_eq!(deferred(&l), Some((1, ScrollStrategy::Nearest)));
@@ -441,8 +605,8 @@ mod tests {
         let mut l = Launcher::new(
             vec![item("Git Status"), item("Grep")],
             ThemeColors::default(),
-            HashMap::new(),
-            20,
+            AppConfig::default(),
+            History::test_new(PathBuf::new(), Vec::new()),
         );
         l.handle_keystroke(&key("g"));
         assert_eq!(deferred(&l), Some((0, ScrollStrategy::Top)));

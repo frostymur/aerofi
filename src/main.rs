@@ -18,15 +18,25 @@ fn main() {
     // parsed script metadata, so the parser can be verified at startup.
     let app_config = core::config::AppConfig::load();
     let targets = core::scanner::scan_all(&app_config);
+    let history = core::history::History::load();
     let app_count = targets
         .iter()
         .filter(|t| matches!(t, core::item::Target::App { .. }))
         .count();
+    let script_count = targets
+        .iter()
+        .filter(|t| matches!(t, core::item::Target::Script { .. }))
+        .count();
+    let builtin_count = targets
+        .iter()
+        .filter(|t| matches!(t, core::item::Target::Builtin { .. }))
+        .count();
     println!(
-        "aerofi: indexed {} target(s) ({} app(s), {} script(s))",
+        "aerofi: indexed {} target(s) ({} app(s), {} script(s), {} builtin(s))",
         targets.len(),
         app_count,
-        targets.len() - app_count
+        script_count,
+        builtin_count
     );
     let mut script_i = 0;
     for item in &targets {
@@ -51,7 +61,7 @@ fn main() {
 
     application().run(|cx: &mut App| {
         let config = common::config::Config::default();
-        let view = ui::window::create_launcher_window(cx, targets, config, app_config);
+        let view = ui::window::create_launcher_window(cx, targets, config, app_config, history);
         // Route every keystroke into the launcher while the window is visible.
         // `detach()` keeps the observer alive for the app's lifetime without
         // requiring us to hold the `Subscription` handle.

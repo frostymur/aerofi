@@ -37,12 +37,14 @@ dirs = ["~/.config/aerofi/scripts"]
 ignored = ["Uninstall*", "Installer"]
 
 [aliases]
-# Display-name overrides, e.g.:
-# "firefox" = "Firefox"
+# Alternate names for targets. Typing an alias finds the target in the
+# search; typing it exactly runs the target immediately (no Enter), e.g.:
+# "rc" = "Reload Configuration"
 
 [shortcuts]
-# Key shortcuts, e.g.:
-# "ff" = "Firefox"
+# Key combinations that run a target immediately while the launcher is
+# open. Modifiers: cmd, ctrl, alt, shift (any order, before the key), e.g.:
+# "cmd+r" = "Reload Configuration"
 "#;
 
 /// Launcher-wide behaviour.
@@ -122,9 +124,12 @@ pub struct AppConfig {
     pub sources: SourcesConfig,
     pub scripts: ScriptsConfig,
     pub apps: AppsConfig,
-    /// Display-name overrides (query -> target name).
+    /// Alternate names for targets (alias -> target name): used by the
+    /// fuzzy search, and typing an alias exactly runs the target
+    /// immediately (no Enter needed).
     pub aliases: HashMap<String, String>,
-    /// Key shortcuts (keys -> target name).
+    /// Key combinations (e.g. "cmd+r" -> target name) that run the target
+    /// immediately while the launcher is open.
     pub shortcuts: HashMap<String, String>,
 }
 

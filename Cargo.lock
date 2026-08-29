@@ -119,7 +119,7 @@ checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
 name = "aerofi"
-version = "0.0.3"
+version = "0.0.5"
 dependencies = [
  "dirs 5.0.1",
  "gpui",
@@ -130,6 +130,7 @@ dependencies = [
  "objc2-foundation 0.2.2",
  "raw-window-handle",
  "serde",
+ "serde_json",
  "tokio",
  "toml 0.8.23",
 ]

@@ -8,13 +8,16 @@ use crate::core::item::Target;
 ///
 /// Applications open via `open <path>`; scripts run as `sh <path>` with
 /// stdio inherited, so their output is visible in the terminal aerofi was
-/// launched from. Failures are reported to stderr, never panics.
+/// launched from. Built-in actions are handled by the UI, not here.
+/// Failures are reported to stderr, never panics.
 pub fn execute(target: &Target) {
-    let spawn = match target {
-        Target::App { path, .. } => Command::new("open").arg(path).spawn(),
-        Target::Script { path, .. } => Command::new("sh").arg(path).spawn(),
+    let (program, path) = match target {
+        Target::App { path, .. } => ("open", path),
+        Target::Script { path, .. } => ("sh", path),
+        // Built-in actions are handled by the UI, never executed here.
+        Target::Builtin { .. } => return,
     };
-    if let Err(e) = spawn {
+    if let Err(e) = Command::new(program).arg(path).spawn() {
         eprintln!("aerofi: failed to run {}: {e}", target.name());
     }
 }
