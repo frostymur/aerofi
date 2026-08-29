@@ -6,6 +6,8 @@
 //! `observe_keystrokes` handler (see `main.rs`). That keeps us to an
 //! append-only, backspace-only text model, which is all a launcher needs.
 
+use std::collections::HashMap;
+
 use gpui::{
     Context, CursorStyle, Render, ScrollStrategy, UniformListScrollHandle, Window, div, prelude::*,
     px, rgb, rgba, uniform_list,
@@ -19,8 +21,9 @@ use crate::core::search::SearchIndex;
 pub struct Launcher {
     /// Every indexed target, kept in name-sorted order (the "unfiltered" order).
     all: Vec<Target>,
-    /// Indices into `all`, ranked by match score (best first).
-    filtered: Vec<usize>,
+    /// The ranked results for the current query (best first), capped at
+    /// `max_results`.
+    filtered: Vec<Target>,
     /// Current filter query.
     query: String,
     /// Position of the highlighted row within `filtered`.
@@ -34,15 +37,20 @@ pub struct Launcher {
 }
 
 impl Launcher {
-    pub fn new(all: Vec<Target>, theme: ThemeColors) -> Self {
-        let filtered = (0..all.len()).collect();
+    pub fn new(
+        all: Vec<Target>,
+        theme: ThemeColors,
+        aliases: HashMap<String, String>,
+        max_results: usize,
+    ) -> Self {
+        let filtered = all.iter().take(max_results).cloned().collect();
         Self {
             all,
             filtered,
             query: String::new(),
             selected: 0,
             list: UniformListScrollHandle::new(),
-            search: SearchIndex::new(),
+            search: SearchIndex::new(&aliases, max_results),
             theme,
         }
     }
@@ -124,8 +132,7 @@ impl Launcher {
 
     /// Re-run the fuzzy match for the current query and rebuild `filtered`.
     fn refilter(&mut self) {
-        let names: Vec<&str> = self.all.iter().map(|t| t.name()).collect();
-        self.filtered = self.search.search(&names, &self.query);
+        self.filtered = self.search.search(&self.all, &self.query);
         if self.selected >= self.filtered.len() {
             self.selected = 0;
         }
@@ -134,7 +141,7 @@ impl Launcher {
     }
 
     fn selected_item(&self) -> Option<&Target> {
-        self.filtered.get(self.selected).map(|&i| &self.all[i])
+        self.filtered.get(self.selected)
     }
 
     /// Run the highlighted target (apps open, scripts run via `sh`).
@@ -248,8 +255,7 @@ impl Render for Launcher {
 impl Launcher {
     /// Build a single list row for `filtered_ix` (position within `filtered`).
     fn render_row(&self, filtered_ix: usize) -> gpui::AnyElement {
-        let all_idx = self.filtered[filtered_ix];
-        let item = &self.all[all_idx];
+        let item = &self.filtered[filtered_ix];
         let is_selected = filtered_ix == self.selected;
         let icon = item.icon().unwrap_or("•");
         div()
@@ -310,10 +316,7 @@ mod tests {
     }
 
     fn names(l: &Launcher) -> Vec<String> {
-        l.filtered
-            .iter()
-            .map(|&i| l.all[i].name().to_string())
-            .collect()
+        l.filtered.iter().map(|t| t.name().to_string()).collect()
     }
 
     #[test]
@@ -321,6 +324,8 @@ mod tests {
         let l = Launcher::new(
             vec![item("Git Status"), item("Clipboard History")],
             ThemeColors::default(),
+            HashMap::new(),
+            20,
         );
         assert_eq!(
             names(&l),
@@ -333,6 +338,8 @@ mod tests {
         let mut l = Launcher::new(
             vec![item("Git Status"), item("Clipboard History"), item("Grep")],
             ThemeColors::default(),
+            HashMap::new(),
+            20,
         );
         l.handle_keystroke(&key("g"));
         let n = names(&l);
@@ -346,6 +353,8 @@ mod tests {
         let mut l = Launcher::new(
             vec![item("Git Status"), item("Grep")],
             ThemeColors::default(),
+            HashMap::new(),
+            20,
         );
         l.handle_keystroke(&key("g"));
         assert_eq!(names(&l).len(), 2);
@@ -360,6 +369,8 @@ mod tests {
         let mut l = Launcher::new(
             vec![item("Git Status"), item("Grep"), item("Copy")],
             ThemeColors::default(),
+            HashMap::new(),
+            20,
         );
         assert_eq!(l.selected, 0);
         l.handle_keystroke(&key("down"));
@@ -373,12 +384,27 @@ mod tests {
     }
 
     #[test]
+    fn list_is_capped_at_max_results() {
+        let mut l = Launcher::new(
+            vec![item("A One"), item("A Two"), item("A Three")],
+            ThemeColors::default(),
+            HashMap::new(),
+            2,
+        );
+        assert_eq!(names(&l), vec!["A One".to_string(), "A Two".to_string()]);
+        l.handle_keystroke(&key("a"));
+        assert!(names(&l).len() <= 2);
+    }
+
+    #[test]
     fn escape_signals_hide_and_resets_query() {
         // Enter / Cmd+E spawn real processes, so they're exercised manually,
         // not here. Esc is pure: it resets the query and asks to hide.
         let mut l = Launcher::new(
             vec![item("Git Status"), item("Grep")],
             ThemeColors::default(),
+            HashMap::new(),
+            20,
         );
         l.handle_keystroke(&key("g"));
         assert_eq!(l.query, "g");
@@ -395,7 +421,6 @@ mod tests {
             .0
             .borrow()
             .deferred_scroll_to_item
-            .clone()
             .map(|d| (d.item_index, d.strategy))
     }
 
@@ -404,6 +429,8 @@ mod tests {
         let mut l = Launcher::new(
             vec![item("Git Status"), item("Grep"), item("Copy")],
             ThemeColors::default(),
+            HashMap::new(),
+            20,
         );
         l.handle_keystroke(&key("down"));
         assert_eq!(deferred(&l), Some((1, ScrollStrategy::Nearest)));
@@ -414,6 +441,8 @@ mod tests {
         let mut l = Launcher::new(
             vec![item("Git Status"), item("Grep")],
             ThemeColors::default(),
+            HashMap::new(),
+            20,
         );
         l.handle_keystroke(&key("g"));
         assert_eq!(deferred(&l), Some((0, ScrollStrategy::Top)));

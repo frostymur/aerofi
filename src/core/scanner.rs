@@ -120,10 +120,9 @@ pub fn scan_applications(config: &AppConfig) -> Vec<Target> {
 }
 
 /// All launchable targets: applications + scripts, name-sorted.
-pub fn scan_all() -> Vec<Target> {
-    let config = AppConfig::load();
-    let mut targets = scan_applications(&config);
-    targets.extend(scan_scripts(&config));
+pub fn scan_all(config: &AppConfig) -> Vec<Target> {
+    let mut targets = scan_applications(config);
+    targets.extend(scan_scripts(config));
     sort_by_name(&mut targets);
     targets
 }

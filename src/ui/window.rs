@@ -10,6 +10,7 @@ use gpui::{
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::common::config::Config;
+use crate::core::config::AppConfig;
 use crate::core::item::Target;
 use crate::sys::appkit;
 use crate::ui::launcher::Launcher;
@@ -78,6 +79,7 @@ pub fn create_launcher_window(
     cx: &mut App,
     targets: Vec<Target>,
     config: Config,
+    app_config: AppConfig,
 ) -> Entity<Launcher> {
     let bounds = Bounds::centered(
         None,
@@ -99,7 +101,14 @@ pub fn create_launcher_window(
             |window, cx| {
                 appkit::hide_chrome(window);
                 appkit::store_ns_window(window);
-                cx.new(|_| Launcher::new(targets, config.theme))
+                cx.new(|_| {
+                    Launcher::new(
+                        targets,
+                        config.theme,
+                        app_config.aliases.clone(),
+                        app_config.general.max_results,
+                    )
+                })
             },
         )
         .unwrap();
