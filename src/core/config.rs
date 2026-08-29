@@ -45,6 +45,13 @@ ignored = ["Uninstall*", "Installer"]
 # Key combinations that run a target immediately while the launcher is
 # open. Modifiers: cmd, ctrl, alt, shift (any order, before the key), e.g.:
 # "cmd+r" = "Reload Configuration"
+
+[global_shortcuts]
+# System-wide shortcuts: run the named target directly, without opening the
+# launcher. Use opt (or cmd) to avoid app conflicts, e.g.:
+# "opt+d" = "Deploy"
+# Registered at startup only (restart after editing); conflicting combos
+# are skipped with a warning.
 "#;
 
 /// Launcher-wide behaviour.
@@ -131,6 +138,11 @@ pub struct AppConfig {
     /// Key combinations (e.g. "cmd+r" -> target name) that run the target
     /// immediately while the launcher is open.
     pub shortcuts: HashMap<String, String>,
+    /// System-wide shortcuts (combo -> target name): run the target
+    /// directly without opening the launcher. Registered at startup via
+    /// Carbon `RegisterEventHotKey` (no Accessibility permission needed);
+    /// see ADR 0002.
+    pub global_shortcuts: HashMap<String, String>,
 }
 
 impl AppConfig {

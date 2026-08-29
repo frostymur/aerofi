@@ -59,6 +59,33 @@ fn main() {
         }
     }
 
+    // Global target shortcuts (ADR 0002): resolve the configured combos to
+    // keycodes and the named targets. Unknown combos/targets are skipped
+    // with a warning and never block startup.
+    let mut globals = Vec::new();
+    for (combo, name) in &app_config.global_shortcuts {
+        match sys::carbon::parse_combo(combo) {
+            Some((keycode, modifiers)) => {
+                if let Some(target) = targets.iter().find(|t| t.name() == name).cloned() {
+                    globals.push(sys::carbon::GlobalBinding {
+                        keycode,
+                        modifiers,
+                        target,
+                        label: combo.clone(),
+                    });
+                } else {
+                    eprintln!(
+                        "aerofi: warning: global shortcut {combo:?}: unknown target {name:?}"
+                    );
+                }
+            }
+            None => eprintln!(
+                "aerofi: warning: global shortcut {combo:?}: unsupported combo \
+                 (need cmd/ctrl/opt + a key from a-z 0-9 f1-f12 space/tab/return/arrows)"
+            ),
+        }
+    }
+
     application().run(|cx: &mut App| {
         let config = common::config::Config::default();
         let view = ui::window::create_launcher_window(cx, targets, config, app_config, history);
@@ -80,9 +107,10 @@ fn main() {
         })
         .detach();
 
-        // Global hotkey: Option+Space toggles the launcher.
-        if let Err(e) = sys::carbon::install() {
-            eprintln!("aerofi: failed to register global hotkey: {e}");
+        // Global hotkeys: Option+Space toggles the launcher; configured
+        // `[global_shortcuts]` run their targets directly.
+        if let Err(e) = sys::carbon::install(globals) {
+            eprintln!("aerofi: failed to register global hotkeys: {e}");
         }
 
         // Start hidden: yield focus back to the terminal.
