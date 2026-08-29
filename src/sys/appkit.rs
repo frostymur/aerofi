@@ -52,6 +52,17 @@ pub fn hide_chrome(window: &Window) {
     }
 }
 
+/// Make the window non-movable: the transparent titlebar still provides a
+/// drag region, so explicitly disable dragging by titlebar and background.
+pub fn make_immovable(window: &Window) {
+    let Some(ptr) = get_ns_window(window) else {
+        return;
+    };
+    let window = unsafe { &*(ptr as *const NSWindow) };
+    window.setMovable(false);
+    window.setMovableByWindowBackground(false);
+}
+
 /// Hide the whole application, returning focus to the previously active app
 /// (e.g. the terminal). Must be called on the main thread.
 pub fn hide_application() {

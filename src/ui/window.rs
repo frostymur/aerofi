@@ -102,6 +102,7 @@ pub fn create_launcher_window(
             },
             |window, cx| {
                 appkit::hide_chrome(window);
+                appkit::make_immovable(window);
                 appkit::store_ns_window(window);
                 cx.new(|_| Launcher::new(targets, config.theme, app_config, history))
             },
