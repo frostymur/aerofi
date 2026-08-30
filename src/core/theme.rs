@@ -7,6 +7,7 @@
 
 #![allow(dead_code)]
 
+use std::collections::HashMap;
 use std::fs;
 
 use serde::Deserialize;
@@ -292,6 +293,10 @@ pub struct ThemeConfig {
     pub inputbar: InputBarConfig,
     pub listview: ListViewConfig,
     pub element: ElementConfig,
+    /// Named colour aliases: `$key` in any colour field is replaced with
+    /// the corresponding hex value from this map.
+    #[serde(default)]
+    pub colors: HashMap<String, String>,
 }
 
 impl Default for ThemeConfig {
@@ -306,7 +311,69 @@ impl Default for ThemeConfig {
             inputbar: InputBarConfig::default(),
             listview: ListViewConfig::default(),
             element: ElementConfig::default(),
+            colors: HashMap::new(),
         }
+    }
+}
+
+impl ThemeConfig {
+    /// Resolve colour aliases: every string field that starts with `$`
+    /// (e.g. `"$bg"`) is replaced with the hex value from the `[colors]`
+    /// map. Unknown aliases fall back to `"#000000"` with a warning.
+    pub fn resolve_colors(&mut self) {
+        let colors = &self.colors;
+
+        // Window
+        resolve(&mut self.window.background, colors);
+        resolve_opt(&mut self.window.background_image, colors);
+        resolve(&mut self.window.border_color, colors);
+
+        // InputBar
+        resolve(&mut self.inputbar.background, colors);
+        resolve(&mut self.inputbar.text_color, colors);
+        resolve(&mut self.inputbar.placeholder_color, colors);
+        resolve_opt(&mut self.inputbar.icon_color, colors);
+
+        // ListView
+        resolve(&mut self.listview.empty_text_color, colors);
+
+        // Element
+        resolve(&mut self.element.background, colors);
+        resolve(&mut self.element.text_color, colors);
+        resolve_opt(&mut self.element.description_color, colors);
+
+        // Element.selected
+        resolve(&mut self.element.selected.background, colors);
+        resolve(&mut self.element.selected.text_color, colors);
+        resolve_opt(&mut self.element.selected.description_color, colors);
+
+        // Element.hover
+        if let Some(hover) = &mut self.element.hover {
+            resolve(&mut hover.background, colors);
+            resolve(&mut hover.text_color, colors);
+            resolve_opt(&mut hover.description_color, colors);
+        }
+    }
+}
+
+/// If `value` starts with `$`, look up the alias in `colors` and replace
+/// it. Unknown aliases are replaced with `"#000000"` + a warning.
+fn resolve(value: &mut String, colors: &HashMap<String, String>) {
+    if let Some(key) = value.strip_prefix('$') {
+        *value = match colors.get(key) {
+            Some(hex) => hex.clone(),
+            None => {
+                eprintln!("aerofi: warning: unknown colour alias ${key}, falling back to #000000");
+                "#000000".to_string()
+            }
+        };
+    }
+}
+
+/// Same as [`resolve`] but for `Option<String>` fields.
+fn resolve_opt(value: &mut Option<String>, colors: &HashMap<String, String>) {
+    if let Some(s) = value {
+        resolve(s, colors);
     }
 }
 
@@ -345,7 +412,10 @@ pub fn load_theme(theme_name: &str) -> ThemeConfig {
     };
 
     match toml::from_str::<ThemeConfig>(&contents) {
-        Ok(theme) => theme,
+        Ok(mut theme) => {
+            theme.resolve_colors();
+            theme
+        }
         Err(err) => {
             eprintln!(
                 "aerofi: warning: failed to parse theme {}: {err}; using default",
@@ -436,5 +506,35 @@ mod tests {
         assert_eq!(parse_hex_color("#gggggg"), None);
         assert_eq!(parse_hex_color("#12"), None);
         assert_eq!(parse_hex_color("#1234"), None);
+    }
+
+    #[test]
+    fn resolve_colors_replaces_aliases() {
+        let mut t = ThemeConfig::default();
+        t.colors.insert("bg".to_string(), "#112233".to_string());
+        t.colors.insert("fg".to_string(), "#aabbcc".to_string());
+        t.window.background = "$bg".to_string();
+        t.inputbar.text_color = "$fg".to_string();
+        t.element.selected.background = "$bg".to_string();
+        t.resolve_colors();
+        assert_eq!(t.window.background, "#112233");
+        assert_eq!(t.inputbar.text_color, "#aabbcc");
+        assert_eq!(t.element.selected.background, "#112233");
+    }
+
+    #[test]
+    fn resolve_colors_unknown_alias_falls_back() {
+        let mut t = ThemeConfig::default();
+        t.window.background = "$nonexistent".to_string();
+        t.resolve_colors();
+        assert_eq!(t.window.background, "#000000");
+    }
+
+    #[test]
+    fn resolve_colors_skips_non_aliases() {
+        let mut t = ThemeConfig::default();
+        t.window.background = "#1a1b26".to_string();
+        t.resolve_colors();
+        assert_eq!(t.window.background, "#1a1b26");
     }
 }
