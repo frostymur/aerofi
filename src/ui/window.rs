@@ -62,13 +62,46 @@ pub fn hide() {
 /// Toggle the launcher window. Invoked by the global hotkey on the main thread.
 pub fn toggle() {
     if is_visible() {
+        notify_hide();
         hide();
     } else {
         VISIBLE.store(true, Ordering::SeqCst);
+        notify_show();
         appkit::show_application();
         // GPUI doesn't observe the system un-hide, so force a fresh frame.
         request_render();
     }
+}
+
+/// Drop decoded GPU texture references held by the launcher so macOS can
+/// reclaim the memory while hidden.  Safe to call from any context that
+/// can reach the GPUI event loop (e.g. `view.update()`).
+pub fn notify_hide() {
+    let Some(rr) = RENDER_REQUEST.with(|r| r.borrow().clone()) else {
+        return;
+    };
+    let view = rr.view.clone();
+    rr.app.update(|cx| {
+        view.update(cx, |launcher, cx| {
+            launcher.on_hide();
+            cx.notify();
+        });
+    });
+}
+
+/// Rebuild the filtered list so the next render creates fresh `img()`
+/// elements that GPUI will decode on demand.
+pub fn notify_show() {
+    let Some(rr) = RENDER_REQUEST.with(|r| r.borrow().clone()) else {
+        return;
+    };
+    let view = rr.view.clone();
+    rr.app.update(|cx| {
+        view.update(cx, |launcher, cx| {
+            launcher.on_show();
+            cx.notify();
+        });
+    });
 }
 
 /// Create the borderless PopUp launcher window and return its root view.
@@ -101,7 +134,7 @@ pub fn create_launcher_window(
                 ..Default::default()
             },
             |window, cx| {
-                appkit::hide_chrome(window);
+                appkit::hide_chrome(window, theme.window.corner_radius);
                 appkit::make_immovable(window);
                 appkit::store_ns_window(window);
                 if let Some(opacity) = theme.window.background_opacity {

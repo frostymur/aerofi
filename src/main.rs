@@ -100,12 +100,16 @@ fn main() {
         // Route every keystroke into the launcher while the window is visible.
         // `detach()` keeps the observer alive for the app's lifetime without
         // requiring us to hold the `Subscription` handle.
+        let view_clone = view.clone();
         cx.observe_keystrokes(move |event, _window, cx| {
             if !ui::window::is_visible() {
                 return;
             }
-            let should_hide = view.update(cx, |launcher, cx| {
+            let should_hide = view_clone.update(cx, |launcher, cx| {
                 let hide = launcher.handle_keystroke(&event.keystroke);
+                if hide {
+                    launcher.on_hide();
+                }
                 cx.notify();
                 hide
             });
@@ -121,7 +125,11 @@ fn main() {
             eprintln!("aerofi: failed to register global hotkeys: {e}");
         }
 
-        // Start hidden: yield focus back to the terminal.
+        // Start hidden: drop textures and yield focus back to the terminal.
+        view.update(cx, |launcher, cx| {
+            launcher.on_hide();
+            cx.notify();
+        });
         ui::window::hide();
     });
 }

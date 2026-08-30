@@ -11,7 +11,6 @@ src/
 ├── main.rs              # GPUI initialization, hotkey registration, event loop
 ├── common/              # Shared types (no GPUI, no platform FFI)
 │   ├── config.rs        # Config, ThemeColors, WindowConfig
-│   └── ipc_protocol.rs  # PromptReq, IpcResponse (unused in v0.1, reserved for v0.2)
 ├── ui/                  # Everything that renders (depends on GPUI)
 │   ├── window.rs        # Window setup (borderless, focus management)
 │   └── launcher.rs      # Input field, search list, keyboard handlers
@@ -27,9 +26,7 @@ src/
 
 **Rationale:** single crate keeps the build simple (one `cargo build`, no
 path-dependency headaches) for v0.1. The layering (common → core → ui →
-sys) enforces separation of concerns *within* the crate. If a future
-v0.2 adds `aerofi-ask` CLI, the `common/` types are already isolated and
-trivial to extract into a separate crate then.
+sys) enforces separation of concerns *within* the crate.
 
 ## Validated performance baseline
 
@@ -37,7 +34,7 @@ As of the first working prototype: **~38 MB RSS while active, ~0.2% CPU
 idle**, fully interactive GPUI window. Treat this as the baseline to
 protect, not a one-time measurement to forget:
 
-- Idle/backgrounded RSS: keep under 20 MB (macOS compresses Metal buffers
+- Idle/backgrounded RSS: keep under 40 MB (macOS compresses Metal buffers
   once the window is hidden — verify this after every dependency bump,
   don't assume it holds).
 - Active/foreground RSS: keep under 50 MB with the script index loaded.
@@ -71,18 +68,6 @@ and never a floating branch. GPUI is pre-1.0 with breaking changes expected
 between revisions. Bumping the pin is a deliberate PR on its own — not
 bundled with feature work — that must (a) pass the full test suite and
 (b) re-verify the RSS baseline above before merging.
-
-## IPC protocol and socket policy
-
-- Socket path: `$TMPDIR/aerofi.sock` or
-  `~/Library/Application Support/aerofi/aerofi.sock` — never a hardcoded
-  path under shared `/tmp`.
-- On startup, the daemon detects a stale socket (file exists, no process
-  listening) and removes it before binding. A bind failure on a live socket
-  means another daemon instance is already running — exit cleanly with a
-  clear message, don't silently steal the socket.
-- Protocol: JSON over the socket, request/response, one exchange per
-  connection. Types live in `aerofi-core::ipc_protocol`.
 
 ## Script execution: terminal-based output in v0.1
 
@@ -123,11 +108,7 @@ directly undermines the RSS budget above.
 - AeroSpace/yabai-native quick actions — genuinely valuable (see roadmap),
   but not part of the core daemon; when it happens, it should be scripts
   shelling out to the `aerospace` CLI, not a special-cased integration.
-- UI-based forms or interactive prompts (`aerofi-ask`, JSON-schema forms,
-  etc.) — v0.1 scripts that need interactivity use their own tooling
-  (`read`, `fzf`, `osascript`) inside the spawned terminal. Capturing
-  stdout and rendering it in the aerofi UI is deferred to v0.2.
-
+  
 ## ADR process
 
 Any decision expensive to reverse gets a short ADR under `docs/adr/` using

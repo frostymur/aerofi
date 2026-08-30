@@ -4,6 +4,8 @@
 //! and the show/hide orchestration live in [`crate::ui::window`].
 
 use gpui::Window;
+use image::ImageEncoder;
+use image::codecs::tiff::TiffEncoder;
 use objc2::rc::Id;
 use objc2_app_kit::{
     NSApplication, NSApplicationActivationPolicy, NSColor, NSView, NSWindow, NSWindowButton,
@@ -12,6 +14,7 @@ use objc2_app_kit::{
 use objc2_foundation::{MainThreadMarker, NSString};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::ffi::c_void;
+use std::io::Cursor;
 use std::path::Path;
 use std::sync::atomic::{AtomicPtr, Ordering};
 
@@ -25,8 +28,6 @@ fn get_ns_window(window: &Window) -> Option<*mut c_void> {
         return None;
     };
     let ns_view_ptr = appkit.ns_view.as_ptr();
-    // SAFETY: `ns_view` is a valid `NonNull` pointer to the live content `NSView`
-    // produced by GPUI's window handle; we only temporarily retain it.
     let ns_view: Id<NSView> = unsafe { Id::retain(ns_view_ptr.cast()) }?;
     let ns_window: Id<NSWindow> = ns_view.window()?;
     Some(&*ns_window as *const NSWindow as *mut c_void)
@@ -40,7 +41,7 @@ pub fn store_ns_window(window: &Window) {
 }
 
 /// Strip the macOS traffic-light buttons for a borderless launcher surface.
-pub fn hide_chrome(window: &Window) {
+pub fn hide_chrome(window: &Window, _corner_radius: f32) {
     let Some(ptr) = get_ns_window(window) else {
         return;
     };
@@ -129,14 +130,34 @@ pub fn show_application() {
     }
 }
 
-/// Extract the icon for an `.app` bundle as raw TIFF bytes via
-/// `NSWorkspace.shared().icon(forFile:)`. Returns `None` when the icon
-/// cannot be obtained (non-macOS, missing bundle, or AppKit failure).
+/// Target icon size for downsampling (pixels).
+const ICON_SIZE: u32 = 64;
+
+/// Extract the icon for an `.app` bundle, downsampled to 64×64 via the
+/// `image` crate so each cached TIFF is ~16 KB. Returns `None` on failure.
 pub fn icon_for_app_bundle(path: &Path) -> Option<Vec<u8>> {
     let _mtm = MainThreadMarker::new()?;
     let path_str = NSString::from_str(path.to_str()?);
     let workspace = unsafe { NSWorkspace::sharedWorkspace() };
     let image = unsafe { workspace.iconForFile(&path_str) };
-    let data = unsafe { image.TIFFRepresentation() }?;
-    Some(data.bytes().to_vec())
+
+    // Get the raw multi-resolution TIFF from AppKit.
+    let tiff_data = unsafe { image.TIFFRepresentation() }?;
+    let raw_bytes: Vec<u8> = tiff_data.bytes().to_vec();
+
+    // Decode the full-res TIFF.
+    let img = image::load_from_memory(&raw_bytes).ok()?;
+
+    // Resize to 128×128 using Lanczos3 for quality.
+    let resized = img.resize(ICON_SIZE, ICON_SIZE, image::imageops::FilterType::Lanczos3);
+
+    // Re-encode as TIFF.
+    let mut buf = Cursor::new(Vec::with_capacity(64 * 1024));
+    let encoder = TiffEncoder::new(&mut buf);
+    let rgba = resized.to_rgba8();
+    encoder
+        .write_image(&rgba, ICON_SIZE, ICON_SIZE, image::ExtendedColorType::Rgba8)
+        .ok()?;
+
+    Some(buf.into_inner())
 }

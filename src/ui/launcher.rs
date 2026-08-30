@@ -93,10 +93,22 @@ impl Launcher {
                 true
             }
             ("up", false) => {
-                self.move_selection(-1);
+                let cols = self.theme.listview.columns;
+                let step = if cols > 1 { cols as isize } else { 1 };
+                self.move_selection(-step);
                 false
             }
             ("down", false) => {
+                let cols = self.theme.listview.columns;
+                let step = if cols > 1 { cols as isize } else { 1 };
+                self.move_selection(step);
+                false
+            }
+            ("left", false) if self.theme.listview.columns > 1 => {
+                self.move_selection(-1);
+                false
+            }
+            ("right", false) if self.theme.listview.columns > 1 => {
                 self.move_selection(1);
                 false
             }
@@ -161,9 +173,15 @@ impl Launcher {
         }
         let len = self.filtered.len() as isize;
         self.selected = (self.selected as isize + delta).clamp(0, len - 1) as usize;
+        let cols = self.theme.listview.columns;
+        let scroll_ix = if cols > 1 {
+            self.selected / cols
+        } else {
+            self.selected
+        };
         // Non-strict: scrolls only if the selected row is out of view.
         self.list
-            .scroll_to_item(self.selected, ScrollStrategy::Nearest);
+            .scroll_to_item(scroll_ix, ScrollStrategy::Nearest);
     }
 
     /// Re-run the fuzzy match for the current query and rebuild `filtered`.
@@ -176,6 +194,20 @@ impl Launcher {
         }
         // A new query re-ranks the list, so start at the top.
         self.list.scroll_to_item(0, ScrollStrategy::Top);
+    }
+
+    /// Called when the window is hidden.  Drops decoded GPU texture
+    /// references held by `filtered` Targets so macOS can reclaim the
+    /// memory while the launcher is not on screen.
+    pub fn on_hide(&mut self) {
+        self.filtered.clear();
+    }
+
+    /// Called when the window is shown.  Refills `filtered` from `all`
+    /// so the next render creates fresh `img()` elements that GPUI will
+    /// decode on demand.
+    pub fn on_show(&mut self) {
+        self.refilter();
     }
 
     fn selected_item(&self) -> Option<&Target> {
@@ -351,7 +383,7 @@ impl Render for Launcher {
             .bg(rgb(Self::color(&t.window.background)))
             .text_color(rgb(Self::color(&t.element.text_color)))
             .text_size(px(t.font.size))
-            .rounded_lg();
+            .rounded(px(t.window.corner_radius));
 
         if opacity < 1.0 {
             // Apply alpha to the root background colour.
@@ -431,11 +463,13 @@ impl Launcher {
 
         let placeholder_view = if self.query.is_empty() {
             div()
+                .flex_1()
                 .text_color(rgb(Self::color(&ib.placeholder_color)))
                 .child(ib.placeholder.clone())
                 .into_any()
         } else {
             div()
+                .flex_1()
                 .text_color(rgb(Self::color(&ib.text_color)))
                 .child(self.query.clone())
                 .into_any()
@@ -490,31 +524,21 @@ impl Launcher {
         }
 
         if columns > 1 {
-            // Grid mode: render rows of `columns` items each.
-            let spacing = px(t.listview.spacing);
-            let cols = columns;
-            let rows: Vec<_> = self
-                .filtered
-                .chunks(cols)
-                .enumerate()
-                .map(|(row_ix, chunk)| {
-                    let mut row = div().flex().gap(spacing).w_full();
-                    for (col_ix, item) in chunk.iter().enumerate() {
-                        let global_ix = row_ix * cols + col_ix;
-                        let is_selected = global_ix == self.selected;
-                        row = row.child(self.render_grid_cell(item, is_selected));
-                    }
-                    row
-                })
-                .collect();
-
-            div()
-                .flex_1()
-                .flex()
-                .flex_col()
-                .gap(spacing)
-                .children(rows)
-                .into_any()
+            // Grid mode: virtualized rows of `columns` items each using uniform_list.
+            let total_rows = self.filtered.len().div_ceil(columns);
+            uniform_list(
+                "grid_targets",
+                total_rows,
+                cx.processor(move |this, range: std::ops::Range<usize>, _window, _cx| {
+                    range
+                        .map(|row_ix| this.render_grid_row(row_ix, columns))
+                        .collect()
+                }),
+            )
+            .track_scroll(&self.list)
+            .flex_1()
+            .w_full()
+            .into_any()
         } else {
             // List mode: single-column vertical list with virtual scrolling.
             uniform_list(
@@ -529,6 +553,30 @@ impl Launcher {
             .w_full()
             .into_any()
         }
+    }
+
+    /// Render a single row of the grid (used when `columns > 1`).
+    fn render_grid_row(&self, row_ix: usize, cols: usize) -> gpui::AnyElement {
+        let t = &self.theme;
+        let spacing = px(t.listview.spacing);
+        let start_ix = row_ix * cols;
+        let end_ix = (start_ix + cols).min(self.filtered.len());
+
+        let mut row = div().flex().gap(spacing).w_full();
+        for global_ix in start_ix..end_ix {
+            let item = &self.filtered[global_ix];
+            let is_selected = global_ix == self.selected;
+            row = row.child(
+                div()
+                    .flex_1()
+                    .child(self.render_grid_cell(item, is_selected)),
+            );
+        }
+        // Pad incomplete last row to keep column alignment.
+        for _ in end_ix..(start_ix + cols) {
+            row = row.child(div().flex_1());
+        }
+        row.into_any()
     }
 
     /// Render a single grid cell (used when `columns > 1`).

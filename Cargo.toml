@@ -42,5 +42,8 @@ objc2-app-kit = { version = "0.2.2", features = [
   "NSWorkspace",
 ] }
 objc2-foundation = "0.2.2"
+
+# Image decoding/resizing for icon downsampling (matches GPUI's version).
+image = { version = "0.25.1", default-features = false, features = ["tiff", "jpeg"] }
 # Same raw-window-handle version GPUI uses, so we can read the content NSView pointer
 raw-window-handle = "0.6"
