@@ -72,7 +72,7 @@ pub fn set_borderless_style(window: &Window) {
     // Without this, setStyleMask leaves firstResponder = nil and both
     // AppKit's internal restoration path AND GPUI's own makeFirstResponder_
     // call fire, delivering every key event twice.
-    unsafe { ns_window.makeFirstResponder(Some(&*ns_view)) };
+    ns_window.makeFirstResponder(Some(&*ns_view));
 }
 
 /// Run aerofi as a background accessory: no Dock icon, no Cmd-Tab entry,

@@ -13,9 +13,6 @@ gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "a3f6b96c
   "font-kit",
 ] }
 
-# Async runtime
-tokio = { version = "1", features = ["full"] }
-
 # Fuzzy search
 nucleo-matcher = "0.3"
 
@@ -27,14 +24,11 @@ toml = "0.8"
 # Home/config directory resolution
 dirs = "5.0"
 
-# macOS AppKit bindings (per PROJECT_RULES.md) - used to strip window chrome.
-# objc2-app-kit ships per-class feature gates; enable the classes we touch.
+# macOS AppKit bindings (per PROJECT_RULES.md)
+# objc2-app-kit ships per-class feature gates; enable only classes we touch.
 objc2 = "0.5.2"
 objc2-app-kit = { version = "0.2.2", features = [
   "NSApplication",
-  "NSButton",
-  "NSColor",
-  "NSControl",
   "NSImage",
   "NSRunningApplication",
   "NSView",
@@ -47,3 +41,10 @@ objc2-foundation = "0.2.2"
 image = { version = "0.25.1", default-features = false, features = ["tiff", "jpeg"] }
 # Same raw-window-handle version GPUI uses, so we can read the content NSView pointer
 raw-window-handle = "0.6"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
