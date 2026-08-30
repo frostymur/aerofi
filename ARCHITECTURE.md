@@ -1,8 +1,6 @@
 # ARCHITECTURE.md — aerofi
 
 This document is the source of truth for how aerofi is shaped and why.
-It supersedes `PROJECT_RULES.md`. If a PR conflicts with this document,
-the PR is wrong until this document is deliberately amended via an ADR.
 
 ## System layers
 
@@ -139,3 +137,4 @@ constitute ADR 0001 (single-crate layout + GPUI pin + baseline RSS), ADR
 (Raycast script-command compat, not extension compat) — write those up
 formally in `docs/adr/` rather than leaving them only in this file, so
 future contributors see the dated record of when and why.
+

@@ -100,3 +100,4 @@ privately via `SECURITY.md`, not as a public issue.
 
 Early-stage: maintainer-led on architecture decisions. Revisit this once
 the project has three or more regular contributors.
+
