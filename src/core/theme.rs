@@ -34,6 +34,7 @@ pub enum Widget {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
 pub struct FontConfig {
     pub family: String,
     pub size: f32,
@@ -57,6 +58,7 @@ impl Default for FontConfig {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
 pub struct WindowConfig {
     pub width: f32,
     pub height: f32,
@@ -92,6 +94,7 @@ impl Default for WindowConfig {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
 pub struct ContainerConfig {
     /// `"vertical"` or `"horizontal"`.
     pub orientation: String,
@@ -112,6 +115,7 @@ impl Default for ContainerConfig {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
 pub struct BannerConfig {
     pub image_path: Option<String>,
     pub height: f32,
@@ -133,6 +137,7 @@ impl Default for BannerConfig {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
 pub struct InputBarConfig {
     pub height: f32,
     pub padding: Vec<f32>,
@@ -168,6 +173,7 @@ impl Default for InputBarConfig {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
 pub struct ListViewConfig {
     pub columns: usize,
     pub spacing: f32,
@@ -197,6 +203,7 @@ impl Default for ListViewConfig {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
 pub struct SelectedState {
     pub background: String,
     pub text_color: String,
@@ -214,6 +221,7 @@ impl Default for SelectedState {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
 pub struct HoverState {
     pub background: String,
     pub text_color: String,
@@ -235,6 +243,7 @@ impl Default for HoverState {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
 pub struct ElementConfig {
     pub padding: Vec<f32>,
     pub corner_radius: f32,
@@ -272,6 +281,7 @@ impl Default for ElementConfig {
 /// Top-level theme configuration loaded from a TOML file or constructed
 /// from built-in defaults.
 #[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
 pub struct ThemeConfig {
     pub name: String,
     pub author: Option<String>,
