@@ -15,7 +15,7 @@ use crate::core::config::AppConfig;
 use crate::core::history::History;
 use crate::core::item::{BuiltinAction, Target};
 use crate::core::search::SearchIndex;
-use crate::core::theme::{self, ThemeConfig, Widget};
+use crate::core::theme::{self, ThemeConfig, Widget, parse_hex_color};
 
 /// Root view: renders the filter field and the ranked list of targets.
 pub struct Launcher {
@@ -330,7 +330,7 @@ impl Render for Launcher {
                         let resolved = expand_tilde_path(path);
                         let height = t.banner.as_ref().map(|b| b.height).unwrap_or(120.0);
                         inner = inner.child(
-                            img(resolved.as_str())
+                            img(std::path::PathBuf::from(resolved))
                                 .w_full()
                                 .h(px(height))
                                 .object_fit(gpui::ObjectFit::Cover)
@@ -343,6 +343,7 @@ impl Render for Launcher {
         }
 
         // Wrap with background colour, padding, and optional background image.
+        let opacity = t.window.background_opacity.unwrap_or(1.0);
         let mut root = div()
             .size_full()
             .flex()
@@ -350,20 +351,75 @@ impl Render for Launcher {
             .bg(rgb(Self::color(&t.window.background)))
             .text_color(rgb(Self::color(&t.element.text_color)))
             .text_size(px(t.font.size))
-            .p(px(t.window.padding))
             .rounded_lg();
 
-        if let Some(bg_path) = &t.window.background_image {
-            let resolved = expand_tilde_path(bg_path);
-            root = root.child(
-                img(resolved.as_str())
-                    .absolute()
-                    .size_full()
-                    .object_fit(gpui::ObjectFit::Cover),
-            );
+        if opacity < 1.0 {
+            // Apply alpha to the root background colour.
+            let hex = parse_hex_color(&t.window.background).unwrap_or(0);
+            let alpha = (opacity * 255.0) as u32;
+            root = root.bg(rgba((hex << 8) | alpha));
         }
 
-        root.child(inner)
+        let content = div()
+            .flex_1()
+            .flex()
+            .flex_col()
+            .p(px(t.window.padding))
+            .child(inner);
+
+        match t.window.background_image.as_deref() {
+            Some(bg_path) => {
+                let resolved = expand_tilde_path(bg_path);
+                let position = t.window.background_position.as_deref().unwrap_or("cover");
+                match position {
+                    "left" => {
+                        root = root.child(
+                            div()
+                                .flex()
+                                .flex_row()
+                                .size_full()
+                                .child(
+                                    img(std::path::PathBuf::from(&resolved))
+                                        .h_full()
+                                        .w(px(t.window.width * 0.4))
+                                        .object_fit(gpui::ObjectFit::Cover),
+                                )
+                                .child(content.flex_1()),
+                        );
+                    }
+                    "right" => {
+                        root = root.child(
+                            div()
+                                .flex()
+                                .flex_row()
+                                .size_full()
+                                .child(content.flex_1())
+                                .child(
+                                    img(std::path::PathBuf::from(&resolved))
+                                        .h_full()
+                                        .w(px(t.window.width * 0.4))
+                                        .object_fit(gpui::ObjectFit::Cover),
+                                ),
+                        );
+                    }
+                    _ => {
+                        // "cover" or unknown: full background
+                        root = root.child(
+                            img(std::path::PathBuf::from(&resolved))
+                                .absolute()
+                                .size_full()
+                                .object_fit(gpui::ObjectFit::Cover),
+                        );
+                        root = root.child(content);
+                    }
+                }
+            }
+            None => {
+                root = root.child(content);
+            }
+        }
+
+        root
     }
 }
 

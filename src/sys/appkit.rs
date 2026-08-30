@@ -6,7 +6,8 @@
 use gpui::Window;
 use objc2::rc::Id;
 use objc2_app_kit::{
-    NSApplication, NSApplicationActivationPolicy, NSView, NSWindow, NSWindowButton, NSWorkspace,
+    NSApplication, NSApplicationActivationPolicy, NSColor, NSView, NSWindow, NSWindowButton,
+    NSWorkspace,
 };
 use objc2_foundation::{MainThreadMarker, NSString};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
@@ -64,6 +65,28 @@ pub fn make_immovable(window: &Window) {
     let window = unsafe { &*(ptr as *const NSWindow) };
     window.setMovable(false);
     window.setMovableByWindowBackground(false);
+}
+
+/// Set the window background opacity (0.0 = fully transparent,
+/// 1.0 = fully opaque). Makes the NSWindow non-opaque so the desktop
+/// shows through when opacity < 1.0.
+pub fn set_window_opacity(window: &Window, opacity: f32) {
+    let Some(ptr) = get_ns_window(window) else {
+        return;
+    };
+    let window = unsafe { &*(ptr as *const NSWindow) };
+    unsafe {
+        window.setOpaque(false);
+        if opacity < 1.0 {
+            let bg = NSColor::colorWithDeviceRed_green_blue_alpha(0.0, 0.0, 0.0, opacity as f64);
+            window.setBackgroundColor(Some(&bg));
+            window.setAlphaValue(opacity as f64);
+        } else {
+            let bg = NSColor::colorWithDeviceRed_green_blue_alpha(0.0, 0.0, 0.0, 1.0);
+            window.setBackgroundColor(Some(&bg));
+            window.setAlphaValue(1.0);
+        }
+    }
 }
 
 /// Run aerofi as a background accessory: no Dock icon, no Cmd-Tab entry,

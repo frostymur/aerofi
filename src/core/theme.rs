@@ -66,8 +66,15 @@ pub struct WindowConfig {
     pub padding: f32,
     pub background: String,
     pub background_image: Option<String>,
+    /// Position of the background image: `"cover"` (full), `"left"`,
+    /// `"right"`, or `"center"`.
+    pub background_position: Option<String>,
     pub image_scale: Option<f32>,
     pub blur: bool,
+    /// Window background opacity: `1.0` = fully opaque (default),
+    /// `0.0` = fully transparent. Makes the NSWindow non-opaque so
+    /// the desktop shows through.
+    pub background_opacity: Option<f32>,
     pub corner_radius: f32,
     pub border_width: f32,
     pub border_color: String,
@@ -81,8 +88,10 @@ impl Default for WindowConfig {
             padding: 16.0,
             background: "#1a1b26".to_string(),
             background_image: None,
+            background_position: None,
             image_scale: None,
             blur: false,
+            background_opacity: None,
             corner_radius: 12.0,
             border_width: 1.0,
             border_color: "#414868".to_string(),

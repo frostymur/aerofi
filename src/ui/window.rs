@@ -104,6 +104,9 @@ pub fn create_launcher_window(
                 appkit::hide_chrome(window);
                 appkit::make_immovable(window);
                 appkit::store_ns_window(window);
+                if let Some(opacity) = theme.window.background_opacity {
+                    appkit::set_window_opacity(window, opacity);
+                }
                 cx.new(|_| Launcher::new(targets, theme, app_config, history))
             },
         )
