@@ -15,6 +15,10 @@ const DEFAULT_CONFIG: &str = r#"# aerofi configuration
 # Hand-edited file: there is no settings GUI (see ARCHITECTURE.md).
 # Restart aerofi after editing to apply changes.
 
+# Theme name: resolved to ~/.config/aerofi/themes/{name}.toml.
+# Use "default" for the built-in Tokyo Night palette.
+theme = "default"
+
 [general]
 # Maximum number of results shown in the launcher list.
 max_results = 20
@@ -124,7 +128,7 @@ impl Default for AppsConfig {
 }
 
 /// Root configuration, stored as `~/.config/aerofi/config.toml`.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AppConfig {
     pub general: GeneralConfig,
@@ -143,6 +147,24 @@ pub struct AppConfig {
     /// Carbon `RegisterEventHotKey` (no Accessibility permission needed);
     /// see ADR 0002.
     pub global_shortcuts: HashMap<String, String>,
+    /// Theme name resolved to `~/.config/aerofi/themes/{name}.toml`.
+    /// The special value `"default"` uses the built-in Tokyo Night palette.
+    pub theme: String,
+}
+
+impl Default for AppConfig {
+    fn default() -> Self {
+        Self {
+            general: GeneralConfig::default(),
+            sources: SourcesConfig::default(),
+            scripts: ScriptsConfig::default(),
+            apps: AppsConfig::default(),
+            aliases: HashMap::new(),
+            shortcuts: HashMap::new(),
+            global_shortcuts: HashMap::new(),
+            theme: "default".to_string(),
+        }
+    }
 }
 
 impl AppConfig {

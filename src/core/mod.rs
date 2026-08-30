@@ -7,3 +7,4 @@ pub mod history;
 pub mod item;
 pub mod scanner;
 pub mod search;
+pub mod theme;
