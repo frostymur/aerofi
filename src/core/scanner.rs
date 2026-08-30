@@ -1,8 +1,7 @@
-//! Directory indexing: scans the configured scripts folders and the
-//! standard macOS application directories for launchable [`Target`]s.
-
+use gpui::SharedString;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use crate::core::config::AppConfig;
 use crate::core::item::Target;
@@ -108,8 +107,8 @@ pub fn scan_applications(config: &AppConfig) -> Vec<Target> {
                 continue;
             }
             items.push(Target::App {
-                name,
-                path,
+                name: SharedString::from(name),
+                path: Arc::from(path),
                 icon_path: None,
             });
         }

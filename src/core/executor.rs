@@ -17,7 +17,7 @@ pub fn execute(target: &Target) {
         // Built-in actions are handled by the UI, never executed here.
         Target::Builtin { .. } => return,
     };
-    if let Err(e) = Command::new(program).arg(path).spawn() {
+    if let Err(e) = Command::new(program).arg(&**path).spawn() {
         eprintln!("aerofi: failed to run {}: {e}", target.name());
     }
 }

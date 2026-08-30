@@ -242,9 +242,9 @@ impl Launcher {
             _ => {
                 // Clone the identifier out before the mutable borrow for
                 // `record_launch`.
-                let identifier = item.identifier().into_owned();
+                let identifier = item.identifier();
                 crate::core::executor::execute(item);
-                self.history.record_launch(&identifier);
+                self.history.record_launch(identifier);
             }
         }
     }
@@ -284,7 +284,7 @@ impl Launcher {
         let program = parts.next().unwrap_or("vim");
         match std::process::Command::new(program)
             .args(parts)
-            .arg(&path)
+            .arg(path.as_os_str())
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::inherit())
             .stderr(std::process::Stdio::inherit())
@@ -841,10 +841,10 @@ mod tests {
 
     fn item(name: &str) -> Target {
         Target::Script {
-            name: name.to_string(),
+            name: name.into(),
             mode: crate::core::item::ScriptMode::FullOutput,
             icon: None,
-            path: PathBuf::from(name),
+            path: std::sync::Arc::from(PathBuf::from(name)),
             metatags: crate::core::item::ScriptMetatags::default(),
         }
     }

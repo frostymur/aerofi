@@ -10,13 +10,14 @@ use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
+use gpui::SharedString;
 
 /// A single launch, persisted in `history.json`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExecutionRecord {
     /// Stable identifier of the launched target (path to the `.app`
     /// bundle or the script on disk).
-    pub target_identifier: String,
+    pub target_identifier: SharedString,
     /// Seconds since UNIX_EPOCH.
     pub timestamp: u64,
 }
@@ -70,12 +71,15 @@ impl History {
     }
 
     /// Append a launch of `target_identifier` with the current timestamp
-    /// and persist the history to disk.
-    pub fn record_launch(&mut self, target_identifier: &str) {
+    /// and persist the history to disk. Keep at most 2000 records.
+    pub fn record_launch(&mut self, target_identifier: SharedString) {
         self.records.push(ExecutionRecord {
-            target_identifier: target_identifier.to_string(),
+            target_identifier,
             timestamp: now_secs(),
         });
+        if self.records.len() > 2000 {
+            self.records = self.records.split_off(self.records.len() - 2000);
+        }
         self.save();
     }
 
@@ -161,7 +165,7 @@ mod tests {
 
     fn record(identifier: &str, secs_ago: u64) -> ExecutionRecord {
         ExecutionRecord {
-            target_identifier: identifier.to_string(),
+            target_identifier: identifier.into(),
             timestamp: now_secs().saturating_sub(secs_ago),
         }
     }
@@ -193,7 +197,7 @@ mod tests {
             now_secs()
         ));
         let mut history = History::test_new(path.clone(), Vec::new());
-        history.record_launch("/tmp/script.sh");
+        history.record_launch("/tmp/script.sh".into());
         assert_eq!(history.records.len(), 1);
 
         let reloaded = History::from_path(path.clone());

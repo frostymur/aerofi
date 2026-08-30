@@ -95,10 +95,10 @@ pub fn extract_all(targets: &mut [Target]) {
         }
         let cached = dir.join(format!("{}.tiff", sanitise_name(name)));
         if cached.exists() {
-            *icon_path = Some(cached);
+            *icon_path = Some(std::sync::Arc::from(cached));
             continue;
         }
         *icon_path =
-            crate::sys::appkit::icon_for_app_bundle(path).and_then(|tiff| cache_icon(name, &tiff));
+            crate::sys::appkit::icon_for_app_bundle(path).and_then(|tiff| cache_icon(name, &tiff).map(std::sync::Arc::from));
     }
 }

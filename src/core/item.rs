@@ -11,8 +11,9 @@
 //! - `# @raycast.mode <mode>`  -> `compact` | `fullOutput`
 //! - `# @raycast.icon <icon>`  -> emoji or icon identifier
 
-use std::borrow::Cow;
-use std::path::{Path, PathBuf};
+use gpui::SharedString;
+use std::path::Path;
+use std::sync::Arc;
 
 /// Output mode of a script (from `@raycast.mode`).
 #[derive(Debug, Clone, PartialEq)]
@@ -65,29 +66,29 @@ pub enum Target {
     /// An application bundle (`.app`).
     App {
         /// Display name (the bundle directory name without the `.app` suffix).
-        name: String,
+        name: SharedString,
         /// Path to the `.app` bundle on disk.
-        path: PathBuf,
+        path: Arc<Path>,
         /// Path to the cached icon file (TIFF), if extracted.
-        icon_path: Option<PathBuf>,
+        icon_path: Option<Arc<Path>>,
     },
     /// A shell script plus its parsed `@raycast.*` metadata.
     Script {
         /// Display name (from `@raycast.title`, falling back to the file stem).
-        name: String,
+        name: SharedString,
         /// Path to the script on disk.
-        path: PathBuf,
+        path: Arc<Path>,
         /// Output mode (from `@raycast.mode`, defaulting to `FullOutput`).
         mode: ScriptMode,
         /// Icon (emoji or identifier) from `@raycast.icon`, if present.
-        icon: Option<String>,
+        icon: Option<SharedString>,
         /// AeroFi metatags (`@aerofi.*`), if present.
         metatags: ScriptMetatags,
     },
     /// A built-in action (e.g. reloading the configuration).
     Builtin {
         /// Display name.
-        name: String,
+        name: SharedString,
         /// The action to run.
         action: BuiltinAction,
     },
@@ -97,7 +98,7 @@ impl Target {
     /// The built-in "Reload Configuration" target.
     pub fn reload_config() -> Self {
         Self::Builtin {
-            name: "Reload Configuration".to_string(),
+            name: SharedString::from("Reload Configuration"),
             action: BuiltinAction::ReloadConfig,
         }
     }
@@ -105,16 +106,18 @@ impl Target {
     /// Display name.
     pub fn name(&self) -> &str {
         match self {
-            Self::App { name, .. } | Self::Script { name, .. } | Self::Builtin { name, .. } => name,
+            Self::App { name, .. } | Self::Script { name, .. } | Self::Builtin { name, .. } => name.as_ref(),
         }
     }
 
     /// Stable identifier for history/frecency: the path on disk, or the
     /// display name for built-in actions.
-    pub fn identifier(&self) -> Cow<'_, str> {
+    pub fn identifier(&self) -> SharedString {
         match self {
-            Self::App { path, .. } | Self::Script { path, .. } => path.to_string_lossy(),
-            Self::Builtin { name, .. } => Cow::Borrowed(name),
+            Self::App { path, .. } | Self::Script { path, .. } => {
+                SharedString::from(path.to_string_lossy().into_owned())
+            }
+            Self::Builtin { name, .. } => name.clone(),
         }
     }
 
@@ -202,10 +205,10 @@ impl Target {
         }
 
         Some(Self::Script {
-            name: name.unwrap_or(file_stem),
+            name: SharedString::from(name.unwrap_or(file_stem)),
             mode: mode.unwrap_or(ScriptMode::FullOutput),
-            icon,
-            path: path.to_path_buf(),
+            icon: icon.map(SharedString::from),
+            path: Arc::from(path),
             metatags,
         })
     }

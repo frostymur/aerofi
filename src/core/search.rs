@@ -8,6 +8,8 @@ use nucleo_matcher::{Config, Matcher, Utf32Str};
 use crate::core::history::History;
 use crate::core::item::Target;
 
+use gpui::SharedString;
+
 /// A reusable fuzzy matcher. Holds the nucleo `Matcher` (it allocates a
 /// working set up front, so it is built once and reused), a reverse alias
 /// index (target display name -> the aliases that point to it), and the
@@ -15,7 +17,7 @@ use crate::core::item::Target;
 /// reused across `filter_and_rank()` calls.
 pub struct SearchIndex {
     matcher: Matcher,
-    aliases_by_target: HashMap<String, Vec<String>>,
+    aliases_by_target: HashMap<SharedString, Vec<SharedString>>,
     max_results: usize,
     needle_buf: Vec<char>,
     hay_buf: Vec<char>,
@@ -28,12 +30,12 @@ impl SearchIndex {
     /// aliases pointing to a target that is not in the searched list
     /// simply never match.
     pub fn new(aliases: &HashMap<String, String>, max_results: usize) -> Self {
-        let mut aliases_by_target: HashMap<String, Vec<String>> = HashMap::new();
+        let mut aliases_by_target: HashMap<SharedString, Vec<SharedString>> = HashMap::new();
         for (alias, target) in aliases {
             aliases_by_target
-                .entry(target.clone())
+                .entry(SharedString::from(target.clone()))
                 .or_default()
-                .push(alias.clone());
+                .push(SharedString::from(alias.clone()));
         }
         Self {
             matcher: Matcher::new(Config::DEFAULT),
@@ -125,10 +127,10 @@ mod tests {
 
     fn target(name: &str) -> Target {
         Target::Script {
-            name: name.to_string(),
+            name: name.into(),
             mode: crate::core::item::ScriptMode::FullOutput,
             icon: None,
-            path: PathBuf::from(name),
+            path: std::sync::Arc::from(PathBuf::from(name)),
             metatags: crate::core::item::ScriptMetatags::default(),
         }
     }
@@ -144,7 +146,7 @@ mod tests {
     /// A launch recorded "just now" (100 frecency points).
     fn fresh_record(identifier: &str) -> ExecutionRecord {
         ExecutionRecord {
-            target_identifier: identifier.to_string(),
+            target_identifier: identifier.into(),
             timestamp: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .map(|d| d.as_secs())
@@ -254,5 +256,48 @@ mod tests {
         let targets = [target("Zed"), target("Zebra")];
         let results = idx.filter_and_rank(&history, &targets, "z");
         assert_eq!(results[0].name(), "Zebra");
+    }
+
+    #[test]
+    fn test_search_memory_growth() {
+        use std::process::Command;
+        fn get_rss() -> usize {
+            let pid = std::process::id();
+            let output = Command::new("ps")
+                .args(["-o", "rss=", "-p", &pid.to_string()])
+                .output()
+                .ok();
+            if let Some(out) = output {
+                let s = String::from_utf8_lossy(&out.stdout);
+                s.trim().parse::<usize>().unwrap_or(0)
+            } else {
+                0
+            }
+        }
+
+        let mut idx = SearchIndex::new(&HashMap::new(), 20);
+        let history = empty_history();
+        // Generate 100 targets
+        let targets: Vec<Target> = (0..100)
+            .map(|i| target(&format!("app-name-{}", i)))
+            .collect();
+
+        let initial_rss = get_rss();
+        println!("Initial RSS (benchmark): {} KB", initial_rss);
+
+        let queries = ["a", "g", "s", "c", "app", "name", "99", "1", "", "foo"];
+        for i in 0..100000 {
+            let q = queries[i % queries.len()];
+            let _results = idx.filter_and_rank(&history, &targets, q);
+        }
+
+        let final_rss = get_rss();
+        println!("Final RSS after 100,000 runs: {} KB", final_rss);
+        let delta = final_rss.saturating_sub(initial_rss);
+        println!("Delta RSS: {} KB", delta);
+
+        // Memory should not leak / should not grow by more than a reasonable threshold (e.g. 1000KB)
+        // because of SharedString reference counting.
+        assert!(delta < 1000, "Memory delta was too large: {} KB", delta);
     }
 }
