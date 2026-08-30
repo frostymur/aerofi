@@ -129,6 +129,7 @@ mod tests {
             mode: crate::core::item::ScriptMode::FullOutput,
             icon: None,
             path: PathBuf::from(name),
+            metatags: crate::core::item::ScriptMetatags::default(),
         }
     }
 

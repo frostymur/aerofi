@@ -45,7 +45,7 @@ impl Default for FontConfig {
     fn default() -> Self {
         Self {
             family: "SF Pro Text".to_string(),
-            size: 14.0,
+            size: 17.0,
             weight: None,
             fallback: Some(vec!["SF Mono".to_string()]),
         }
@@ -149,7 +149,7 @@ pub struct InputBarConfig {
 impl Default for InputBarConfig {
     fn default() -> Self {
         Self {
-            height: 44.0,
+            height: 48.0,
             padding: vec![12.0, 16.0],
             margin: vec![0.0, 0.0, 8.0, 0.0],
             background: "#24283b".to_string(),
@@ -157,7 +157,7 @@ impl Default for InputBarConfig {
             placeholder: "Type to filter…".to_string(),
             placeholder_color: "#565f89".to_string(),
             corner_radius: 8.0,
-            icon: Some("⌕".to_string()),
+            icon: Some("❯".to_string()),
             icon_color: Some("#7aa2f7".to_string()),
         }
     }
@@ -174,16 +174,20 @@ pub struct ListViewConfig {
     pub scrollbar: bool,
     pub empty_text: String,
     pub empty_text_color: String,
+    /// When `true`, the list is hidden and the window shrinks to the
+    /// inputbar until the user types a query.
+    pub require_input: Option<bool>,
 }
 
 impl Default for ListViewConfig {
     fn default() -> Self {
         Self {
             columns: 1,
-            spacing: 4.0,
+            spacing: 6.0,
             scrollbar: false,
             empty_text: "No matches".to_string(),
             empty_text_color: "#565f89".to_string(),
+            require_input: None,
         }
     }
 }
@@ -253,7 +257,7 @@ impl Default for ElementConfig {
             text_color: "#c0caf5".to_string(),
             description_color: Some("#565f89".to_string()),
             show_icons: true,
-            icon_size: 20.0,
+            icon_size: 24.0,
             layout: None,
             selected: SelectedState::default(),
             hover: Some(HoverState::default()),

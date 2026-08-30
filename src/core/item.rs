@@ -47,6 +47,17 @@ pub enum BuiltinAction {
     ReloadConfig,
 }
 
+/// AeroFi-specific script metatags parsed from `# @aerofi.*` annotations.
+/// These temporarily override launcher UI settings while the script is the
+/// active context.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ScriptMetatags {
+    /// Hide the search input bar (`# @aerofi.show_search false`).
+    pub show_search: Option<bool>,
+    /// Override the number of list columns (`# @aerofi.columns N`).
+    pub columns: Option<usize>,
+}
+
 /// A single launchable element: an application bundle, a shell script, or
 /// a built-in action.
 #[derive(Debug, Clone, PartialEq)]
@@ -70,6 +81,8 @@ pub enum Target {
         mode: ScriptMode,
         /// Icon (emoji or identifier) from `@raycast.icon`, if present.
         icon: Option<String>,
+        /// AeroFi metatags (`@aerofi.*`), if present.
+        metatags: ScriptMetatags,
     },
     /// A built-in action (e.g. reloading the configuration).
     Builtin {
@@ -123,6 +136,14 @@ impl Target {
         }
     }
 
+    /// AeroFi metatags for scripts. Returns `None` for apps and built-ins.
+    pub fn metatags(&self) -> Option<&ScriptMetatags> {
+        match self {
+            Self::Script { metatags, .. } => Some(metatags),
+            Self::App { .. } | Self::Builtin { .. } => None,
+        }
+    }
+
     /// Parse a single script file into a `Target::Script`.
     pub fn script_from_file(path: &Path) -> Option<Self> {
         let file_stem = path.file_stem()?.to_string_lossy().into_owned();
@@ -131,6 +152,7 @@ impl Target {
         let mut name: Option<String> = None;
         let mut mode: Option<ScriptMode> = None;
         let mut icon: Option<String> = None;
+        let mut metatags = ScriptMetatags::default();
 
         // Annotations live in the first few lines of the script.
         for line in content.lines().take(20) {
@@ -138,8 +160,29 @@ impl Target {
             let Some(rest) = line.trim().strip_prefix('#') else {
                 continue;
             };
-            // Keep only `@raycast.` annotations.
-            let Some(annotation) = rest.trim_start().strip_prefix("@raycast.") else {
+            let trimmed = rest.trim_start();
+
+            // `@aerofi.*` annotations (AeroFi-specific metatags).
+            if let Some(annotation) = trimmed.strip_prefix("@aerofi.") {
+                if let Some((field, value)) = annotation.split_once(|c: char| c.is_whitespace()) {
+                    let value = value.trim();
+                    match field.trim() {
+                        "show_search" if metatags.show_search.is_none() => {
+                            metatags.show_search = Some(value != "false");
+                        }
+                        "columns" if metatags.columns.is_none() => {
+                            if let Ok(n) = value.parse::<usize>() {
+                                metatags.columns = Some(n);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                continue;
+            }
+
+            // `@raycast.*` annotations (Raycast-compatible metadata).
+            let Some(annotation) = trimmed.strip_prefix("@raycast.") else {
                 continue;
             };
             // Split into `field` and `value` at the first whitespace.
@@ -163,6 +206,7 @@ impl Target {
             mode: mode.unwrap_or(ScriptMode::FullOutput),
             icon,
             path: path.to_path_buf(),
+            metatags,
         })
     }
 }

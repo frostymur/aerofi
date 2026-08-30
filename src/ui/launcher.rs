@@ -8,7 +8,7 @@
 
 use gpui::{
     Context, CursorStyle, Render, ScrollStrategy, UniformListScrollHandle, Window, div, img,
-    prelude::*, px, rgb, rgba, uniform_list,
+    prelude::*, px, rgb, rgba, size, uniform_list,
 };
 
 use crate::core::config::AppConfig;
@@ -265,8 +265,45 @@ impl Launcher {
 }
 
 impl Render for Launcher {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let t = &self.theme;
+
+        // Apply runtime metatags from the currently selected script, if any.
+        let selected_metatags = self
+            .selected_item()
+            .and_then(|item| item.metatags())
+            .cloned()
+            .unwrap_or_default();
+
+        let show_search = selected_metatags.show_search.unwrap_or(true);
+        let columns = selected_metatags.columns.unwrap_or(t.listview.columns);
+
+        // Determine whether the list should be visible.
+        let require_input = t.listview.require_input.unwrap_or(false);
+        let should_show_list = if require_input {
+            !self.query.trim().is_empty() && !self.filtered.is_empty()
+        } else {
+            true
+        };
+
+        // Calculate dynamic window height.
+        let ib_height = t.inputbar.height;
+        let pad_v = t.window.padding;
+        let margin_bottom = t.inputbar.margin.get(2).copied().unwrap_or(8.0);
+
+        if require_input {
+            let target_height = if should_show_list {
+                let item_h =
+                    t.element.padding.get(1).copied().unwrap_or(12.0) * 2.0 + t.element.icon_size;
+                let list_h = (self.filtered.len() as f32) * (item_h + t.listview.spacing);
+                let total = ib_height + margin_bottom + list_h + pad_v * 2.0;
+                total.min(t.window.height)
+            } else {
+                // Compact mode: only the inputbar.
+                ib_height + margin_bottom + pad_v * 2.0
+            };
+            window.resize(size(px(t.window.width), px(target_height)));
+        }
 
         // Inner content: the actual launcher widgets.
         let is_vertical = t.mainbox.orientation == "vertical";
@@ -280,11 +317,13 @@ impl Render for Launcher {
 
         for widget in &t.mainbox.children {
             match widget {
+                Widget::InputBar if !show_search => {}
                 Widget::InputBar => {
                     inner = inner.child(self.render_inputbar());
                 }
+                Widget::ListView if !should_show_list => {}
                 Widget::ListView => {
-                    inner = inner.child(self.render_listview(cx));
+                    inner = inner.child(self.render_listview(cx, columns));
                 }
                 Widget::Banner => {
                     if let Some(path) = t.banner.as_ref().and_then(|b| b.image_path.as_ref()) {
@@ -366,6 +405,12 @@ impl Launcher {
             .rounded(px(ib.corner_radius))
             .child(
                 div()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .w(px(ib.height - padding_v * 2.0))
+                    .h(px(ib.height - padding_v * 2.0))
+                    .text_size(px(ib.height * 0.4))
                     .text_color(rgb(Self::color(icon_color)))
                     .child(icon_label.to_string()),
             )
@@ -374,7 +419,8 @@ impl Launcher {
     }
 
     /// Render the result list styled from `theme.listview` and `theme.element`.
-    fn render_listview(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+    /// When `columns > 1`, items are laid out in a grid.
+    fn render_listview(&self, cx: &mut Context<Self>, columns: usize) -> gpui::AnyElement {
         let t = &self.theme;
 
         if self.filtered.is_empty() {
@@ -387,17 +433,102 @@ impl Launcher {
                 .into_any();
         }
 
-        uniform_list(
-            "targets",
-            self.filtered.len(),
-            cx.processor(|this, range: std::ops::Range<usize>, _window, _cx| {
-                range.map(|ix| this.render_row(ix)).collect()
-            }),
-        )
-        .track_scroll(&self.list)
-        .flex_1()
-        .w_full()
-        .into_any()
+        if columns > 1 {
+            // Grid mode: render rows of `columns` items each.
+            let spacing = px(t.listview.spacing);
+            let cols = columns;
+            let rows: Vec<_> = self
+                .filtered
+                .chunks(cols)
+                .enumerate()
+                .map(|(row_ix, chunk)| {
+                    let mut row = div().flex().gap(spacing).w_full();
+                    for (col_ix, item) in chunk.iter().enumerate() {
+                        let global_ix = row_ix * cols + col_ix;
+                        let is_selected = global_ix == self.selected;
+                        row = row.child(self.render_grid_cell(item, is_selected));
+                    }
+                    row
+                })
+                .collect();
+
+            div()
+                .flex_1()
+                .flex()
+                .flex_col()
+                .gap(spacing)
+                .children(rows)
+                .into_any()
+        } else {
+            // List mode: single-column vertical list with virtual scrolling.
+            uniform_list(
+                "targets",
+                self.filtered.len(),
+                cx.processor(|this, range: std::ops::Range<usize>, _window, _cx| {
+                    range.map(|ix| this.render_row(ix)).collect()
+                }),
+            )
+            .track_scroll(&self.list)
+            .flex_1()
+            .w_full()
+            .into_any()
+        }
+    }
+
+    /// Render a single grid cell (used when `columns > 1`).
+    fn render_grid_cell(&self, item: &Target, is_selected: bool) -> gpui::AnyElement {
+        let t = &self.theme;
+        let el = &t.element;
+
+        let (cell_bg, name_color) = if is_selected {
+            (
+                rgb(Self::color(&el.selected.background)),
+                rgb(Self::color(&el.selected.text_color)),
+            )
+        } else {
+            (rgba(0x00000000), rgb(Self::color(&el.text_color)))
+        };
+
+        let icon_size = px(el.icon_size);
+        let icon_element = if el.show_icons {
+            if let Some(path) = item.icon_path() {
+                img(path).w(icon_size).h(icon_size).rounded_sm().into_any()
+            } else {
+                let fallback = item.icon().unwrap_or("•");
+                div()
+                    .w(icon_size)
+                    .text_color(rgb(Self::color(
+                        t.inputbar
+                            .icon_color
+                            .as_deref()
+                            .unwrap_or(&t.inputbar.text_color),
+                    )))
+                    .child(fallback.to_string())
+                    .into_any()
+            }
+        } else {
+            div().into_any()
+        };
+
+        let pad_h = el.padding.first().copied().unwrap_or(8.0);
+
+        div()
+            .flex()
+            .flex_col()
+            .items_center()
+            .gap_1()
+            .p(px(pad_h))
+            .rounded(px(el.corner_radius))
+            .cursor(CursorStyle::PointingHand)
+            .bg(cell_bg)
+            .child(icon_element)
+            .child(
+                div()
+                    .text_color(name_color)
+                    .text_size(px(t.font.size - 1.0))
+                    .child(item.name().to_string()),
+            )
+            .into_any()
     }
 
     /// Build a single list row for `filtered_ix` (position within `filtered`).
@@ -603,6 +734,7 @@ mod tests {
             mode: crate::core::item::ScriptMode::FullOutput,
             icon: None,
             path: PathBuf::from(name),
+            metatags: crate::core::item::ScriptMetatags::default(),
         }
     }
 
