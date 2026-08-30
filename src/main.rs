@@ -17,7 +17,7 @@ fn main() {
     // Index all targets (applications + scripts) and print a summary plus the
     // parsed script metadata, so the parser can be verified at startup.
     let app_config = core::config::AppConfig::load();
-    let targets = core::scanner::scan_all(&app_config);
+    let mut targets = core::scanner::scan_all(&app_config);
     let history = core::history::History::load();
     let app_count = targets
         .iter()
@@ -91,6 +91,9 @@ fn main() {
         // applicationDidFinishLaunching just forced the Regular policy, and
         // we are still inside it, so the Dock icon never appears.
         sys::appkit::hide_from_dock();
+        // Extract native app icons now that the Objective-C run loop is
+        // active and MainThreadMarker is available.
+        sys::icons::extract_all(&mut targets);
         let config = common::config::Config::default();
         let view = ui::window::create_launcher_window(cx, targets, config, app_config, history);
         // Route every keystroke into the launcher while the window is visible.

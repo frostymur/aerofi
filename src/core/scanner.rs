@@ -110,7 +110,7 @@ pub fn scan_applications(config: &AppConfig) -> Vec<Target> {
             items.push(Target::App {
                 name,
                 path,
-                icon: Some("🚀".to_string()),
+                icon_path: None,
             });
         }
     }

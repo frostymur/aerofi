@@ -57,8 +57,8 @@ pub enum Target {
         name: String,
         /// Path to the `.app` bundle on disk.
         path: PathBuf,
-        /// Icon (emoji or identifier), if present.
-        icon: Option<String>,
+        /// Path to the cached icon file (TIFF), if extracted.
+        icon_path: Option<PathBuf>,
     },
     /// A shell script plus its parsed `@raycast.*` metadata.
     Script {
@@ -105,11 +105,21 @@ impl Target {
         }
     }
 
-    /// Icon (emoji or identifier), if present.
+    /// Text icon (emoji or identifier) for scripts; `None` for apps
+    /// (they use a raster icon via [`icon_path`]) and built-in actions.
     pub fn icon(&self) -> Option<&str> {
         match self {
-            Self::App { icon, .. } | Self::Script { icon, .. } => icon.as_deref(),
-            Self::Builtin { .. } => None,
+            Self::Script { icon, .. } => icon.as_deref(),
+            Self::App { .. } | Self::Builtin { .. } => None,
+        }
+    }
+
+    /// Path to the cached icon file for application bundles.
+    /// Returns `None` for scripts and built-in actions.
+    pub fn icon_path(&self) -> Option<&Path> {
+        match self {
+            Self::App { icon_path, .. } => icon_path.as_deref(),
+            Self::Script { .. } | Self::Builtin { .. } => None,
         }
     }
 

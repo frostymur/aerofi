@@ -6,11 +6,12 @@
 use gpui::Window;
 use objc2::rc::Id;
 use objc2_app_kit::{
-    NSApplication, NSApplicationActivationPolicy, NSView, NSWindow, NSWindowButton,
+    NSApplication, NSApplicationActivationPolicy, NSView, NSWindow, NSWindowButton, NSWorkspace,
 };
-use objc2_foundation::MainThreadMarker;
+use objc2_foundation::{MainThreadMarker, NSString};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::ffi::c_void;
+use std::path::Path;
 use std::sync::atomic::{AtomicPtr, Ordering};
 
 /// Raw pointer to the window's `NSWindow`, captured once after creation.
@@ -103,4 +104,16 @@ pub fn show_application() {
             window.makeKeyAndOrderFront(None);
         }
     }
+}
+
+/// Extract the icon for an `.app` bundle as raw TIFF bytes via
+/// `NSWorkspace.shared().icon(forFile:)`. Returns `None` when the icon
+/// cannot be obtained (non-macOS, missing bundle, or AppKit failure).
+pub fn icon_for_app_bundle(path: &Path) -> Option<Vec<u8>> {
+    let _mtm = MainThreadMarker::new()?;
+    let path_str = NSString::from_str(path.to_str()?);
+    let workspace = unsafe { NSWorkspace::sharedWorkspace() };
+    let image = unsafe { workspace.iconForFile(&path_str) };
+    let data = unsafe { image.TIFFRepresentation() }?;
+    Some(data.bytes().to_vec())
 }

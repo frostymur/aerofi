@@ -34,9 +34,11 @@ objc2-app-kit = { version = "0.2.2", features = [
   "NSApplication",
   "NSButton",
   "NSControl",
+  "NSImage",
   "NSRunningApplication",
   "NSView",
   "NSWindow",
+  "NSWorkspace",
 ] }
 objc2-foundation = "0.2.2"
 # Same raw-window-handle version GPUI uses, so we can read the content NSView pointer

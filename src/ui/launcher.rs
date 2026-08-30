@@ -7,8 +7,8 @@
 //! append-only, backspace-only text model, which is all a launcher needs.
 
 use gpui::{
-    Context, CursorStyle, Render, ScrollStrategy, UniformListScrollHandle, Window, div, prelude::*,
-    px, rgb, rgba, uniform_list,
+    Context, CursorStyle, Render, ScrollStrategy, UniformListScrollHandle, Window, div, img,
+    prelude::*, px, rgb, rgba, uniform_list,
 };
 
 use crate::common::config::ThemeColors;
@@ -334,7 +334,17 @@ impl Launcher {
     fn render_row(&self, filtered_ix: usize) -> gpui::AnyElement {
         let item = &self.filtered[filtered_ix];
         let is_selected = filtered_ix == self.selected;
-        let icon = item.icon().unwrap_or("•");
+        let icon_size = px(20.);
+        let icon_element = if let Some(path) = item.icon_path() {
+            img(path).w(icon_size).h(icon_size).rounded_sm().into_any()
+        } else {
+            let fallback = item.icon().unwrap_or("•");
+            div()
+                .w(icon_size)
+                .text_color(rgb(self.theme.accent))
+                .child(fallback.to_string())
+                .into_any()
+        };
         let row = div()
             .flex()
             .items_center()
@@ -349,12 +359,7 @@ impl Launcher {
             } else {
                 rgba(0x00000000)
             })
-            .child(
-                div()
-                    .w(px(20.))
-                    .text_color(rgb(self.theme.accent))
-                    .child(icon.to_string()),
-            )
+            .child(icon_element)
             .child(
                 div()
                     .flex_1()
