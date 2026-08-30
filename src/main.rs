@@ -45,7 +45,7 @@ fn main() {
             mode,
             icon,
             path,
-            metatags: _,
+            ..
         } = item
         {
             script_i += 1;

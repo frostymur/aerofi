@@ -131,6 +131,7 @@ mod tests {
             mode: crate::core::item::ScriptMode::FullOutput,
             icon: None,
             path: std::sync::Arc::from(PathBuf::from(name)),
+            metadata: std::sync::Arc::default(),
             metatags: crate::core::item::ScriptMetatags::default(),
         }
     }
