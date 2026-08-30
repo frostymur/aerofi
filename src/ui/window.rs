@@ -4,8 +4,8 @@
 //! calls live in [`crate::sys::appkit`].
 
 use gpui::{
-    App, AsyncApp, Bounds, Entity, TitlebarOptions, WindowBounds, WindowKind, WindowOptions,
-    prelude::*, px, size,
+    App, AsyncApp, Bounds, Entity, WindowBackgroundAppearance, WindowBounds, WindowKind,
+    WindowOptions, prelude::*, px, size,
 };
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -126,20 +126,20 @@ pub fn create_launcher_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
                 kind: WindowKind::PopUp,
-                titlebar: Some(TitlebarOptions {
-                    title: None,
-                    appears_transparent: true,
-                    traffic_light_position: None,
-                }),
+                titlebar: None,
+                is_movable: false,
+                focus: false,
+                show: false,
+                window_background: if theme.window.blur {
+                    WindowBackgroundAppearance::Blurred
+                } else {
+                    WindowBackgroundAppearance::Transparent
+                },
                 ..Default::default()
             },
             |window, cx| {
-                appkit::hide_chrome(window, theme.window.corner_radius);
-                appkit::make_immovable(window);
                 appkit::store_ns_window(window);
-                if let Some(opacity) = theme.window.background_opacity {
-                    appkit::set_window_opacity(window, opacity);
-                }
+                appkit::set_borderless_style(window);
                 cx.new(|_| Launcher::new(targets, theme, app_config, history))
             },
         )

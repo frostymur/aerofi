@@ -8,8 +8,7 @@ use image::ImageEncoder;
 use image::codecs::tiff::TiffEncoder;
 use objc2::rc::Id;
 use objc2_app_kit::{
-    NSApplication, NSApplicationActivationPolicy, NSColor, NSView, NSWindow, NSWindowButton,
-    NSWorkspace,
+    NSApplication, NSApplicationActivationPolicy, NSView, NSWindow, NSWindowStyleMask, NSWorkspace,
 };
 use objc2_foundation::{MainThreadMarker, NSString};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
@@ -40,54 +39,40 @@ pub fn store_ns_window(window: &Window) {
     }
 }
 
-/// Strip the macOS traffic-light buttons for a borderless launcher surface.
-pub fn hide_chrome(window: &Window, _corner_radius: f32) {
-    let Some(ptr) = get_ns_window(window) else {
-        return;
-    };
-    let window = unsafe { &*(ptr as *const NSWindow) };
-    for button in [
-        NSWindowButton::NSWindowCloseButton,
-        NSWindowButton::NSWindowMiniaturizeButton,
-        NSWindowButton::NSWindowZoomButton,
-    ] {
-        if let Some(button) = window.standardWindowButton(button) {
-            button.setHidden(true);
-        }
-    }
-}
+/// Strip `NSTitledWindowMask` from the NSWindow after GPUI creates it.
+///
+/// GPUI always includes `NSTitledWindowMask` in the style even when
+/// `titlebar: None` is passed — and that flag alone causes macOS to apply
+/// its own rounded corners at the compositor level, ignoring the GPUI-side
+/// `div().rounded(...)` value.
+///
+/// `setStyleMask` resets the window's first responder to nil; AppKit and
+/// GPUI then both try to restore it, creating two concurrent event paths
+/// that cause every keystroke to fire twice.  We prevent this by
+/// immediately re-making GPUI's native view the first responder ourselves.
+pub fn set_borderless_style(window: &Window) {
+    // We need both the NSWindow and the NSView (GPUI's native view).
+    let handle = HasWindowHandle::window_handle(window).ok();
+    let Some(handle) = handle else { return };
+    let RawWindowHandle::AppKit(appkit) = handle.as_raw() else { return };
 
-/// Make the window non-movable: the transparent titlebar still provides a
-/// drag region, so explicitly disable dragging by titlebar and background.
-pub fn make_immovable(window: &Window) {
-    let Some(ptr) = get_ns_window(window) else {
+    let ns_view_ptr = appkit.ns_view.as_ptr();
+    let Some(ns_view) = (unsafe { Id::<NSView>::retain(ns_view_ptr.cast()) }) else {
         return;
     };
-    let window = unsafe { &*(ptr as *const NSWindow) };
-    window.setMovable(false);
-    window.setMovableByWindowBackground(false);
-}
+    let Some(ns_window) = ns_view.window() else { return };
 
-/// Set the window background opacity (0.0 = fully transparent,
-/// 1.0 = fully opaque). Makes the NSWindow non-opaque so the desktop
-/// shows through when opacity < 1.0.
-pub fn set_window_opacity(window: &Window, opacity: f32) {
-    let Some(ptr) = get_ns_window(window) else {
-        return;
-    };
-    let window = unsafe { &*(ptr as *const NSWindow) };
-    unsafe {
-        window.setOpaque(false);
-        if opacity < 1.0 {
-            let bg = NSColor::colorWithDeviceRed_green_blue_alpha(0.0, 0.0, 0.0, opacity as f64);
-            window.setBackgroundColor(Some(&bg));
-            window.setAlphaValue(opacity as f64);
-        } else {
-            let bg = NSColor::colorWithDeviceRed_green_blue_alpha(0.0, 0.0, 0.0, 1.0);
-            window.setBackgroundColor(Some(&bg));
-            window.setAlphaValue(1.0);
-        }
-    }
+    // Strip Titled + FullSizeContentView (cause OS-level rounded corners),
+    // keep NonactivatingPanel so the panel doesn't steal app focus.
+    ns_window.setStyleMask(NSWindowStyleMask::NonactivatingPanel);
+    ns_window.setMovable(false);
+    ns_window.setMovableByWindowBackground(false);
+
+    // Immediately restore GPUI's native view as first responder.
+    // Without this, setStyleMask leaves firstResponder = nil and both
+    // AppKit's internal restoration path AND GPUI's own makeFirstResponder_
+    // call fire, delivering every key event twice.
+    unsafe { ns_window.makeFirstResponder(Some(&*ns_view)) };
 }
 
 /// Run aerofi as a background accessory: no Dock icon, no Cmd-Tab entry,

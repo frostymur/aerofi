@@ -383,7 +383,14 @@ impl Render for Launcher {
             .bg(rgb(Self::color(&t.window.background)))
             .text_color(rgb(Self::color(&t.element.text_color)))
             .text_size(px(t.font.size))
-            .rounded(px(t.window.corner_radius));
+            .rounded(px(t.window.corner_radius))
+            .overflow_hidden();
+
+        if t.window.border_width > 0.0 {
+            root = root
+                .border(px(t.window.border_width))
+                .border_color(rgb(Self::color(&t.window.border_color)));
+        }
 
         if opacity < 1.0 {
             // Apply alpha to the root background colour.
