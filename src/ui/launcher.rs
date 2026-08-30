@@ -268,39 +268,30 @@ impl Render for Launcher {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let t = &self.theme;
 
-        // Build the main container: orientation from theme, padding and
-        // corner radius from window config.
+        // Inner content: the actual launcher widgets.
         let is_vertical = t.mainbox.orientation == "vertical";
-        let mut container = div()
-            .size_full()
-            .bg(rgb(Self::color(&t.window.background)))
-            .text_color(rgb(Self::color(&t.element.text_color)))
-            .text_size(px(t.font.size))
-            .flex()
-            .p(px(t.window.padding))
-            .rounded_lg()
-            .gap(px(t.listview.spacing));
+        let mut inner = div().flex_1().flex().gap(px(t.listview.spacing));
 
         if is_vertical {
-            container = container.flex_col();
+            inner = inner.flex_col();
         } else {
-            container = container.flex_row();
+            inner = inner.flex_row();
         }
 
-        // Dynamically assemble children from theme.mainbox.children.
         for widget in &t.mainbox.children {
             match widget {
                 Widget::InputBar => {
-                    container = container.child(self.render_inputbar());
+                    inner = inner.child(self.render_inputbar());
                 }
                 Widget::ListView => {
-                    container = container.child(self.render_listview(cx));
+                    inner = inner.child(self.render_listview(cx));
                 }
                 Widget::Banner => {
                     if let Some(path) = t.banner.as_ref().and_then(|b| b.image_path.as_ref()) {
+                        let resolved = expand_tilde_path(path);
                         let height = t.banner.as_ref().map(|b| b.height).unwrap_or(120.0);
-                        container = container.child(
-                            img(path.as_str())
+                        inner = inner.child(
+                            img(resolved.as_str())
                                 .w_full()
                                 .h(px(height))
                                 .object_fit(gpui::ObjectFit::Cover)
@@ -312,7 +303,28 @@ impl Render for Launcher {
             }
         }
 
-        container
+        // Wrap with background colour, padding, and optional background image.
+        let mut root = div()
+            .size_full()
+            .flex()
+            .flex_col()
+            .bg(rgb(Self::color(&t.window.background)))
+            .text_color(rgb(Self::color(&t.element.text_color)))
+            .text_size(px(t.font.size))
+            .p(px(t.window.padding))
+            .rounded_lg();
+
+        if let Some(bg_path) = &t.window.background_image {
+            let resolved = expand_tilde_path(bg_path);
+            root = root.child(
+                img(resolved.as_str())
+                    .absolute()
+                    .size_full()
+                    .object_fit(gpui::ObjectFit::Cover),
+            );
+        }
+
+        root.child(inner)
     }
 }
 
@@ -405,20 +417,25 @@ impl Launcher {
         };
 
         let icon_size = px(el.icon_size);
-        let icon_element = if let Some(path) = item.icon_path() {
-            img(path).w(icon_size).h(icon_size).rounded_sm().into_any()
+        let show = el.show_icons;
+        let icon_element = if show {
+            if let Some(path) = item.icon_path() {
+                img(path).w(icon_size).h(icon_size).rounded_sm().into_any()
+            } else {
+                let fallback = item.icon().unwrap_or("•");
+                div()
+                    .w(icon_size)
+                    .text_color(rgb(Self::color(
+                        t.inputbar
+                            .icon_color
+                            .as_deref()
+                            .unwrap_or(&t.inputbar.text_color),
+                    )))
+                    .child(fallback.to_string())
+                    .into_any()
+            }
         } else {
-            let fallback = item.icon().unwrap_or("•");
-            div()
-                .w(icon_size)
-                .text_color(rgb(Self::color(
-                    t.inputbar
-                        .icon_color
-                        .as_deref()
-                        .unwrap_or(&t.inputbar.text_color),
-                )))
-                .child(fallback.to_string())
-                .into_any()
+            div().into_any()
         };
 
         let pad_h = el.padding.first().copied().unwrap_or(8.0);
@@ -480,6 +497,16 @@ impl Launcher {
             .collect::<Vec<_>>();
         (!labels.is_empty()).then(|| labels.join("  "))
     }
+}
+
+/// Expand a leading `~` in a path to the user's home directory.
+fn expand_tilde_path(path: &str) -> String {
+    if let Some(rest) = path.strip_prefix('~')
+        && let Some(home) = dirs::home_dir()
+    {
+        return format!("{}{rest}", home.display());
+    }
+    path.to_string()
 }
 
 /// Render a config combo (`"cmd+shift+r"`, `"opt+space"`) in macOS glyph

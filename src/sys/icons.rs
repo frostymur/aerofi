@@ -1,19 +1,23 @@
-//! Temp-file cache for application icons extracted via AppKit.
+//! Persistent cache for application icons extracted via AppKit.
 //!
-//! Each icon is written as a `.tiff` file under a per-process temp
-//! directory (`$TMPDIR/aerofi-icons/`). GPUI's `img()` element handles
-//! decoding the TIFF data at render time.
+//! Icons are written as `.tiff` files under `~/.cache/aerofi/icons/`.
+//! GPUI's `img()` element handles decoding the TIFF data at render time.
+//! The cache persists across restarts, so AppKit is only called once per
+//! application.
 
 use crate::core::item::Target;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
-/// Lazily-created temp directory that lives for the process lifetime.
+/// Lazily-created persistent cache directory: `~/.cache/aerofi/icons/`.
 fn icon_dir() -> &'static PathBuf {
     static DIR: OnceLock<PathBuf> = OnceLock::new();
     DIR.get_or_init(|| {
-        let dir = std::env::temp_dir().join("aerofi-icons");
+        let dir = dirs::cache_dir()
+            .unwrap_or_else(std::env::temp_dir)
+            .join("aerofi")
+            .join("icons");
         let _ = fs::create_dir_all(&dir);
         dir
     })
@@ -36,6 +40,9 @@ fn sanitise_name(name: &str) -> String {
 /// to the cached `.tiff` file. Returns `None` on I/O failure.
 pub fn cache_icon(name: &str, tiff_bytes: &[u8]) -> Option<PathBuf> {
     let path = icon_dir().join(format!("{}.tiff", sanitise_name(name)));
+    if path.exists() {
+        return Some(path);
+    }
     fs::write(&path, tiff_bytes).ok()?;
     Some(path)
 }
