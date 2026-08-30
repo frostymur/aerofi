@@ -3,7 +3,7 @@
 ## Philosophy
 
 aerofi exists to prove that a launcher can be genuinely light — the
-validated baseline (~38 MB active, ~0.2% idle CPU) is the product's whole
+validated baseline (~24 MB active, ~0.1% idle CPU) is the product's whole
 pitch against Electron/Qt/WebView alternatives. Any contribution that
 regresses that baseline without a clear justification will be rejected
 regardless of how useful the feature is. See `ARCHITECTURE.md` for the

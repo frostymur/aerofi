@@ -30,14 +30,14 @@ sys) enforces separation of concerns *within* the crate.
 
 ## Validated performance baseline
 
-As of the first working prototype: **~38 MB RSS while active, ~0.2% CPU
+As of the first working prototype: **~24 MB RSS while active, ~0.1% CPU
 idle**, fully interactive GPUI window. Treat this as the baseline to
 protect, not a one-time measurement to forget:
 
-- Idle/backgrounded RSS: keep under 40 MB (macOS compresses Metal buffers
+- Idle/backgrounded RSS: keep under 30 MB (macOS compresses Metal buffers
   once the window is hidden — verify this after every dependency bump,
   don't assume it holds).
-- Active/foreground RSS: keep under 50 MB with the script index loaded.
+- Active/foreground RSS: keep under 40 MB with the script index loaded.
 - Hotkey-to-rendered-frame latency: under 5 ms on the warm path.
 
 Any PR that grows active RSS by more than ~10% needs a one-line
