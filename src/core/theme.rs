@@ -342,6 +342,33 @@ pub fn load_theme(theme_name: &str) -> ThemeConfig {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Hex colour helpers
+// ---------------------------------------------------------------------------
+
+/// Parse a CSS-style hex colour (`"#1a1b26"`, `"7aa2f7"`, `"#fff"`) into
+/// a 24-bit RGB value suitable for GPUI's `rgb()`.  Returns `None` on
+/// malformed input.
+pub fn parse_hex_color(hex: &str) -> Option<u32> {
+    let hex = hex.trim().trim_start_matches('#');
+    let (r, g, b) = match hex.len() {
+        3 => {
+            let r = u8::from_str_radix(&hex[0..1], 16).ok()? * 0x11;
+            let g = u8::from_str_radix(&hex[1..2], 16).ok()? * 0x11;
+            let b = u8::from_str_radix(&hex[2..3], 16).ok()? * 0x11;
+            (r, g, b)
+        }
+        6 => {
+            let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
+            let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
+            let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
+            (r, g, b)
+        }
+        _ => return None,
+    };
+    Some(((r as u32) << 16) | ((g as u32) << 8) | (b as u32))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -374,5 +401,26 @@ mod tests {
     fn load_theme_missing_file_returns_builtin() {
         let t = load_theme("nonexistent_theme_12345");
         assert_eq!(t.name, "Tokyo Night");
+    }
+
+    #[test]
+    fn parse_hex_color_six_digit() {
+        assert_eq!(parse_hex_color("#1a1b26"), Some(0x1a1b26));
+        assert_eq!(parse_hex_color("7aa2f7"), Some(0x7aa2f7));
+    }
+
+    #[test]
+    fn parse_hex_color_three_digit() {
+        assert_eq!(parse_hex_color("#fff"), Some(0xffffff));
+        assert_eq!(parse_hex_color("#000"), Some(0x000000));
+        assert_eq!(parse_hex_color("#abc"), Some(0xaabbcc));
+    }
+
+    #[test]
+    fn parse_hex_color_invalid() {
+        assert_eq!(parse_hex_color(""), None);
+        assert_eq!(parse_hex_color("#gggggg"), None);
+        assert_eq!(parse_hex_color("#12"), None);
+        assert_eq!(parse_hex_color("#1234"), None);
     }
 }

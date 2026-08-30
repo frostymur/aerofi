@@ -9,10 +9,10 @@ use gpui::{
 };
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use crate::common::config::Config;
 use crate::core::config::AppConfig;
 use crate::core::history::History;
 use crate::core::item::Target;
+use crate::core::theme::ThemeConfig;
 use crate::sys::appkit;
 use crate::ui::launcher::Launcher;
 
@@ -79,13 +79,13 @@ pub fn toggle() {
 pub fn create_launcher_window(
     cx: &mut App,
     targets: Vec<Target>,
-    config: Config,
+    theme: ThemeConfig,
     app_config: AppConfig,
     history: History,
 ) -> Entity<Launcher> {
     let bounds = Bounds::centered(
         None,
-        size(px(config.window.width), px(config.window.height)),
+        size(px(theme.window.width), px(theme.window.height)),
         cx,
     );
     let window = cx
@@ -104,7 +104,7 @@ pub fn create_launcher_window(
                 appkit::hide_chrome(window);
                 appkit::make_immovable(window);
                 appkit::store_ns_window(window);
-                cx.new(|_| Launcher::new(targets, config.theme, app_config, history))
+                cx.new(|_| Launcher::new(targets, theme, app_config, history))
             },
         )
         .unwrap();

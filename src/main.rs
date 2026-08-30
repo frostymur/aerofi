@@ -94,8 +94,8 @@ fn main() {
         // Extract native app icons now that the Objective-C run loop is
         // active and MainThreadMarker is available.
         sys::icons::extract_all(&mut targets);
-        let config = common::config::Config::default();
-        let view = ui::window::create_launcher_window(cx, targets, config, app_config, history);
+        let theme = core::theme::load_theme(&app_config.theme);
+        let view = ui::window::create_launcher_window(cx, targets, theme, app_config, history);
         // Route every keystroke into the launcher while the window is visible.
         // `detach()` keeps the observer alive for the app's lifetime without
         // requiring us to hold the `Subscription` handle.

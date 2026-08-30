@@ -11,11 +11,11 @@ use gpui::{
     prelude::*, px, rgb, rgba, uniform_list,
 };
 
-use crate::common::config::ThemeColors;
 use crate::core::config::AppConfig;
 use crate::core::history::History;
 use crate::core::item::{BuiltinAction, Target};
 use crate::core::search::SearchIndex;
+use crate::core::theme::{self, ThemeConfig, Widget};
 
 /// Root view: renders the filter field and the ranked list of targets.
 pub struct Launcher {
@@ -37,14 +37,14 @@ pub struct Launcher {
     /// The app configuration this launcher was built from (re-read by
     /// "Reload Configuration").
     app_config: AppConfig,
-    /// Palette for the dark launcher surface.
-    theme: ThemeColors,
+    /// Active theme controlling every visual aspect of the launcher.
+    theme: ThemeConfig,
 }
 
 impl Launcher {
     pub fn new(
         all: Vec<Target>,
-        theme: ThemeColors,
+        theme: ThemeConfig,
         app_config: AppConfig,
         history: History,
     ) -> Self {
@@ -61,6 +61,12 @@ impl Launcher {
             app_config,
             theme,
         }
+    }
+
+    /// Convenience: resolve a theme hex colour string to a `u32` for
+    /// GPUI's `rgb()`, falling back to black on bad input.
+    fn color(hex: &str) -> u32 {
+        theme::parse_hex_color(hex).unwrap_or(0)
     }
 
     /// Handle a keystroke. Returns `true` when the window should be hidden
@@ -260,122 +266,190 @@ impl Launcher {
 
 impl Render for Launcher {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let query_view = if self.query.is_empty() {
-            div()
-                .text_color(rgb(self.theme.dim))
-                .child("Type to filter…")
-                .into_any()
-        } else {
-            div()
-                .text_color(rgb(self.theme.text))
-                .child(self.query.clone())
-                .into_any()
-        };
+        let t = &self.theme;
 
-        // Lazy-rendered, scrollable list of targets. Wheel scrolling is
-        // handled by the list element (macOS-native direction); the scroll
-        // handle is what `move_selection`/`refilter` use to follow the
-        // selection.
-        let list_view = if self.filtered.is_empty() {
-            div()
-                .flex_1()
-                .px_2()
-                .py_1()
-                .text_color(rgb(self.theme.dim))
-                .child(format!("No matches for “{}”", self.query))
-                .into_any()
-        } else {
-            uniform_list(
-                "targets",
-                self.filtered.len(),
-                cx.processor(|this, range: std::ops::Range<usize>, _window, _cx| {
-                    range.map(|ix| this.render_row(ix)).collect()
-                }),
-            )
-            .track_scroll(&self.list)
-            .flex_1()
-            .w_full()
-            .into_any()
-        };
-
-        div()
+        // Build the main container: orientation from theme, padding and
+        // corner radius from window config.
+        let is_vertical = t.mainbox.orientation == "vertical";
+        let mut container = div()
             .size_full()
-            .bg(rgb(self.theme.bg))
-            .text_color(rgb(self.theme.text))
-            .text_size(px(17.))
+            .bg(rgb(Self::color(&t.window.background)))
+            .text_color(rgb(Self::color(&t.element.text_color)))
+            .text_size(px(t.font.size))
             .flex()
-            .flex_col()
-            .p_3()
-            .gap_3()
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .bg(rgb(self.theme.input_bg))
-                    .rounded_md()
-                    .px_3()
-                    .py_2()
-                    .child(div().text_color(rgb(self.theme.accent)).child("❯"))
-                    .child(query_view),
-            )
-            .child(list_view)
-            .child(
-                div()
-                    .text_size(px(13.))
-                    .text_color(rgb(self.theme.dim))
-                    .child("↑↓ scroll · ⏎ run · ⌘E edit · esc close"),
-            )
+            .p(px(t.window.padding))
+            .rounded_lg()
+            .gap(px(t.listview.spacing));
+
+        if is_vertical {
+            container = container.flex_col();
+        } else {
+            container = container.flex_row();
+        }
+
+        // Dynamically assemble children from theme.mainbox.children.
+        for widget in &t.mainbox.children {
+            match widget {
+                Widget::InputBar => {
+                    container = container.child(self.render_inputbar());
+                }
+                Widget::ListView => {
+                    container = container.child(self.render_listview(cx));
+                }
+                Widget::Banner => {
+                    if let Some(path) = t.banner.as_ref().and_then(|b| b.image_path.as_ref()) {
+                        let height = t.banner.as_ref().map(|b| b.height).unwrap_or(120.0);
+                        container = container.child(
+                            img(path.as_str())
+                                .w_full()
+                                .h(px(height))
+                                .object_fit(gpui::ObjectFit::Cover)
+                                .rounded_md(),
+                        );
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        container
     }
 }
 
 impl Launcher {
+    /// Render the input bar styled from `theme.inputbar`.
+    fn render_inputbar(&self) -> gpui::AnyElement {
+        let t = &self.theme;
+        let ib = &t.inputbar;
+
+        let placeholder_view = if self.query.is_empty() {
+            div()
+                .text_color(rgb(Self::color(&ib.placeholder_color)))
+                .child(ib.placeholder.clone())
+                .into_any()
+        } else {
+            div()
+                .text_color(rgb(Self::color(&ib.text_color)))
+                .child(self.query.clone())
+                .into_any()
+        };
+
+        let icon_label = ib.icon.as_deref().unwrap_or("❯");
+        let icon_color = ib.icon_color.as_deref().unwrap_or(&ib.text_color);
+
+        let padding_h = ib.padding.first().copied().unwrap_or(12.0);
+        let padding_v = ib.padding.get(1).copied().unwrap_or(16.0);
+        let margin_bottom = ib.margin.get(2).copied().unwrap_or(8.0);
+
+        div()
+            .flex()
+            .items_center()
+            .gap_2()
+            .w_full()
+            .h(px(ib.height))
+            .px(px(padding_h))
+            .py(px(padding_v))
+            .mb(px(margin_bottom))
+            .bg(rgb(Self::color(&ib.background)))
+            .rounded(px(ib.corner_radius))
+            .child(
+                div()
+                    .text_color(rgb(Self::color(icon_color)))
+                    .child(icon_label.to_string()),
+            )
+            .child(placeholder_view)
+            .into_any()
+    }
+
+    /// Render the result list styled from `theme.listview` and `theme.element`.
+    fn render_listview(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+        let t = &self.theme;
+
+        if self.filtered.is_empty() {
+            return div()
+                .flex_1()
+                .px_2()
+                .py_1()
+                .text_color(rgb(Self::color(&t.listview.empty_text_color)))
+                .child(t.listview.empty_text.clone())
+                .into_any();
+        }
+
+        uniform_list(
+            "targets",
+            self.filtered.len(),
+            cx.processor(|this, range: std::ops::Range<usize>, _window, _cx| {
+                range.map(|ix| this.render_row(ix)).collect()
+            }),
+        )
+        .track_scroll(&self.list)
+        .flex_1()
+        .w_full()
+        .into_any()
+    }
+
     /// Build a single list row for `filtered_ix` (position within `filtered`).
     fn render_row(&self, filtered_ix: usize) -> gpui::AnyElement {
         let item = &self.filtered[filtered_ix];
         let is_selected = filtered_ix == self.selected;
-        let icon_size = px(20.);
+        let t = &self.theme;
+        let el = &t.element;
+
+        let (row_bg, name_color) = if is_selected {
+            (
+                rgb(Self::color(&el.selected.background)),
+                rgb(Self::color(&el.selected.text_color)),
+            )
+        } else {
+            (rgba(0x00000000), rgb(Self::color(&el.text_color)))
+        };
+
+        let icon_size = px(el.icon_size);
         let icon_element = if let Some(path) = item.icon_path() {
             img(path).w(icon_size).h(icon_size).rounded_sm().into_any()
         } else {
             let fallback = item.icon().unwrap_or("•");
             div()
                 .w(icon_size)
-                .text_color(rgb(self.theme.accent))
+                .text_color(rgb(Self::color(
+                    t.inputbar
+                        .icon_color
+                        .as_deref()
+                        .unwrap_or(&t.inputbar.text_color),
+                )))
                 .child(fallback.to_string())
                 .into_any()
         };
+
+        let pad_h = el.padding.first().copied().unwrap_or(8.0);
+        let pad_v = el.padding.get(1).copied().unwrap_or(12.0);
+
         let row = div()
             .flex()
             .items_center()
             .gap_2()
             .w_full()
-            .px_2()
-            .py_1()
-            .rounded_sm()
+            .px(px(pad_h))
+            .py(px(pad_v))
+            .rounded(px(el.corner_radius))
             .cursor(CursorStyle::PointingHand)
-            .bg(if is_selected {
-                rgb(self.theme.selection)
-            } else {
-                rgba(0x00000000)
-            })
+            .bg(row_bg)
             .child(icon_element)
             .child(
                 div()
                     .flex_1()
-                    .text_color(if is_selected {
-                        rgb(self.theme.text)
-                    } else {
-                        rgb(self.theme.text_muted)
-                    })
+                    .text_color(name_color)
                     .child(item.name().to_string()),
             );
+
         // Right-aligned badge with the target's bound shortcuts, if any.
         let row = match self.shortcut_label(item.name()) {
             Some(label) => row.child(
                 div()
-                    .text_size(px(14.))
-                    .text_color(rgb(self.theme.text_muted))
+                    .text_size(px(t.font.size - 2.0))
+                    .text_color(rgb(Self::color(
+                        el.description_color.as_deref().unwrap_or(&el.text_color),
+                    )))
                     .child(label),
             ),
             None => row,
@@ -505,7 +579,6 @@ mod tests {
         }
     }
 
-    /// Build a keystroke the way the platform does for a plain key press.
     fn key(k: &str) -> Keystroke {
         Keystroke {
             modifiers: Modifiers::default(),
@@ -532,7 +605,7 @@ mod tests {
             .insert("rc".to_string(), "Reload Configuration".to_string());
         let mut l = Launcher::new(
             vec![item("Grep"), Target::reload_config()],
-            ThemeColors::default(),
+            ThemeConfig::default(),
             app_config,
             History::test_new(PathBuf::new(), Vec::new()),
         );
@@ -588,7 +661,7 @@ mod tests {
     fn empty_query_shows_all_in_order() {
         let l = Launcher::new(
             vec![item("Git Status"), item("Clipboard History")],
-            ThemeColors::default(),
+            ThemeConfig::default(),
             AppConfig::default(),
             History::test_new(PathBuf::new(), Vec::new()),
         );
@@ -602,7 +675,7 @@ mod tests {
     fn typing_filters_fuzzy_and_excludes_non_matches() {
         let mut l = Launcher::new(
             vec![item("Git Status"), item("Clipboard History"), item("Grep")],
-            ThemeColors::default(),
+            ThemeConfig::default(),
             AppConfig::default(),
             History::test_new(PathBuf::new(), Vec::new()),
         );
@@ -617,7 +690,7 @@ mod tests {
     fn backspace_restores_previous_results() {
         let mut l = Launcher::new(
             vec![item("Git Status"), item("Grep")],
-            ThemeColors::default(),
+            ThemeConfig::default(),
             AppConfig::default(),
             History::test_new(PathBuf::new(), Vec::new()),
         );
@@ -633,7 +706,7 @@ mod tests {
     fn arrows_move_and_clamp_selection() {
         let mut l = Launcher::new(
             vec![item("Git Status"), item("Grep"), item("Copy")],
-            ThemeColors::default(),
+            ThemeConfig::default(),
             AppConfig::default(),
             History::test_new(PathBuf::new(), Vec::new()),
         );
@@ -652,7 +725,7 @@ mod tests {
     fn list_is_capped_at_max_results() {
         let mut l = Launcher::new(
             vec![item("A One"), item("A Two"), item("A Three")],
-            ThemeColors::default(),
+            ThemeConfig::default(),
             cap_config(2),
             History::test_new(PathBuf::new(), Vec::new()),
         );
@@ -663,11 +736,9 @@ mod tests {
 
     #[test]
     fn escape_signals_hide_and_resets_query() {
-        // Enter / Cmd+E spawn real processes, so they're exercised manually,
-        // not here. Esc is pure: it resets the query and asks to hide.
         let mut l = Launcher::new(
             vec![item("Git Status"), item("Grep")],
-            ThemeColors::default(),
+            ThemeConfig::default(),
             AppConfig::default(),
             History::test_new(PathBuf::new(), Vec::new()),
         );
@@ -678,9 +749,6 @@ mod tests {
         assert_eq!(l.selected, 0);
     }
 
-    /// The actual scroll math (wheel direction, clamping, minimal
-    /// auto-scroll) lives inside GPUI's `UniformList`; here we only verify
-    /// that our input handlers hand the right deferred scrolls to the list.
     fn deferred(l: &Launcher) -> Option<(usize, ScrollStrategy)> {
         l.list
             .0
@@ -693,7 +761,7 @@ mod tests {
     fn arrow_key_defers_scroll_to_selected_item() {
         let mut l = Launcher::new(
             vec![item("Git Status"), item("Grep"), item("Copy")],
-            ThemeColors::default(),
+            ThemeConfig::default(),
             AppConfig::default(),
             History::test_new(PathBuf::new(), Vec::new()),
         );
@@ -726,7 +794,7 @@ mod tests {
             .insert("opt+m".to_string(), "Reload Configuration".to_string());
         let l = Launcher::new(
             vec![item("Marker"), item("Grep")],
-            ThemeColors::default(),
+            ThemeConfig::default(),
             app_config,
             History::test_new(PathBuf::new(), Vec::new()),
         );
@@ -742,7 +810,7 @@ mod tests {
     fn typing_defers_scroll_back_to_top() {
         let mut l = Launcher::new(
             vec![item("Git Status"), item("Grep")],
-            ThemeColors::default(),
+            ThemeConfig::default(),
             AppConfig::default(),
             History::test_new(PathBuf::new(), Vec::new()),
         );
