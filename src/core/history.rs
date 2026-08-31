@@ -78,7 +78,9 @@ impl History {
             timestamp: now_secs(),
         });
         if self.records.len() > 2000 {
-            self.records = self.records.split_off(self.records.len() - 2000);
+            // drain keeps the existing allocation; split_off would throw it away.
+            let drop_count = self.records.len() - 2000;
+            self.records.drain(0..drop_count);
         }
         self.save();
     }

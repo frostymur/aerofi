@@ -87,7 +87,7 @@ fn main() {
         }
     }
 
-    application().run(|cx: &mut App| {
+    application().run(move |cx: &mut App| {
         // Run as a background accessory (no Dock icon). GPUI's
         // applicationDidFinishLaunching just forced the Regular policy, and
         // we are still inside it, so the Dock icon never appears.
@@ -97,7 +97,14 @@ fn main() {
         sys::icons::extract_all(&mut targets);
         let theme = core::theme::load_theme(&app_config.theme);
         let theme_clone = theme.clone();
-        let view = ui::window::create_launcher_window(cx, targets, theme, app_config, history);
+        let view = ui::window::create_launcher_window(cx, targets.clone(), theme, app_config, history);
+        
+        // start_daemon uses only std::thread + cx.spawn (foreground executor).
+        // We intentionally do NOT call cx.background_executor() here: that call
+        // initializes smol's global thread pool (~8 threads × 2 MB each = 16-20 MB).
+        // The foreground executor runs on the main run-loop with zero extra threads.
+        let daemon_view = view.clone();
+        crate::core::scheduler::start_daemon(cx, &targets, daemon_view);
         // Route every keystroke into the launcher while the window is visible.
         // `detach()` keeps the observer alive for the app's lifetime without
         // requiring us to hold the `Subscription` handle.
@@ -135,7 +142,7 @@ fn main() {
                         cx.notify();
                     });
                 }
-                ui::launcher::LauncherAction::ExecuteScript(target) => {
+                ui::launcher::LauncherAction::ExecuteScript(target, args) => {
                     if let core::item::Target::Script {
                         mode, path, name, ..
                     } = target
@@ -192,6 +199,7 @@ fn main() {
                                     } else {
                                         std::process::Command::new(&*path2)
                                     };
+                                    cmd.args(args);
                                     cmd.output()
                                 })
                                 .await;

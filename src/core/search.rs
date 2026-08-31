@@ -21,6 +21,8 @@ pub struct SearchIndex {
     max_results: usize,
     needle_buf: Vec<char>,
     hay_buf: Vec<char>,
+    /// Reused scratch buffer for (score, index) pairs — avoids a per-keystroke heap allocation.
+    scored_buf: Vec<(u32, usize)>,
 }
 
 impl SearchIndex {
@@ -43,6 +45,7 @@ impl SearchIndex {
             max_results,
             needle_buf: Vec::new(),
             hay_buf: Vec::new(),
+            scored_buf: Vec::new(),
         }
     }
 
@@ -65,19 +68,15 @@ impl SearchIndex {
         targets: &[Target],
         query: &str,
     ) -> Vec<Target> {
+        // Reuse all scratch buffers to avoid heap allocations every keystroke.
         self.needle_buf.clear();
         self.hay_buf.clear();
+        self.scored_buf.clear();
         let needle = Utf32Str::new(query, &mut self.needle_buf);
-
-        let mut scored: Vec<(u32, usize)> = Vec::with_capacity(targets.len().min(self.max_results));
         for (i, target) in targets.iter().enumerate() {
             let name = target.name();
             let aliases = self.aliases_by_target.get(name);
 
-            // Disjoint field borrows: `aliases_by_target` (shared),
-            // `hay_buf` and `matcher` (`fuzzy_match` takes `&mut self`).
-            // An empty query matches everything with a zero fuzzy score;
-            // then frecency alone decides the order.
             let mut fuzzy: Option<u16> = if query.is_empty() {
                 Some(0)
             } else {
@@ -99,13 +98,13 @@ impl SearchIndex {
                 continue;
             };
             let frecency = history.calculate_frecency(&target.identifier());
-            scored.push((u32::from(fuzzy_score) + frecency, i));
+            self.scored_buf.push((u32::from(fuzzy_score) + frecency, i));
         }
-        scored.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
-        scored
-            .into_iter()
+        self.scored_buf.sort_unstable_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
+        self.scored_buf
+            .iter()
             .take(self.max_results)
-            .map(|(_, i)| targets[i].clone())
+            .map(|&(_, i)| targets[i].clone())
             .collect()
     }
 }

@@ -25,8 +25,8 @@ pub enum LauncherAction {
     None,
     /// Hide the launcher window.
     Hide,
-    /// Execute a script asynchronously (the caller handles the background work).
-    ExecuteScript(Target),
+    /// Execute a script asynchronously (the caller handles the background work) with user-provided arguments.
+    ExecuteScript(Target, Vec<String>),
     /// Copy output string to clipboard and hide.
     CopyToClipboardAndHide(String),
     /// Set the full output mode state (full page view in launcher).
@@ -47,6 +47,18 @@ pub enum LauncherState {
     RunningFull { title: String },
     /// A fullOutput script finished; show a full page output view.
     FullOutput { title: String, text: String },
+    /// Prompting for arguments for a selected script.
+    ArgumentInput {
+        target: Target,
+        args: Vec<crate::core::item::ScriptArgument>,
+        values: Vec<String>,
+        focused_index: usize,
+    },
+    /// Asking for confirmation before running a script with `needsConfirmation: true`.
+    Confirming {
+        target: Target,
+        args_values: Vec<String>,
+    },
 }
 
 /// Root view: renders the filter field and the ranked list of targets.
@@ -130,7 +142,7 @@ impl Launcher {
             let action = self.execute_item(&item);
             if matches!(
                 action,
-                LauncherAction::Hide | LauncherAction::ExecuteScript(_)
+                LauncherAction::Hide | LauncherAction::ExecuteScript(..)
             ) {
                 self.reset();
             }
@@ -139,7 +151,6 @@ impl Launcher {
         let cmd = ks.modifiers.platform;
         match (ks.key.as_str(), cmd) {
             ("escape", _) => {
-                // Running / Toast: escape dismisses and goes back to Search.
                 if !matches!(self.state, LauncherState::Search) {
                     self.state = LauncherState::Search;
                     return LauncherAction::None;
@@ -147,8 +158,70 @@ impl Launcher {
                 self.reset();
                 LauncherAction::Hide
             }
-            // While a compact script is running/showing its toast, block all
-            // other keys except escape (handled above).
+            ("enter" | "return", false) if matches!(&self.state, LauncherState::Confirming { .. }) => {
+                if let LauncherState::Confirming { target, args_values } = &self.state {
+                    let t = target.clone();
+                    let a = args_values.clone();
+                    self.state = LauncherState::Search;
+                    let action = self.execute_target_with_args(&t, a);
+                    if matches!(action, LauncherAction::Hide | LauncherAction::ExecuteScript(..) | LauncherAction::SetFullOutput { .. }) {
+                        self.reset();
+                    }
+                    return action;
+                }
+                LauncherAction::None
+            }
+            ("enter" | "return", false) if matches!(&self.state, LauncherState::ArgumentInput { .. }) => {
+                if let LauncherState::ArgumentInput { target, args, values, focused_index } = &mut self.state {
+                    if *focused_index < args.len() - 1 {
+                        *focused_index += 1;
+                        return LauncherAction::None;
+                    }
+                    let t = target.clone();
+                    let vals = values.clone();
+                    if t.needs_confirmation() {
+                        self.state = LauncherState::Confirming { target: t, args_values: vals };
+                        return LauncherAction::None;
+                    } else {
+                        self.state = LauncherState::Search;
+                        let action = self.execute_target_with_args(&t, vals);
+                        if matches!(action, LauncherAction::Hide | LauncherAction::ExecuteScript(..) | LauncherAction::SetFullOutput { .. }) {
+                            self.reset();
+                        }
+                        return action;
+                    }
+                }
+                LauncherAction::None
+            }
+            ("tab", false) if matches!(&self.state, LauncherState::ArgumentInput { .. }) => {
+                if let LauncherState::ArgumentInput { args, focused_index, .. } = &mut self.state {
+                    *focused_index = (*focused_index + 1) % args.len();
+                }
+                LauncherAction::None
+            }
+            ("backspace", false) if matches!(&self.state, LauncherState::ArgumentInput { .. }) => {
+                if let LauncherState::ArgumentInput { values, focused_index, .. } = &mut self.state {
+                    if values[*focused_index].pop().is_none() && *focused_index > 0 {
+                        *focused_index -= 1;
+                    }
+                }
+                LauncherAction::None
+            }
+            _ if matches!(&self.state, LauncherState::ArgumentInput { .. }) => {
+                if !cmd
+                    && !ks.modifiers.control
+                    && !ks.modifiers.alt
+                    && ks.key != "tab"
+                    && let Some(c) = ks.key_char.as_deref()
+                    && !c.is_empty()
+                    && !c.chars().any(char::is_control)
+                {
+                    if let LauncherState::ArgumentInput { values, focused_index, .. } = &mut self.state {
+                        values[*focused_index].push_str(c);
+                    }
+                }
+                LauncherAction::None
+            }
             _ if !matches!(self.state, LauncherState::Search) => LauncherAction::None,
             ("up", false) => {
                 let cols = self.theme.listview.columns;
@@ -175,7 +248,7 @@ impl Launcher {
                 if matches!(
                     action,
                     LauncherAction::Hide
-                        | LauncherAction::ExecuteScript(_)
+                        | LauncherAction::ExecuteScript(..)
                         | LauncherAction::SetFullOutput { .. }
                 ) {
                     self.reset();
@@ -211,7 +284,7 @@ impl Launcher {
                         let action = self.execute_item(&item);
                         if matches!(
                             action,
-                            LauncherAction::Hide | LauncherAction::ExecuteScript(_)
+                            LauncherAction::Hide | LauncherAction::ExecuteScript(..)
                         ) {
                             self.reset();
                         }
@@ -311,28 +384,26 @@ impl Launcher {
                 LauncherAction::Hide
             }
             Target::Script { mode, name, .. } => {
-                let identifier = item.identifier();
-                self.history.record_launch(identifier);
-
-                let mode = *mode;
-                let title = name.to_string();
-
-                match mode {
-                    // silent: close launcher immediately, run script in background,
-                    // main.rs notifies on error.
-                    ScriptMode::Silent => LauncherAction::ExecuteScript(item.clone()),
-                    // pipe: run, capture stdout, copy to clipboard, hide.
-                    ScriptMode::Pipe => LauncherAction::ExecuteScript(item.clone()),
-                    // fullOutput: run script, collect ALL stdout, show in main window.
-                    ScriptMode::FullOutput => {
-                        self.state = LauncherState::RunningFull { title };
-                        LauncherAction::ExecuteScript(item.clone())
-                    }
-                    // compact: handle in main.rs (close main window, open toast)
-                    ScriptMode::Compact => LauncherAction::ExecuteScript(item.clone()),
-                    // inline: update the inline_output subtitle in the list row.
-                    ScriptMode::Inline => LauncherAction::ExecuteScript(item.clone()),
+                let args = item.arguments();
+                if !args.is_empty() {
+                    let arg_clones: Vec<_> = args.into_iter().cloned().collect();
+                    let len = arg_clones.len();
+                    self.state = LauncherState::ArgumentInput {
+                        target: item.clone(),
+                        args: arg_clones,
+                        values: vec![String::new(); len],
+                        focused_index: 0,
+                    };
+                    return LauncherAction::None;
+                } else if item.needs_confirmation() {
+                    self.state = LauncherState::Confirming {
+                        target: item.clone(),
+                        args_values: Vec::new(),
+                    };
+                    return LauncherAction::None;
                 }
+
+                self.execute_target_with_args(item, Vec::new())
             }
             Target::App { .. } => {
                 let identifier = item.identifier();
@@ -340,6 +411,30 @@ impl Launcher {
                 self.history.record_launch(identifier);
                 LauncherAction::Hide
             }
+        }
+    }
+
+    fn execute_target_with_args(&mut self, item: &Target, args: Vec<String>) -> LauncherAction {
+        match item {
+            Target::Script { mode, name, .. } => {
+                let identifier = item.identifier();
+                self.history.record_launch(identifier);
+
+                let mode = *mode;
+                let title = name.to_string();
+
+                match mode {
+                    ScriptMode::Silent => LauncherAction::ExecuteScript(item.clone(), args),
+                    ScriptMode::Pipe => LauncherAction::ExecuteScript(item.clone(), args),
+                    ScriptMode::FullOutput => {
+                        self.state = LauncherState::RunningFull { title };
+                        LauncherAction::ExecuteScript(item.clone(), args)
+                    }
+                    ScriptMode::Compact => LauncherAction::ExecuteScript(item.clone(), args),
+                    ScriptMode::Inline => LauncherAction::ExecuteScript(item.clone(), args),
+                }
+            }
+            Target::Builtin { .. } | Target::App { .. } => LauncherAction::None,
         }
     }
 
@@ -369,7 +464,12 @@ impl Launcher {
                 break;
             }
         }
-        self.refilter();
+        // Only rebuild search results if the window is visible.
+        // If hidden, the window will re-filter on the next show anyway,
+        // avoiding background memory leaks from GPUI image caching.
+        if crate::ui::window::is_visible() {
+            self.refilter();
+        }
     }
 
     /// Re-read `config.toml`, rescan the targets and rebuild the search
@@ -441,15 +541,13 @@ impl Render for Launcher {
             true
         };
 
-        // Dynamic window height: compact Running/Toast shrinks to compact size,
-        // everything else stays at the configured window height.
         let ib_height = t.inputbar.height;
         let pad_v = t.window.padding;
         let margin_bottom = t.inputbar.margin.get(2).copied().unwrap_or(8.0);
 
         let target_height = match &self.state {
             LauncherState::RunningFull { .. } | LauncherState::FullOutput { .. } => t.window.height,
-            LauncherState::Search => {
+            LauncherState::Search | LauncherState::ArgumentInput { .. } | LauncherState::Confirming { .. } => {
                 if require_input {
                     if should_show_list {
                         let item_h = t.element.padding.get(1).copied().unwrap_or(12.0) * 2.0
@@ -489,8 +587,19 @@ impl Render for Launcher {
                         inner_box = inner_box.child(self.render_inputbar());
                     }
                     Widget::ListView => {
-                        if matches!(&self.state, LauncherState::Search) && should_show_list {
-                            inner_box = inner_box.child(self.render_listview(cx, columns));
+                        match &self.state {
+                            LauncherState::Search => {
+                                if should_show_list {
+                                    inner_box = inner_box.child(self.render_listview(cx, columns));
+                                }
+                            }
+                            LauncherState::Confirming { target, .. } => {
+                                inner_box = inner_box.child(self.render_confirmation(target));
+                            }
+                            LauncherState::ArgumentInput { .. } => {
+                                // Argument options list (dropdown) could be rendered here.
+                            }
+                            _ => {}
                         }
                     }
                     Widget::Banner => {
@@ -606,18 +715,53 @@ impl Launcher {
         let t = &self.theme;
         let ib = &t.inputbar;
 
-        let placeholder_view = if self.query.is_empty() {
-            div()
-                .flex_1()
-                .text_color(rgb(Self::color(&ib.placeholder_color)))
-                .child(ib.placeholder.clone())
-                .into_any()
+        let inner_view = if let LauncherState::ArgumentInput { target, args, values, focused_index } = &self.state {
+            let mut row = div().flex().flex_row().items_center().gap_2()
+                .child(div().text_color(rgb(Self::color(&t.element.text_color))).child(target.name().to_string()));
+            
+            for (i, arg) in args.iter().enumerate() {
+                let is_focused = i == *focused_index;
+                let bg_color = if is_focused {
+                    rgb(Self::color(&t.element.selected.background))
+                } else {
+                    rgba(0x00000000)
+                };
+                let border_color = if is_focused {
+                    rgb(Self::color(&t.element.selected.background))
+                } else {
+                    rgb(Self::color(&ib.placeholder_color))
+                };
+                let text_val = &values[i];
+                let display_text = if text_val.is_empty() {
+                    arg.placeholder.as_deref().unwrap_or("...")
+                } else {
+                    text_val
+                };
+                let t_color = if text_val.is_empty() {
+                    rgb(Self::color(&ib.placeholder_color))
+                } else {
+                    rgb(Self::color(&ib.text_color))
+                };
+                row = row.child(
+                    div().px_2().py_1().rounded_sm().bg(bg_color).border_1().border_color(border_color)
+                        .text_color(t_color).child(display_text.to_string())
+                );
+            }
+            row.into_any()
         } else {
-            div()
-                .flex_1()
-                .text_color(rgb(Self::color(&ib.text_color)))
-                .child(self.query.clone())
-                .into_any()
+            if self.query.is_empty() {
+                div()
+                    .flex_1()
+                    .text_color(rgb(Self::color(&ib.placeholder_color)))
+                    .child(ib.placeholder.clone())
+                    .into_any()
+            } else {
+                div()
+                    .flex_1()
+                    .text_color(rgb(Self::color(&ib.text_color)))
+                    .child(self.query.clone())
+                    .into_any()
+            }
         };
 
         let icon_label = ib.icon.as_deref().unwrap_or("❯");
@@ -649,7 +793,52 @@ impl Launcher {
                     .text_color(rgb(Self::color(icon_color)))
                     .child(icon_label.to_string()),
             )
-            .child(placeholder_view)
+            .child(inner_view)
+            .into_any()
+    }
+
+    fn render_confirmation(&self, target: &Target) -> gpui::AnyElement {
+        let t = &self.theme;
+        let text_color = rgb(Self::color(&t.element.text_color));
+        let sel_bg = rgb(Self::color(&t.element.selected.background));
+
+        div()
+            .flex_1()
+            .flex()
+            .flex_col()
+            .items_center()
+            .justify_center()
+            .gap_4()
+            .child(
+                div()
+                    .text_xl()
+                    .text_color(text_color)
+                    .child(format!("Run '{}'?", target.name())),
+            )
+            .child(
+                div()
+                    .flex()
+                    .gap_4()
+                    .child(
+                        div()
+                            .px_4()
+                            .py_2()
+                            .rounded_md()
+                            .bg(sel_bg)
+                            .text_color(text_color)
+                            .child("Yes (Enter)"),
+                    )
+                    .child(
+                        div()
+                            .px_4()
+                            .py_2()
+                            .rounded_md()
+                            .border_1()
+                            .border_color(sel_bg)
+                            .text_color(text_color)
+                            .child("No (Esc)"),
+                    ),
+            )
             .into_any()
     }
 
@@ -855,16 +1044,25 @@ impl Launcher {
                 img(path).w(icon_size).h(icon_size).rounded_sm().into_any()
             } else {
                 let fallback = item.icon().unwrap_or("•");
-                div()
-                    .w(icon_size)
-                    .text_color(rgb(Self::color(
-                        t.inputbar
-                            .icon_color
-                            .as_deref()
-                            .unwrap_or(&t.inputbar.text_color),
-                    )))
-                    .child(fallback.to_string())
-                    .into_any()
+                if fallback.starts_with('/') || fallback.starts_with('~') {
+                    let p = expand_tilde_path(fallback);
+                    img(std::path::PathBuf::from(p))
+                        .w(icon_size)
+                        .h(icon_size)
+                        .rounded_sm()
+                        .into_any()
+                } else {
+                    div()
+                        .w(icon_size)
+                        .text_color(rgb(Self::color(
+                            t.inputbar
+                                .icon_color
+                                .as_deref()
+                                .unwrap_or(&t.inputbar.text_color),
+                        )))
+                        .child(fallback.to_string())
+                        .into_any()
+                }
             }
         } else {
             div().into_any()
@@ -914,16 +1112,25 @@ impl Launcher {
                 img(path).w(icon_size).h(icon_size).rounded_sm().into_any()
             } else {
                 let fallback = item.icon().unwrap_or("•");
-                div()
-                    .w(icon_size)
-                    .text_color(rgb(Self::color(
-                        t.inputbar
-                            .icon_color
-                            .as_deref()
-                            .unwrap_or(&t.inputbar.text_color),
-                    )))
-                    .child(fallback.to_string())
-                    .into_any()
+                if fallback.starts_with('/') || fallback.starts_with('~') {
+                    let p = expand_tilde_path(fallback);
+                    img(std::path::PathBuf::from(p))
+                        .w(icon_size)
+                        .h(icon_size)
+                        .rounded_sm()
+                        .into_any()
+                } else {
+                    div()
+                        .w(icon_size)
+                        .text_color(rgb(Self::color(
+                            t.inputbar
+                                .icon_color
+                                .as_deref()
+                                .unwrap_or(&t.inputbar.text_color),
+                        )))
+                        .child(fallback.to_string())
+                        .into_any()
+                }
             }
         } else {
             div().into_any()
@@ -937,12 +1144,15 @@ impl Launcher {
         ));
 
         // Name column: for inline scripts show name + cached output as subtitle.
-        let name_col = if let Some(subtitle) = item.inline_output() {
+        let subtitle_opt = item.inline_output().or_else(|| item.package_name());
+
+        let name_col = if let Some(subtitle) = subtitle_opt {
             div()
                 .flex_1()
                 .flex()
-                .flex_col()
-                .gap_0p5()
+                .flex_row()
+                .items_center()
+                .gap_2()
                 .child(div().text_color(name_color).child(item.name().to_string()))
                 .child(
                     div()

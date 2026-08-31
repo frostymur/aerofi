@@ -287,6 +287,53 @@ impl Target {
         }
     }
 
+    /// The `packageName` string from metadata, displayed as subtitle.
+    pub fn package_name(&self) -> Option<&str> {
+        match self {
+            Self::Script { metadata, .. } => metadata.package_name.as_deref(),
+            _ => None,
+        }
+    }
+
+    /// Whether the script requires confirmation before running.
+    #[allow(dead_code)]
+    pub fn needs_confirmation(&self) -> bool {
+        match self {
+            Self::Script { metadata, .. } => metadata.needs_confirmation.unwrap_or(false),
+            _ => false,
+        }
+    }
+
+    /// Dark mode icon path (from `@raycast.iconDark`).
+    #[allow(dead_code)]
+    pub fn icon_dark(&self) -> Option<&str> {
+        match self {
+            Self::Script { metadata, .. } => metadata.icon_dark.as_deref(),
+            _ => None,
+        }
+    }
+
+    /// Extract all defined arguments from the script.
+    #[allow(dead_code)]
+    pub fn arguments(&self) -> Vec<&ScriptArgument> {
+        match self {
+            Self::Script { metadata, .. } => {
+                let mut args = Vec::new();
+                if let Some(a1) = &metadata.argument1 {
+                    args.push(a1);
+                }
+                if let Some(a2) = &metadata.argument2 {
+                    args.push(a2);
+                }
+                if let Some(a3) = &metadata.argument3 {
+                    args.push(a3);
+                }
+                args
+            }
+            _ => Vec::new(),
+        }
+    }
+
     /// Parse a single script file into a `Target::Script`.
     pub fn script_from_file(path: &Path) -> Option<Self> {
         let file_stem = path.file_stem()?.to_string_lossy().into_owned();
