@@ -9,8 +9,8 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use serde::{Deserialize, Serialize};
 use gpui::SharedString;
+use serde::{Deserialize, Serialize};
 
 /// A single launch, persisted in `history.json`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -13,9 +13,41 @@ use gpui::{
 
 use crate::core::config::AppConfig;
 use crate::core::history::History;
-use crate::core::item::{BuiltinAction, Target};
+use crate::core::item::{BuiltinAction, ScriptMode, Target};
 use crate::core::search::SearchIndex;
 use crate::core::theme::{self, ThemeConfig, Widget, parse_hex_color};
+
+/// Action to take after a keystroke is handled.
+#[derive(Debug, Clone, PartialEq)]
+#[allow(dead_code)]
+pub enum LauncherAction {
+    /// Do nothing special (just re-render).
+    None,
+    /// Hide the launcher window.
+    Hide,
+    /// Execute a script asynchronously (the caller handles the background work).
+    ExecuteScript(Target),
+    /// Copy output string to clipboard and hide.
+    CopyToClipboardAndHide(String),
+    /// Set the full output mode state (full page view in launcher).
+    SetFullOutput { title: String, text: String },
+    /// Update the inline_output of a script in `all[]` and re-render.
+    SetInlineOutput {
+        path: std::sync::Arc<std::path::Path>,
+        output: Option<gpui::SharedString>,
+    },
+}
+
+/// State of the launcher UI.
+#[derive(Debug, Clone, PartialEq)]
+pub enum LauncherState {
+    /// Normal search/list mode.
+    Search,
+    /// A fullOutput script is running; show a full page spinner.
+    RunningFull { title: String },
+    /// A fullOutput script finished; show a full page output view.
+    FullOutput { title: String, text: String },
+}
 
 /// Root view: renders the filter field and the ranked list of targets.
 pub struct Launcher {
@@ -39,6 +71,10 @@ pub struct Launcher {
     app_config: AppConfig,
     /// Active theme controlling every visual aspect of the launcher.
     theme: ThemeConfig,
+    /// Current state of the launcher (e.g. normal search or showing script output).
+    state: LauncherState,
+    /// Scroll state for fullOutput mode.
+    full_output_scroll: UniformListScrollHandle,
 }
 
 impl Launcher {
@@ -60,6 +96,8 @@ impl Launcher {
             history,
             app_config,
             theme,
+            state: LauncherState::Search,
+            full_output_scroll: UniformListScrollHandle::new(),
         }
     }
 
@@ -69,9 +107,16 @@ impl Launcher {
         theme::parse_hex_color(hex).unwrap_or(0)
     }
 
-    /// Handle a keystroke. Returns `true` when the window should be hidden
-    /// afterwards (Esc, Enter after running, Cmd+E after opening the editor).
-    pub fn handle_keystroke(&mut self, ks: &gpui::Keystroke) -> bool {
+    /// Handle a keystroke. Returns the action that the host (main.rs) should perform.
+    pub fn handle_keystroke(&mut self, ks: &gpui::Keystroke) -> LauncherAction {
+        // If we are showing output or running, intercept escape
+        if self.state != LauncherState::Search {
+            if ks.key == "escape" {
+                self.state = LauncherState::Search;
+            }
+            return LauncherAction::None;
+        }
+
         // A configured key-combo shortcut (e.g. "cmd+r") runs its target
         // immediately; explicit config overrides the built-in bindings.
         if let Some((_, name)) = self
@@ -82,49 +127,69 @@ impl Launcher {
             && let Some(item) = self.all.iter().find(|t| t.name() == name)
         {
             let item = item.clone();
-            self.execute_item(&item);
-            self.reset();
-            return true;
+            let action = self.execute_item(&item);
+            if matches!(
+                action,
+                LauncherAction::Hide | LauncherAction::ExecuteScript(_)
+            ) {
+                self.reset();
+            }
+            return action;
         }
         let cmd = ks.modifiers.platform;
         match (ks.key.as_str(), cmd) {
             ("escape", _) => {
+                // Running / Toast: escape dismisses and goes back to Search.
+                if !matches!(self.state, LauncherState::Search) {
+                    self.state = LauncherState::Search;
+                    return LauncherAction::None;
+                }
                 self.reset();
-                true
+                LauncherAction::Hide
             }
+            // While a compact script is running/showing its toast, block all
+            // other keys except escape (handled above).
+            _ if !matches!(self.state, LauncherState::Search) => LauncherAction::None,
             ("up", false) => {
                 let cols = self.theme.listview.columns;
                 let step = if cols > 1 { cols as isize } else { 1 };
                 self.move_selection(-step);
-                false
+                LauncherAction::None
             }
             ("down", false) => {
                 let cols = self.theme.listview.columns;
                 let step = if cols > 1 { cols as isize } else { 1 };
                 self.move_selection(step);
-                false
+                LauncherAction::None
             }
             ("left", false) if self.theme.listview.columns > 1 => {
                 self.move_selection(-1);
-                false
+                LauncherAction::None
             }
             ("right", false) if self.theme.listview.columns > 1 => {
                 self.move_selection(1);
-                false
+                LauncherAction::None
             }
             ("enter" | "return", false) => {
-                self.execute_selected();
-                self.reset();
-                true
+                let action = self.execute_selected();
+                if matches!(
+                    action,
+                    LauncherAction::Hide
+                        | LauncherAction::ExecuteScript(_)
+                        | LauncherAction::SetFullOutput { .. }
+                ) {
+                    self.reset();
+                }
+                action
             }
             ("e", true) => {
                 self.open_in_editor();
                 self.reset();
-                true
+                LauncherAction::Hide
             }
             ("backspace", false) => {
                 self.backspace();
-                false
+                LauncherAction::None
             }
             _ => {
                 // Treat plain printable characters (no cmd/ctrl/alt) as filter input.
@@ -143,12 +208,17 @@ impl Launcher {
                     // immediately (no Enter needed).
                     if let Some(item) = self.alias_target() {
                         let item = item.clone();
-                        self.execute_item(&item);
-                        self.reset();
-                        return true;
+                        let action = self.execute_item(&item);
+                        if matches!(
+                            action,
+                            LauncherAction::Hide | LauncherAction::ExecuteScript(_)
+                        ) {
+                            self.reset();
+                        }
+                        return action;
                     }
                 }
-                false
+                LauncherAction::None
             }
         }
     }
@@ -180,8 +250,7 @@ impl Launcher {
             self.selected
         };
         // Non-strict: scrolls only if the selected row is out of view.
-        self.list
-            .scroll_to_item(scroll_ix, ScrollStrategy::Nearest);
+        self.list.scroll_to_item(scroll_ix, ScrollStrategy::Nearest);
     }
 
     /// Re-run the fuzzy match for the current query and rebuild `filtered`.
@@ -222,31 +291,85 @@ impl Launcher {
     }
 
     /// Run the highlighted target.
-    fn execute_selected(&mut self) {
+    fn execute_selected(&mut self) -> LauncherAction {
         let Some(item) = self.selected_item() else {
-            return;
+            return LauncherAction::None;
         };
         let item = item.clone();
-        self.execute_item(&item);
+        self.execute_item(&item)
     }
 
     /// Run a target: built-in actions act in place, apps open and scripts
-    /// run via `sh`. On-disk launches are recorded in the history for
-    /// frecency ranking.
-    fn execute_item(&mut self, item: &Target) {
+    /// run asynchronously via `LauncherAction::ExecuteScript`.
+    fn execute_item(&mut self, item: &Target) -> LauncherAction {
         match item {
             Target::Builtin {
                 action: BuiltinAction::ReloadConfig,
                 ..
-            } => self.reload(),
-            _ => {
-                // Clone the identifier out before the mutable borrow for
-                // `record_launch`.
+            } => {
+                self.reload();
+                LauncherAction::Hide
+            }
+            Target::Script { mode, name, .. } => {
+                let identifier = item.identifier();
+                self.history.record_launch(identifier);
+
+                let mode = *mode;
+                let title = name.to_string();
+
+                match mode {
+                    // silent: close launcher immediately, run script in background,
+                    // main.rs notifies on error.
+                    ScriptMode::Silent => LauncherAction::ExecuteScript(item.clone()),
+                    // pipe: run, capture stdout, copy to clipboard, hide.
+                    ScriptMode::Pipe => LauncherAction::ExecuteScript(item.clone()),
+                    // fullOutput: run script, collect ALL stdout, show in main window.
+                    ScriptMode::FullOutput => {
+                        self.state = LauncherState::RunningFull { title };
+                        LauncherAction::ExecuteScript(item.clone())
+                    }
+                    // compact: handle in main.rs (close main window, open toast)
+                    ScriptMode::Compact => LauncherAction::ExecuteScript(item.clone()),
+                    // inline: update the inline_output subtitle in the list row.
+                    ScriptMode::Inline => LauncherAction::ExecuteScript(item.clone()),
+                }
+            }
+            Target::App { .. } => {
                 let identifier = item.identifier();
                 crate::core::executor::execute(item);
                 self.history.record_launch(identifier);
+                LauncherAction::Hide
             }
         }
+    }
+
+    pub fn set_full_output(&mut self, title: String, text: String) {
+        self.state = LauncherState::FullOutput { title, text };
+        // We can't scroll here easily because we don't have cx, but GPUI UniformListScrollHandle
+        // might not need it until render.
+    }
+
+    /// Called by main.rs to update an inline script's cached subtitle.
+    pub fn apply_inline_output(
+        &mut self,
+        path: &std::path::Path,
+        output: Option<gpui::SharedString>,
+    ) {
+        for target in &mut self.all {
+            let is_match = match target {
+                Target::Script {
+                    path: p,
+                    mode: ScriptMode::Inline,
+                    ..
+                } => p.as_ref() == path,
+                _ => false,
+            };
+            if is_match {
+                target.set_inline_output(output);
+                break;
+            }
+        }
+        self.refilter();
     }
 
     /// Re-read `config.toml`, rescan the targets and rebuild the search
@@ -318,61 +441,76 @@ impl Render for Launcher {
             true
         };
 
-        // Calculate dynamic window height.
+        // Dynamic window height: compact Running/Toast shrinks to compact size,
+        // everything else stays at the configured window height.
         let ib_height = t.inputbar.height;
         let pad_v = t.window.padding;
         let margin_bottom = t.inputbar.margin.get(2).copied().unwrap_or(8.0);
 
-        if require_input {
-            let target_height = if should_show_list {
-                let item_h =
-                    t.element.padding.get(1).copied().unwrap_or(12.0) * 2.0 + t.element.icon_size;
-                let list_h = (self.filtered.len() as f32) * (item_h + t.listview.spacing);
-                let total = ib_height + margin_bottom + list_h + pad_v * 2.0;
-                total.min(t.window.height)
-            } else {
-                // Compact mode: only the inputbar.
-                ib_height + margin_bottom + pad_v * 2.0
-            };
-            window.resize(size(px(t.window.width), px(target_height)));
-        }
-
-        // Inner content: the actual launcher widgets.
-        let is_vertical = t.mainbox.orientation == "vertical";
-        let mut inner = div().flex_1().flex().gap(px(t.listview.spacing));
-
-        if is_vertical {
-            inner = inner.flex_col();
-        } else {
-            inner = inner.flex_row();
-        }
-
-        for widget in &t.mainbox.children {
-            match widget {
-                Widget::InputBar if !show_search => {}
-                Widget::InputBar => {
-                    inner = inner.child(self.render_inputbar());
-                }
-                Widget::ListView if !should_show_list => {}
-                Widget::ListView => {
-                    inner = inner.child(self.render_listview(cx, columns));
-                }
-                Widget::Banner => {
-                    if let Some(path) = t.banner.as_ref().and_then(|b| b.image_path.as_ref()) {
-                        let resolved = expand_tilde_path(path);
-                        let height = t.banner.as_ref().map(|b| b.height).unwrap_or(120.0);
-                        inner = inner.child(
-                            img(std::path::PathBuf::from(resolved))
-                                .w_full()
-                                .h(px(height))
-                                .object_fit(gpui::ObjectFit::Cover)
-                                .rounded_md(),
-                        );
+        let target_height = match &self.state {
+            LauncherState::RunningFull { .. } | LauncherState::FullOutput { .. } => t.window.height,
+            LauncherState::Search => {
+                if require_input {
+                    if should_show_list {
+                        let item_h = t.element.padding.get(1).copied().unwrap_or(12.0) * 2.0
+                            + t.element.icon_size;
+                        let list_h = (self.filtered.len() as f32) * (item_h + t.listview.spacing);
+                        let total = ib_height + margin_bottom + list_h + pad_v * 2.0;
+                        total.min(t.window.height)
+                    } else {
+                        ib_height + margin_bottom + pad_v * 2.0
                     }
+                } else {
+                    t.window.height
                 }
-                _ => {}
             }
-        }
+        };
+        window.resize(size(px(t.window.width), px(target_height)));
+
+        // Inner content: the actual launcher widgets or full page views.
+        let inner = if let LauncherState::FullOutput { title, text } = &self.state {
+            self.render_full_output(cx, title, text)
+        } else if let LauncherState::RunningFull { title } = &self.state {
+            self.render_full_output_running(title)
+        } else {
+            let is_vertical = t.mainbox.orientation == "vertical";
+            let mut inner_box = div().flex_1().flex().gap(px(t.listview.spacing));
+
+            if is_vertical {
+                inner_box = inner_box.flex_col();
+            } else {
+                inner_box = inner_box.flex_row();
+            }
+
+            for widget in &t.mainbox.children {
+                match widget {
+                    Widget::InputBar if !show_search => {}
+                    Widget::InputBar => {
+                        inner_box = inner_box.child(self.render_inputbar());
+                    }
+                    Widget::ListView => {
+                        if matches!(&self.state, LauncherState::Search) && should_show_list {
+                            inner_box = inner_box.child(self.render_listview(cx, columns));
+                        }
+                    }
+                    Widget::Banner => {
+                        if let Some(path) = t.banner.as_ref().and_then(|b| b.image_path.as_ref()) {
+                            let resolved = expand_tilde_path(path);
+                            let height = t.banner.as_ref().map(|b| b.height).unwrap_or(120.0);
+                            inner_box = inner_box.child(
+                                img(std::path::PathBuf::from(resolved))
+                                    .w_full()
+                                    .h(px(height))
+                                    .object_fit(gpui::ObjectFit::Cover)
+                                    .rounded_md(),
+                            );
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            inner_box.into_any()
+        };
 
         // Wrap with background colour, padding, and optional background image.
         let opacity = t.window.background_opacity.unwrap_or(1.0);
@@ -515,9 +653,120 @@ impl Launcher {
             .into_any()
     }
 
+    fn render_full_output_running(&self, title: &str) -> gpui::AnyElement {
+        let t = &self.theme;
+        let sel_bg = rgb(Self::color(&t.element.selected.background));
+        let sel_text = rgb(Self::color(&t.element.selected.text_color));
+
+        div()
+            .size_full()
+            .flex()
+            .flex_col()
+            .items_center()
+            .justify_center()
+            .gap_4()
+            .child(
+                div()
+                    .px_3()
+                    .py_1()
+                    .rounded(px(6.0))
+                    .bg(sel_bg)
+                    .text_sm()
+                    .text_color(sel_text)
+                    .child("▶ Running"),
+            )
+            .child(
+                div()
+                    .text_base()
+                    .text_color(rgb(Self::color(&t.element.text_color)))
+                    .child(title.to_string()),
+            )
+            .into_any_element()
+    }
+
+    fn render_full_output(
+        &self,
+        cx: &mut Context<Self>,
+        title: &str,
+        text: &str,
+    ) -> gpui::AnyElement {
+        let t = &self.theme;
+
+        let header = div()
+            .w_full()
+            .flex()
+            .items_center()
+            .justify_between()
+            .pb(px(12.0))
+            .border_b_1()
+            .border_color(rgb(Self::color(&t.window.border_color)))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_3()
+                    .child(
+                        div()
+                            .text_color(rgb(0x7aa2f7)) // some accent color or back button style
+                            .text_sm()
+                            .child("❮ Back (Esc)"),
+                    )
+                    .child(
+                        div()
+                            .text_base()
+                            .text_color(rgb(Self::color(&t.element.text_color)))
+                            .child(title.to_string()),
+                    ),
+            )
+            .child(div().text_xs().text_color(rgb(0x565f89)).child("↵ Rerun"));
+
+        let lines: Vec<gpui::SharedString> = if text.is_empty() {
+            vec![gpui::SharedString::from("(no output)")]
+        } else {
+            text.lines()
+                .map(|l| gpui::SharedString::from(l.to_string()))
+                .collect()
+        };
+        let line_count = lines.len();
+
+        let body = gpui::uniform_list(
+            "full_output_lines",
+            line_count,
+            cx.processor(
+                move |_this: &mut Launcher, range: std::ops::Range<usize>, _window, _cx| {
+                    let lines = lines.clone();
+                    let t = _this.theme.clone();
+                    range
+                        .map(move |i| {
+                            div()
+                                .py(px(1.5))
+                                .text_sm()
+                                .font_family("JetBrains Mono")
+                                .text_color(rgb(Self::color(&t.element.text_color)))
+                                .child(lines.get(i).map(|s| s.to_string()).unwrap_or_default())
+                                .into_any()
+                        })
+                        .collect()
+                },
+            ),
+        )
+        .flex_1()
+        .w_full()
+        .track_scroll(&self.full_output_scroll);
+
+        div()
+            .size_full()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .child(header)
+            .child(body)
+            .into_any_element()
+    }
+
     /// Render the result list styled from `theme.listview` and `theme.element`.
     /// When `columns > 1`, items are laid out in a grid.
-    fn render_listview(&self, cx: &mut Context<Self>, columns: usize) -> gpui::AnyElement {
+    fn render_listview(&self, cx: &mut Context<Self>, columns: usize) -> impl IntoElement {
         let t = &self.theme;
 
         if self.filtered.is_empty() {
@@ -683,6 +932,33 @@ impl Launcher {
         let pad_h = el.padding.first().copied().unwrap_or(8.0);
         let pad_v = el.padding.get(1).copied().unwrap_or(12.0);
 
+        let desc_color = rgb(Self::color(
+            el.description_color.as_deref().unwrap_or(&el.text_color),
+        ));
+
+        // Name column: for inline scripts show name + cached output as subtitle.
+        let name_col = if let Some(subtitle) = item.inline_output() {
+            div()
+                .flex_1()
+                .flex()
+                .flex_col()
+                .gap_0p5()
+                .child(div().text_color(name_color).child(item.name().to_string()))
+                .child(
+                    div()
+                        .text_size(px(t.font.size - 2.0))
+                        .text_color(desc_color)
+                        .child(subtitle.to_string()),
+                )
+                .into_any()
+        } else {
+            div()
+                .flex_1()
+                .text_color(name_color)
+                .child(item.name().to_string())
+                .into_any()
+        };
+
         let row = div()
             .flex()
             .items_center()
@@ -694,21 +970,14 @@ impl Launcher {
             .cursor(CursorStyle::PointingHand)
             .bg(row_bg)
             .child(icon_element)
-            .child(
-                div()
-                    .flex_1()
-                    .text_color(name_color)
-                    .child(item.name().to_string()),
-            );
+            .child(name_col);
 
         // Right-aligned badge with the target's bound shortcuts, if any.
         let row = match self.shortcut_label(item.name()) {
             Some(label) => row.child(
                 div()
                     .text_size(px(t.font.size - 2.0))
-                    .text_color(rgb(Self::color(
-                        el.description_color.as_deref().unwrap_or(&el.text_color),
-                    )))
+                    .text_color(desc_color)
                     .child(label),
             ),
             None => row,
@@ -847,6 +1116,7 @@ mod tests {
             path: std::sync::Arc::from(PathBuf::from(name)),
             metadata: std::sync::Arc::default(),
             metatags: crate::core::item::ScriptMetatags::default(),
+            inline_output: None,
         }
     }
 
@@ -1015,7 +1285,7 @@ mod tests {
         );
         l.handle_keystroke(&key("g"));
         assert_eq!(l.query, "g");
-        assert!(l.handle_keystroke(&key("escape")));
+        assert_eq!(l.handle_keystroke(&key("escape")), LauncherAction::Hide);
         assert_eq!(l.query, "");
         assert_eq!(l.selected, 0);
     }

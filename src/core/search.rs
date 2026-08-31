@@ -133,6 +133,7 @@ mod tests {
             path: std::sync::Arc::from(PathBuf::from(name)),
             metadata: std::sync::Arc::default(),
             metatags: crate::core::item::ScriptMetatags::default(),
+            inline_output: None,
         }
     }
 

@@ -4,11 +4,9 @@ use std::process::Command;
 
 use crate::core::item::Target;
 
-/// Run the given target.
+/// Run the given target asynchronously or detached.
 ///
-/// Applications open via `open <path>`; scripts run as `sh <path>` with
-/// stdio inherited, so their output is visible in the terminal aerofi was
-/// launched from. Built-in actions are handled by the UI, not here.
+/// Applications open via `open <path>`; scripts run as `sh <path>`.
 /// Failures are reported to stderr, never panics.
 pub fn execute(target: &Target) {
     let (program, path) = match target {

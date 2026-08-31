@@ -54,13 +54,17 @@ pub fn set_borderless_style(window: &Window) {
     // We need both the NSWindow and the NSView (GPUI's native view).
     let handle = HasWindowHandle::window_handle(window).ok();
     let Some(handle) = handle else { return };
-    let RawWindowHandle::AppKit(appkit) = handle.as_raw() else { return };
+    let RawWindowHandle::AppKit(appkit) = handle.as_raw() else {
+        return;
+    };
 
     let ns_view_ptr = appkit.ns_view.as_ptr();
     let Some(ns_view) = (unsafe { Id::<NSView>::retain(ns_view_ptr.cast()) }) else {
         return;
     };
-    let Some(ns_window) = ns_view.window() else { return };
+    let Some(ns_window) = ns_view.window() else {
+        return;
+    };
 
     // Strip Titled + FullSizeContentView (cause OS-level rounded corners),
     // keep NonactivatingPanel so the panel doesn't steal app focus.
@@ -111,6 +115,21 @@ pub fn show_application() {
         if !ptr.is_null() {
             let window: &NSWindow = &*(ptr as *const NSWindow);
             window.makeKeyAndOrderFront(None);
+        }
+    }
+}
+
+/// Hide only the main launcher window, leaving the application active so other
+/// windows (like the toast window) can remain visible.
+pub fn hide_launcher_window() {
+    let Some(_mtm) = MainThreadMarker::new() else {
+        return;
+    };
+    unsafe {
+        let ptr = NS_WINDOW.load(Ordering::SeqCst);
+        if !ptr.is_null() {
+            let window: &NSWindow = &*(ptr as *const NSWindow);
+            window.orderOut(None);
         }
     }
 }

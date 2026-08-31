@@ -186,6 +186,9 @@ pub enum Target {
         metadata: Arc<RaycastMetadata>,
         /// AeroFi metatags (`@aerofi.*`), if present.
         metatags: ScriptMetatags,
+        /// Cached output for `inline` mode scripts (displayed as subtitle in the list).
+        /// `None` means the script hasn't run yet or isn't inline mode.
+        inline_output: Option<SharedString>,
     },
     /// A built-in action (e.g. reloading the configuration).
     Builtin {
@@ -260,6 +263,30 @@ impl Target {
         }
     }
 
+    /// Cached inline output for scripts with `mode = inline`.
+    pub fn inline_output(&self) -> Option<&str> {
+        match self {
+            Self::Script { inline_output, .. } => inline_output.as_deref(),
+            _ => None,
+        }
+    }
+
+    /// Set the cached inline output. Only meaningful for `mode = inline` scripts.
+    pub fn set_inline_output(&mut self, output: Option<SharedString>) {
+        if let Self::Script { inline_output, .. } = self {
+            *inline_output = output;
+        }
+    }
+
+    /// The `refreshTime` string from metadata (e.g. "5m", "1h").
+    #[allow(dead_code)]
+    pub fn refresh_time(&self) -> Option<&str> {
+        match self {
+            Self::Script { metadata, .. } => metadata.refresh_time.as_deref(),
+            _ => None,
+        }
+    }
+
     /// Parse a single script file into a `Target::Script`.
     pub fn script_from_file(path: &Path) -> Option<Self> {
         let file_stem = path.file_stem()?.to_string_lossy().into_owned();
@@ -303,7 +330,8 @@ impl Target {
 
             // `@raycast.*` annotations (Raycast-compatible metadata).
             if let Some(annotation) = comment.strip_prefix("@raycast.") {
-                let Some((field, value)) = annotation.split_once(|c: char| c.is_whitespace()) else {
+                let Some((field, value)) = annotation.split_once(|c: char| c.is_whitespace())
+                else {
                     continue;
                 };
                 let value = value.trim();
@@ -372,6 +400,7 @@ impl Target {
             path: Arc::from(path),
             metadata: Arc::new(metadata),
             metatags,
+            inline_output: None,
         })
     }
 }

@@ -59,6 +59,13 @@ pub fn hide() {
     appkit::hide_application();
 }
 
+/// Hide only the launcher window, but keep the application active.
+/// Used for compact scripts so the Toast window remains visible.
+pub fn hide_launcher_only() {
+    VISIBLE.store(false, Ordering::SeqCst);
+    appkit::hide_launcher_window();
+}
+
 /// Toggle the launcher window. Invoked by the global hotkey on the main thread.
 pub fn toggle() {
     if is_visible() {
