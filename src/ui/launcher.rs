@@ -45,8 +45,9 @@ pub enum LauncherState {
     Search,
     /// A fullOutput script is running; show a full page spinner.
     RunningFull { title: String },
-    /// A fullOutput script finished; show a full page output view.
-    FullOutput { title: String, text: String },
+    /// A fullOutput script finished; show a full page output view. The
+    /// parsed markdown blocks live in `Launcher::full_output_blocks`.
+    FullOutput { title: String },
     /// Prompting for arguments for a selected script.
     ArgumentInput {
         target: Target,
@@ -87,6 +88,9 @@ pub struct Launcher {
     state: LauncherState,
     /// Scroll state for fullOutput mode.
     full_output_scroll: UniformListScrollHandle,
+    /// Parsed markdown blocks of the current full-output result (empty
+    /// while not showing one; cleared on hide to release the memory).
+    full_output_blocks: Vec<crate::core::markdown::MdBlock>,
 }
 
 impl Launcher {
@@ -110,6 +114,7 @@ impl Launcher {
             theme,
             state: LauncherState::Search,
             full_output_scroll: UniformListScrollHandle::new(),
+            full_output_blocks: Vec::new(),
         }
     }
 
@@ -121,21 +126,30 @@ impl Launcher {
 
     /// Handle a keystroke. Returns the action that the host (main.rs) should perform.
     pub fn handle_keystroke(&mut self, ks: &gpui::Keystroke) -> LauncherAction {
-        // If we are showing output or running, intercept escape
-        if self.state != LauncherState::Search {
+        // Full-output pages (spinner and result view) swallow every
+        // keystroke; only Escape returns to the search list. Argument
+        // prompts and confirmations fall through so their own handlers run.
+        if matches!(
+            &self.state,
+            LauncherState::RunningFull { .. } | LauncherState::FullOutput { .. }
+        ) {
             if ks.key == "escape" {
                 self.state = LauncherState::Search;
+                self.full_output_blocks.clear();
             }
             return LauncherAction::None;
         }
 
         // A configured key-combo shortcut (e.g. "cmd+r") runs its target
         // immediately; explicit config overrides the built-in bindings.
-        if let Some((_, name)) = self
-            .app_config
-            .shortcuts
-            .iter()
-            .find(|(combo, _)| combo_matches(combo, ks))
+        // Only honoured in plain search mode — while an argument prompt or
+        // confirmation is up, every keystroke belongs to that prompt.
+        if matches!(self.state, LauncherState::Search)
+            && let Some((_, name)) = self
+                .app_config
+                .shortcuts
+                .iter()
+                .find(|(combo, _)| combo_matches(combo, ks))
             && let Some(item) = self.all.iter().find(|t| t.name() == name)
         {
             let item = item.clone();
@@ -158,21 +172,40 @@ impl Launcher {
                 self.reset();
                 LauncherAction::Hide
             }
-            ("enter" | "return", false) if matches!(&self.state, LauncherState::Confirming { .. }) => {
-                if let LauncherState::Confirming { target, args_values } = &self.state {
+            ("enter" | "return", false)
+                if matches!(&self.state, LauncherState::Confirming { .. }) =>
+            {
+                if let LauncherState::Confirming {
+                    target,
+                    args_values,
+                } = &self.state
+                {
                     let t = target.clone();
                     let a = args_values.clone();
                     self.state = LauncherState::Search;
                     let action = self.execute_target_with_args(&t, a);
-                    if matches!(action, LauncherAction::Hide | LauncherAction::ExecuteScript(..) | LauncherAction::SetFullOutput { .. }) {
+                    if matches!(
+                        action,
+                        LauncherAction::Hide
+                            | LauncherAction::ExecuteScript(..)
+                            | LauncherAction::SetFullOutput { .. }
+                    ) {
                         self.reset();
                     }
                     return action;
                 }
                 LauncherAction::None
             }
-            ("enter" | "return", false) if matches!(&self.state, LauncherState::ArgumentInput { .. }) => {
-                if let LauncherState::ArgumentInput { target, args, values, focused_index } = &mut self.state {
+            ("enter" | "return", false)
+                if matches!(&self.state, LauncherState::ArgumentInput { .. }) =>
+            {
+                if let LauncherState::ArgumentInput {
+                    target,
+                    args,
+                    values,
+                    focused_index,
+                } = &mut self.state
+                {
                     if *focused_index < args.len() - 1 {
                         *focused_index += 1;
                         return LauncherAction::None;
@@ -180,12 +213,20 @@ impl Launcher {
                     let t = target.clone();
                     let vals = values.clone();
                     if t.needs_confirmation() {
-                        self.state = LauncherState::Confirming { target: t, args_values: vals };
+                        self.state = LauncherState::Confirming {
+                            target: t,
+                            args_values: vals,
+                        };
                         return LauncherAction::None;
                     } else {
                         self.state = LauncherState::Search;
                         let action = self.execute_target_with_args(&t, vals);
-                        if matches!(action, LauncherAction::Hide | LauncherAction::ExecuteScript(..) | LauncherAction::SetFullOutput { .. }) {
+                        if matches!(
+                            action,
+                            LauncherAction::Hide
+                                | LauncherAction::ExecuteScript(..)
+                                | LauncherAction::SetFullOutput { .. }
+                        ) {
                             self.reset();
                         }
                         return action;
@@ -194,13 +235,23 @@ impl Launcher {
                 LauncherAction::None
             }
             ("tab", false) if matches!(&self.state, LauncherState::ArgumentInput { .. }) => {
-                if let LauncherState::ArgumentInput { args, focused_index, .. } = &mut self.state {
+                if let LauncherState::ArgumentInput {
+                    args,
+                    focused_index,
+                    ..
+                } = &mut self.state
+                {
                     *focused_index = (*focused_index + 1) % args.len();
                 }
                 LauncherAction::None
             }
             ("backspace", false) if matches!(&self.state, LauncherState::ArgumentInput { .. }) => {
-                if let LauncherState::ArgumentInput { values, focused_index, .. } = &mut self.state {
+                if let LauncherState::ArgumentInput {
+                    values,
+                    focused_index,
+                    ..
+                } = &mut self.state
+                {
                     if values[*focused_index].pop().is_none() && *focused_index > 0 {
                         *focused_index -= 1;
                     }
@@ -216,7 +267,12 @@ impl Launcher {
                     && !c.is_empty()
                     && !c.chars().any(char::is_control)
                 {
-                    if let LauncherState::ArgumentInput { values, focused_index, .. } = &mut self.state {
+                    if let LauncherState::ArgumentInput {
+                        values,
+                        focused_index,
+                        ..
+                    } = &mut self.state
+                    {
                         values[*focused_index].push_str(c);
                     }
                 }
@@ -343,6 +399,7 @@ impl Launcher {
     /// memory while the launcher is not on screen.
     pub fn on_hide(&mut self) {
         self.filtered.clear();
+        self.full_output_blocks.clear();
     }
 
     /// Called when the window is shown.  Refills `filtered` from `all`
@@ -439,7 +496,10 @@ impl Launcher {
     }
 
     pub fn set_full_output(&mut self, title: String, text: String) {
-        self.state = LauncherState::FullOutput { title, text };
+        // Parse once here, not per render: the view re-renders on every
+        // keystroke while visible, and output can be large.
+        self.full_output_blocks = crate::core::markdown::parse(&text);
+        self.state = LauncherState::FullOutput { title };
         // We can't scroll here easily because we don't have cx, but GPUI UniformListScrollHandle
         // might not need it until render.
     }
@@ -547,7 +607,9 @@ impl Render for Launcher {
 
         let target_height = match &self.state {
             LauncherState::RunningFull { .. } | LauncherState::FullOutput { .. } => t.window.height,
-            LauncherState::Search | LauncherState::ArgumentInput { .. } | LauncherState::Confirming { .. } => {
+            LauncherState::Search
+            | LauncherState::ArgumentInput { .. }
+            | LauncherState::Confirming { .. } => {
                 if require_input {
                     if should_show_list {
                         let item_h = t.element.padding.get(1).copied().unwrap_or(12.0) * 2.0
@@ -566,8 +628,8 @@ impl Render for Launcher {
         window.resize(size(px(t.window.width), px(target_height)));
 
         // Inner content: the actual launcher widgets or full page views.
-        let inner = if let LauncherState::FullOutput { title, text } = &self.state {
-            self.render_full_output(cx, title, text)
+        let inner = if let LauncherState::FullOutput { title } = &self.state {
+            self.render_full_output(cx, title)
         } else if let LauncherState::RunningFull { title } = &self.state {
             self.render_full_output_running(title)
         } else {
@@ -715,10 +777,19 @@ impl Launcher {
         let t = &self.theme;
         let ib = &t.inputbar;
 
-        let inner_view = if let LauncherState::ArgumentInput { target, args, values, focused_index } = &self.state {
-            let mut row = div().flex().flex_row().items_center().gap_2()
-                .child(div().text_color(rgb(Self::color(&t.element.text_color))).child(target.name().to_string()));
-            
+        let inner_view = if let LauncherState::ArgumentInput {
+            target,
+            args,
+            values,
+            focused_index,
+        } = &self.state
+        {
+            let mut row = div().flex().flex_row().items_center().gap_2().child(
+                div()
+                    .text_color(rgb(Self::color(&t.element.text_color)))
+                    .child(target.name().to_string()),
+            );
+
             for (i, arg) in args.iter().enumerate() {
                 let is_focused = i == *focused_index;
                 let bg_color = if is_focused {
@@ -743,8 +814,15 @@ impl Launcher {
                     rgb(Self::color(&ib.text_color))
                 };
                 row = row.child(
-                    div().px_2().py_1().rounded_sm().bg(bg_color).border_1().border_color(border_color)
-                        .text_color(t_color).child(display_text.to_string())
+                    div()
+                        .px_2()
+                        .py_1()
+                        .rounded_sm()
+                        .bg(bg_color)
+                        .border_1()
+                        .border_color(border_color)
+                        .text_color(t_color)
+                        .child(display_text.to_string()),
                 );
             }
             row.into_any()
@@ -873,12 +951,7 @@ impl Launcher {
             .into_any_element()
     }
 
-    fn render_full_output(
-        &self,
-        cx: &mut Context<Self>,
-        title: &str,
-        text: &str,
-    ) -> gpui::AnyElement {
+    fn render_full_output(&self, cx: &mut Context<Self>, title: &str) -> gpui::AnyElement {
         let t = &self.theme;
 
         let header = div()
@@ -909,39 +982,32 @@ impl Launcher {
             )
             .child(div().text_xs().text_color(rgb(0x565f89)).child("↵ Rerun"));
 
-        let lines: Vec<gpui::SharedString> = if text.is_empty() {
-            vec![gpui::SharedString::from("(no output)")]
+        let block_count = self.full_output_blocks.len();
+        let body = if block_count == 0 {
+            div()
+                .flex_1()
+                .text_sm()
+                .font_family("JetBrains Mono")
+                .text_color(rgb(Self::color(&t.inputbar.placeholder_color)))
+                .child("(no output)")
+                .into_any()
         } else {
-            text.lines()
-                .map(|l| gpui::SharedString::from(l.to_string()))
-                .collect()
+            gpui::uniform_list(
+                "full_output_blocks",
+                block_count,
+                cx.processor(
+                    move |this: &mut Launcher, range: std::ops::Range<usize>, _window, _cx| {
+                        range
+                            .map(|i| this.render_md_block(&this.full_output_blocks[i]))
+                            .collect()
+                    },
+                ),
+            )
+            .flex_1()
+            .w_full()
+            .track_scroll(&self.full_output_scroll)
+            .into_any()
         };
-        let line_count = lines.len();
-
-        let body = gpui::uniform_list(
-            "full_output_lines",
-            line_count,
-            cx.processor(
-                move |_this: &mut Launcher, range: std::ops::Range<usize>, _window, _cx| {
-                    let lines = lines.clone();
-                    let t = _this.theme.clone();
-                    range
-                        .map(move |i| {
-                            div()
-                                .py(px(1.5))
-                                .text_sm()
-                                .font_family("JetBrains Mono")
-                                .text_color(rgb(Self::color(&t.element.text_color)))
-                                .child(lines.get(i).map(|s| s.to_string()).unwrap_or_default())
-                                .into_any()
-                        })
-                        .collect()
-                },
-            ),
-        )
-        .flex_1()
-        .w_full()
-        .track_scroll(&self.full_output_scroll);
 
         div()
             .size_full()
@@ -951,6 +1017,169 @@ impl Launcher {
             .child(header)
             .child(body)
             .into_any_element()
+    }
+
+    /// Render one markdown block of the full-output view.
+    fn render_md_block(&self, block: &crate::core::markdown::MdBlock) -> gpui::AnyElement {
+        use crate::core::markdown::MdBlock;
+        let t = &self.theme;
+        let text_color = rgb(Self::color(&t.element.text_color));
+        let dim_color = rgb(Self::color(&t.inputbar.placeholder_color));
+        let mono = gpui::SharedString::from("JetBrains Mono");
+
+        let base = gpui::TextStyle {
+            font_size: px(t.font.size).into(),
+            color: Self::hsla(&t.element.text_color),
+            ..Default::default()
+        };
+
+        match block {
+            MdBlock::Heading { level, text } => {
+                let scale = match *level {
+                    1 => 1.5,
+                    2 => 1.3,
+                    3 => 1.15,
+                    _ => 1.0,
+                };
+                let mut style = base.clone();
+                style.font_size = px(t.font.size * scale).into();
+                style.font_weight = gpui::FontWeight::BOLD;
+                apply_md_style(div().w_full().mt_2(), &style)
+                    .child(self.styled_md_text(text))
+                    .into_any()
+            }
+            MdBlock::Paragraph(text) => apply_md_style(div().w_full(), &base)
+                .child(self.styled_md_text(text))
+                .into_any(),
+            MdBlock::Blockquote(text) => {
+                let mut style = base.clone();
+                style.color = Self::hsla(&t.inputbar.placeholder_color);
+                apply_md_style(
+                    div()
+                        .w_full()
+                        .border_l_2()
+                        .border_color(rgb(Self::color(&t.window.border_color)))
+                        .pl_3(),
+                    &style,
+                )
+                .child(self.styled_md_text(text))
+                .into_any()
+            }
+            MdBlock::CodeBlock { lang, text } => {
+                let mut box_ = div()
+                    .w_full()
+                    .rounded_md()
+                    .border_1()
+                    .border_color(rgb(Self::color(&t.window.border_color)))
+                    .bg(rgb(Self::color(&t.inputbar.background)))
+                    .p_3();
+                if let Some(lang) = lang {
+                    box_ = box_.child(
+                        div()
+                            .text_xs()
+                            .text_color(dim_color)
+                            .mb_1()
+                            .child(lang.clone()),
+                    );
+                }
+                box_ = box_.child(
+                    div()
+                        .font_family(mono)
+                        .text_sm()
+                        .text_color(text_color)
+                        .child(text.clone()),
+                );
+                box_.into_any()
+            }
+            MdBlock::ListItem { number, text } => {
+                let marker = number.map_or_else(|| "•".to_string(), |n| format!("{n}."));
+                apply_md_style(div().w_full().flex().flex_row().gap_2(), &base)
+                    .child(div().text_color(text_color).child(marker))
+                    .child(div().flex_1().child(self.styled_md_text(text)))
+                    .into_any()
+            }
+            MdBlock::Rule => div()
+                .w_full()
+                .h(px(1.0))
+                .my_1()
+                .bg(rgb(Self::color(&t.window.border_color)))
+                .into_any(),
+            MdBlock::Plain(text) => div()
+                .w_full()
+                .font_family(mono)
+                .text_sm()
+                .text_color(dim_color)
+                .child(text.clone())
+                .into_any(),
+        }
+    }
+
+    /// Build a GPUI `StyledText` element for markdown text: one text layout
+    /// per block with per-range highlights for inline emphasis and a
+    /// monospace font override for inline code. The base style (family,
+    /// size, colour) is inherited from the parent element's `text_style`.
+    fn styled_md_text(&self, md: &crate::core::markdown::MdText) -> gpui::StyledText {
+        use crate::core::markdown::InlineKind;
+
+        let mut highlights: Vec<(std::ops::Range<usize>, gpui::HighlightStyle)> = Vec::new();
+        let mut code_ranges: Vec<(std::ops::Range<usize>, gpui::SharedString)> = Vec::new();
+        for mark in &md.marks {
+            let style = match mark.kind {
+                InlineKind::Bold => gpui::HighlightStyle {
+                    font_weight: Some(gpui::FontWeight::BOLD),
+                    ..Default::default()
+                },
+                InlineKind::Italic => gpui::HighlightStyle {
+                    font_style: Some(gpui::FontStyle::Italic),
+                    ..Default::default()
+                },
+                InlineKind::Strikethrough => gpui::HighlightStyle {
+                    strikethrough: Some(gpui::StrikethroughStyle::default()),
+                    ..Default::default()
+                },
+                InlineKind::Link => gpui::HighlightStyle {
+                    color: Some(Self::hsla_hex(0x7aa2f7)),
+                    underline: Some(gpui::UnderlineStyle::default()),
+                    ..Default::default()
+                },
+                InlineKind::Code => gpui::HighlightStyle {
+                    background_color: Some(Self::hsla_hex(0x3b4252).opacity(0.35)),
+                    ..Default::default()
+                },
+            };
+            if mark.kind == InlineKind::Code {
+                code_ranges.push((
+                    mark.range.clone(),
+                    gpui::SharedString::from("JetBrains Mono"),
+                ));
+            }
+            highlights.push((mark.range.clone(), style));
+        }
+
+        let mut styled = gpui::StyledText::new(md.text.clone());
+        if !code_ranges.is_empty() {
+            styled = styled.with_font_family_overrides(code_ranges);
+        }
+        if !highlights.is_empty() {
+            styled = styled.with_highlights(highlights);
+        }
+        styled
+    }
+
+    /// Resolve a theme hex colour string to an `Hsla` for `TextStyle` fields.
+    fn hsla(hex: &str) -> gpui::Hsla {
+        Self::hsla_hex(Self::color(hex))
+    }
+
+    /// Convert a 0xRRGGBB value to an `Hsla`.
+    fn hsla_hex(rgb: u32) -> gpui::Hsla {
+        gpui::Rgba {
+            r: ((rgb >> 16) & 0xff) as f32 / 255.0,
+            g: ((rgb >> 8) & 0xff) as f32 / 255.0,
+            b: (rgb & 0xff) as f32 / 255.0,
+            a: 1.0,
+        }
+        .into()
     }
 
     /// Render the result list styled from `theme.listview` and `theme.element`.
@@ -1218,6 +1447,17 @@ impl Launcher {
             .collect::<Vec<_>>();
         (!labels.is_empty()).then(|| labels.join("  "))
     }
+}
+
+/// Apply a full `TextStyle` to an element so its text children (including
+/// `StyledText`, which inherits the parent style) render with it.
+fn apply_md_style(mut el: gpui::Div, style: &gpui::TextStyle) -> gpui::Div {
+    let ts = el.text_style();
+    ts.color = Some(style.color);
+    ts.font_size = Some(style.font_size);
+    ts.font_weight = Some(style.font_weight);
+    ts.font_style = Some(style.font_style);
+    el
 }
 
 /// Expand a leading `~` in a path to the user's home directory.
@@ -1567,5 +1807,159 @@ mod tests {
         );
         l.handle_keystroke(&key("g"));
         assert_eq!(deferred(&l), Some((0, ScrollStrategy::Top)));
+    }
+
+    fn item_with_args(name: &str, n_args: usize, confirm: bool) -> Target {
+        use crate::core::item::{RaycastMetadata, ScriptArgument};
+        let mut metadata = RaycastMetadata::default();
+        for (i, slot) in [
+            &mut metadata.argument1,
+            &mut metadata.argument2,
+            &mut metadata.argument3,
+        ]
+        .iter_mut()
+        .enumerate()
+        .take(n_args)
+        {
+            **slot = Some(ScriptArgument {
+                arg_type: Some("text".to_string()),
+                placeholder: Some(format!("Arg {i}")),
+                optional: None,
+                percent_encoded: None,
+                data: None,
+            });
+        }
+        metadata.needs_confirmation = confirm.then_some(true);
+        Target::Script {
+            name: name.into(),
+            mode: ScriptMode::Compact,
+            icon: None,
+            path: std::sync::Arc::from(PathBuf::from(name)),
+            metadata: std::sync::Arc::new(metadata),
+            metatags: crate::core::item::ScriptMetatags::default(),
+            inline_output: None,
+        }
+    }
+
+    fn arg_state(l: &Launcher) -> Option<(Vec<String>, usize)> {
+        match &l.state {
+            LauncherState::ArgumentInput {
+                values,
+                focused_index,
+                ..
+            } => Some((values.clone(), *focused_index)),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn enter_on_script_with_args_starts_argument_prompt() {
+        let mut l = Launcher::new(
+            vec![item_with_args("Args Test", 2, false)],
+            ThemeConfig::default(),
+            AppConfig::default(),
+            History::test_new(PathBuf::new(), Vec::new()),
+        );
+        let action = l.handle_keystroke(&key("enter"));
+        assert_eq!(action, LauncherAction::None);
+        assert_eq!(arg_state(&l), Some((vec![String::new(), String::new()], 0)));
+    }
+
+    #[test]
+    fn argument_prompt_accepts_typing_focus_and_confirm() {
+        let mut l = Launcher::new(
+            vec![item_with_args("Args Test", 2, false)],
+            ThemeConfig::default(),
+            AppConfig::default(),
+            History::test_new(PathBuf::new(), Vec::new()),
+        );
+        l.handle_keystroke(&key("enter")); // enter the prompt
+        l.handle_keystroke(&key("h"));
+        l.handle_keystroke(&key("i"));
+        assert_eq!(
+            arg_state(&l),
+            Some((vec!["hi".to_string(), String::new()], 0))
+        );
+        l.handle_keystroke(&key("enter")); // advance to the next argument
+        assert_eq!(
+            arg_state(&l),
+            Some((vec!["hi".to_string(), String::new()], 1))
+        );
+        l.handle_keystroke(&key("tab")); // wraps back to the first
+        assert_eq!(
+            arg_state(&l),
+            Some((vec!["hi".to_string(), String::new()], 0))
+        );
+        l.handle_keystroke(&key("tab")); // back to the second
+        l.handle_keystroke(&key("t"));
+        l.handle_keystroke(&key("a"));
+        l.handle_keystroke(&key("b"));
+        l.handle_keystroke(&key("backspace")); // "ta"
+        let action = l.handle_keystroke(&key("enter")); // last arg -> run
+        assert!(matches!(
+            action,
+            LauncherAction::ExecuteScript(_, ref args)
+                if *args == vec!["hi".to_string(), "ta".to_string()]
+        ));
+        assert_eq!(l.state, LauncherState::Search);
+    }
+
+    #[test]
+    fn escape_cancels_argument_prompt() {
+        let mut l = Launcher::new(
+            vec![item_with_args("Args Test", 2, false)],
+            ThemeConfig::default(),
+            AppConfig::default(),
+            History::test_new(PathBuf::new(), Vec::new()),
+        );
+        l.handle_keystroke(&key("enter"));
+        l.handle_keystroke(&key("h"));
+        let action = l.handle_keystroke(&key("escape"));
+        assert_eq!(action, LauncherAction::None);
+        assert_eq!(l.state, LauncherState::Search);
+    }
+
+    #[test]
+    fn argument_prompt_confirms_before_executing() {
+        let mut l = Launcher::new(
+            vec![item_with_args("Confirm Args", 1, true)],
+            ThemeConfig::default(),
+            AppConfig::default(),
+            History::test_new(PathBuf::new(), Vec::new()),
+        );
+        l.handle_keystroke(&key("enter"));
+        l.handle_keystroke(&key("x"));
+        l.handle_keystroke(&key("enter")); // last arg -> confirmation
+        assert!(matches!(l.state, LauncherState::Confirming { .. }));
+        l.handle_keystroke(&key("escape")); // decline
+        assert_eq!(l.state, LauncherState::Search);
+        l.handle_keystroke(&key("enter")); // prompt again
+        l.handle_keystroke(&key("y"));
+        l.handle_keystroke(&key("enter"));
+        let action = l.handle_keystroke(&key("enter")); // confirm
+        assert!(matches!(
+            action,
+            LauncherAction::ExecuteScript(_, ref args) if *args == vec!["y".to_string()]
+        ));
+        assert_eq!(l.state, LauncherState::Search);
+    }
+
+    #[test]
+    fn full_output_still_swallows_keystrokes() {
+        let mut l = Launcher::new(
+            vec![item("Git Status")],
+            ThemeConfig::default(),
+            AppConfig::default(),
+            History::test_new(PathBuf::new(), Vec::new()),
+        );
+        l.state = LauncherState::FullOutput { title: "t".into() };
+        l.full_output_blocks = crate::core::markdown::parse("out");
+        l.handle_keystroke(&key("a"));
+        assert_eq!(l.query, "");
+        l.handle_keystroke(&key("down"));
+        assert_eq!(l.selected, 0);
+        let action = l.handle_keystroke(&key("escape"));
+        assert_eq!(action, LauncherAction::None);
+        assert_eq!(l.state, LauncherState::Search);
     }
 }
