@@ -1,10 +1,14 @@
-//! The launcher UI: a keyboard-driven, fuzzy-filterable list of targets
-//! (applications and scripts).
+//! The launcher UI: a keyboard- and mouse-driven, fuzzy-filterable list of
+//! targets (applications and scripts).
 //!
 //! There is no ready-made `InputText` in this GPUI revision, so the filter
 //! query is owned here as a plain string and driven from the global
 //! `observe_keystrokes` handler (see `main.rs`). That keeps us to an
 //! append-only, backspace-only text model, which is all a launcher needs.
+//!
+//! Mouse: hovering a row moves the selection, clicking a row runs it, the
+//! argument chips and confirmation buttons are clickable, and the list
+//! scrolls with the wheel (handled natively by GPUI's list element).
 
 use gpui::{
     Context, CursorStyle, Render, ScrollStrategy, UniformListScrollHandle, Window, div, img,
@@ -134,8 +138,7 @@ impl Launcher {
             LauncherState::RunningFull { .. } | LauncherState::FullOutput { .. }
         ) {
             if ks.key == "escape" {
-                self.state = LauncherState::Search;
-                self.full_output_blocks.clear();
+                self.back_from_full_output();
             }
             return LauncherAction::None;
         }
@@ -175,26 +178,7 @@ impl Launcher {
             ("enter" | "return", false)
                 if matches!(&self.state, LauncherState::Confirming { .. }) =>
             {
-                if let LauncherState::Confirming {
-                    target,
-                    args_values,
-                } = &self.state
-                {
-                    let t = target.clone();
-                    let a = args_values.clone();
-                    self.state = LauncherState::Search;
-                    let action = self.execute_target_with_args(&t, a);
-                    if matches!(
-                        action,
-                        LauncherAction::Hide
-                            | LauncherAction::ExecuteScript(..)
-                            | LauncherAction::SetFullOutput { .. }
-                    ) {
-                        self.reset();
-                    }
-                    return action;
-                }
-                LauncherAction::None
+                self.confirm_and_run()
             }
             ("enter" | "return", false)
                 if matches!(&self.state, LauncherState::ArgumentInput { .. }) =>
@@ -440,7 +424,7 @@ impl Launcher {
                 self.reload();
                 LauncherAction::Hide
             }
-            Target::Script { mode, name, .. } => {
+            Target::Script { .. } => {
                 let args = item.arguments();
                 if !args.is_empty() {
                     let arg_clones: Vec<_> = args.into_iter().cloned().collect();
@@ -502,6 +486,102 @@ impl Launcher {
         self.state = LauncherState::FullOutput { title };
         // We can't scroll here easily because we don't have cx, but GPUI UniformListScrollHandle
         // might not need it until render.
+    }
+
+    /// Run the side effects of a `LauncherAction` produced inside the view.
+    ///
+    /// Both input paths funnel through here: the keystroke observer in
+    /// `main.rs` and the mouse listeners on the launcher's elements. Async
+    /// work is spawned, so this returns immediately.
+    pub fn perform_action(&mut self, action: LauncherAction, cx: &mut Context<Self>) {
+        match action {
+            LauncherAction::None => {}
+            LauncherAction::Hide => {
+                self.on_hide();
+                cx.notify();
+                crate::ui::window::hide();
+            }
+            LauncherAction::CopyToClipboardAndHide(text) => {
+                cx.write_to_clipboard(gpui::ClipboardItem::new_string(text));
+                self.on_hide();
+                cx.notify();
+                crate::ui::window::hide();
+            }
+            LauncherAction::SetFullOutput { title, text } => {
+                self.set_full_output(title, text);
+                cx.notify();
+            }
+            LauncherAction::SetInlineOutput { path, output } => {
+                self.apply_inline_output(&path, output);
+                cx.notify();
+            }
+            LauncherAction::ExecuteScript(target, args) => {
+                // `silent` hides the launcher window immediately; the toast
+                // takes over. Done here (not in the spawn) because we hold
+                // the view and can't re-enter it from the async task.
+                if let Target::Script { mode, .. } = &target
+                    && *mode == ScriptMode::Silent
+                {
+                    self.on_hide();
+                    crate::ui::window::hide_launcher_only();
+                }
+                let theme = self.theme.clone();
+                let view = cx.entity();
+                crate::ui::execute::execute_script(cx, view, theme, target, args);
+                cx.notify();
+            }
+        }
+    }
+
+    /// Run the pending confirmed target (the "Yes" of the confirmation
+    /// prompt). Shared by the Enter key and the Yes-button click.
+    pub fn confirm_and_run(&mut self) -> LauncherAction {
+        let LauncherState::Confirming {
+            target,
+            args_values,
+        } = &self.state
+        else {
+            return LauncherAction::None;
+        };
+        let t = target.clone();
+        let a = args_values.clone();
+        self.state = LauncherState::Search;
+        let action = self.execute_target_with_args(&t, a);
+        if matches!(
+            action,
+            LauncherAction::Hide
+                | LauncherAction::ExecuteScript(..)
+                | LauncherAction::SetFullOutput { .. }
+        ) {
+            self.reset();
+        }
+        action
+    }
+
+    /// Focus the `index`-th argument of the active argument prompt
+    /// (argument chip click).
+    pub fn focus_argument(&mut self, index: usize) {
+        if let LauncherState::ArgumentInput {
+            args,
+            focused_index,
+            ..
+        } = &mut self.state
+            && index < args.len()
+        {
+            *focused_index = index;
+        }
+    }
+
+    /// Leave the full-output page (spinner or result) and return to the
+    /// search list. Shared by Escape and the "Back" header click.
+    pub fn back_from_full_output(&mut self) {
+        if matches!(
+            self.state,
+            LauncherState::RunningFull { .. } | LauncherState::FullOutput { .. }
+        ) {
+            self.state = LauncherState::Search;
+            self.full_output_blocks.clear();
+        }
     }
 
     /// Called by main.rs to update an inline script's cached subtitle.
@@ -646,7 +726,7 @@ impl Render for Launcher {
                 match widget {
                     Widget::InputBar if !show_search => {}
                     Widget::InputBar => {
-                        inner_box = inner_box.child(self.render_inputbar());
+                        inner_box = inner_box.child(self.render_inputbar(cx));
                     }
                     Widget::ListView => {
                         match &self.state {
@@ -656,7 +736,7 @@ impl Render for Launcher {
                                 }
                             }
                             LauncherState::Confirming { target, .. } => {
-                                inner_box = inner_box.child(self.render_confirmation(target));
+                                inner_box = inner_box.child(self.render_confirmation(target, cx));
                             }
                             LauncherState::ArgumentInput { .. } => {
                                 // Argument options list (dropdown) could be rendered here.
@@ -773,7 +853,7 @@ impl Render for Launcher {
 
 impl Launcher {
     /// Render the input bar styled from `theme.inputbar`.
-    fn render_inputbar(&self) -> gpui::AnyElement {
+    fn render_inputbar(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
         let t = &self.theme;
         let ib = &t.inputbar;
 
@@ -822,6 +902,14 @@ impl Launcher {
                         .border_1()
                         .border_color(border_color)
                         .text_color(t_color)
+                        .cursor(CursorStyle::PointingHand)
+                        .id(format!("arg-chip-{i}"))
+                        .on_click(cx.listener(move |this, event, _window, cx| {
+                            if is_primary_click(event) {
+                                this.focus_argument(i);
+                                cx.notify();
+                            }
+                        }))
                         .child(display_text.to_string()),
                 );
             }
@@ -875,7 +963,7 @@ impl Launcher {
             .into_any()
     }
 
-    fn render_confirmation(&self, target: &Target) -> gpui::AnyElement {
+    fn render_confirmation(&self, target: &Target, cx: &mut Context<Self>) -> gpui::AnyElement {
         let t = &self.theme;
         let text_color = rgb(Self::color(&t.element.text_color));
         let sel_bg = rgb(Self::color(&t.element.selected.background));
@@ -904,6 +992,14 @@ impl Launcher {
                             .rounded_md()
                             .bg(sel_bg)
                             .text_color(text_color)
+                            .cursor(CursorStyle::PointingHand)
+                            .id("confirm-yes")
+                            .on_click(cx.listener(move |this, event, _window, cx| {
+                                if is_primary_click(event) {
+                                    let action = this.confirm_and_run();
+                                    this.perform_action(action, cx);
+                                }
+                            }))
                             .child("Yes (Enter)"),
                     )
                     .child(
@@ -914,6 +1010,14 @@ impl Launcher {
                             .border_1()
                             .border_color(sel_bg)
                             .text_color(text_color)
+                            .cursor(CursorStyle::PointingHand)
+                            .id("confirm-no")
+                            .on_click(cx.listener(move |this, event, _window, cx| {
+                                if is_primary_click(event) {
+                                    this.state = LauncherState::Search;
+                                    cx.notify();
+                                }
+                            }))
                             .child("No (Esc)"),
                     ),
             )
@@ -971,6 +1075,14 @@ impl Launcher {
                         div()
                             .text_color(rgb(0x7aa2f7)) // some accent color or back button style
                             .text_sm()
+                            .cursor(CursorStyle::PointingHand)
+                            .id("full-output-back")
+                            .on_click(cx.listener(move |this, event, _window, cx| {
+                                if is_primary_click(event) {
+                                    this.back_from_full_output();
+                                    cx.notify();
+                                }
+                            }))
                             .child("❮ Back (Esc)"),
                     )
                     .child(
@@ -1205,7 +1317,7 @@ impl Launcher {
                 total_rows,
                 cx.processor(move |this, range: std::ops::Range<usize>, _window, _cx| {
                     range
-                        .map(|row_ix| this.render_grid_row(row_ix, columns))
+                        .map(|row_ix| this.render_grid_row(row_ix, columns, _cx))
                         .collect()
                 }),
             )
@@ -1219,7 +1331,7 @@ impl Launcher {
                 "targets",
                 self.filtered.len(),
                 cx.processor(|this, range: std::ops::Range<usize>, _window, _cx| {
-                    range.map(|ix| this.render_row(ix)).collect()
+                    range.map(|ix| this.render_row(ix, _cx)).collect()
                 }),
             )
             .track_scroll(&self.list)
@@ -1230,7 +1342,12 @@ impl Launcher {
     }
 
     /// Render a single row of the grid (used when `columns > 1`).
-    fn render_grid_row(&self, row_ix: usize, cols: usize) -> gpui::AnyElement {
+    fn render_grid_row(
+        &self,
+        row_ix: usize,
+        cols: usize,
+        cx: &mut Context<Self>,
+    ) -> gpui::AnyElement {
         let t = &self.theme;
         let spacing = px(t.listview.spacing);
         let start_ix = row_ix * cols;
@@ -1240,11 +1357,12 @@ impl Launcher {
         for global_ix in start_ix..end_ix {
             let item = &self.filtered[global_ix];
             let is_selected = global_ix == self.selected;
-            row = row.child(
-                div()
-                    .flex_1()
-                    .child(self.render_grid_cell(item, is_selected)),
-            );
+            row = row.child(div().flex_1().child(self.render_grid_cell(
+                item,
+                is_selected,
+                global_ix,
+                cx,
+            )));
         }
         // Pad incomplete last row to keep column alignment.
         for _ in end_ix..(start_ix + cols) {
@@ -1254,7 +1372,13 @@ impl Launcher {
     }
 
     /// Render a single grid cell (used when `columns > 1`).
-    fn render_grid_cell(&self, item: &Target, is_selected: bool) -> gpui::AnyElement {
+    fn render_grid_cell(
+        &self,
+        item: &Target,
+        is_selected: bool,
+        filtered_ix: usize,
+        cx: &mut Context<Self>,
+    ) -> gpui::AnyElement {
         let t = &self.theme;
         let el = &t.element;
 
@@ -1299,27 +1423,32 @@ impl Launcher {
 
         let pad_h = el.padding.first().copied().unwrap_or(8.0);
 
-        div()
-            .flex()
-            .flex_col()
-            .items_center()
-            .gap_1()
-            .p(px(pad_h))
-            .rounded(px(el.corner_radius))
-            .cursor(CursorStyle::PointingHand)
-            .bg(cell_bg)
-            .child(icon_element)
-            .child(
-                div()
-                    .text_color(name_color)
-                    .text_size(px(t.font.size - 1.0))
-                    .child(item.name().to_string()),
-            )
-            .into_any()
+        Self::with_item_mouse_handlers(
+            div()
+                .flex()
+                .flex_col()
+                .items_center()
+                .gap_1()
+                .p(px(pad_h))
+                .rounded(px(el.corner_radius))
+                .cursor(CursorStyle::PointingHand)
+                .bg(cell_bg)
+                .child(icon_element)
+                .child(
+                    div()
+                        .text_color(name_color)
+                        .text_size(px(t.font.size - 1.0))
+                        .child(item.name().to_string()),
+                ),
+            format!("cell-{filtered_ix}"),
+            filtered_ix,
+            cx,
+        )
+        .into_any()
     }
 
     /// Build a single list row for `filtered_ix` (position within `filtered`).
-    fn render_row(&self, filtered_ix: usize) -> gpui::AnyElement {
+    fn render_row(&self, filtered_ix: usize, cx: &mut Context<Self>) -> gpui::AnyElement {
         let item = &self.filtered[filtered_ix];
         let is_selected = filtered_ix == self.selected;
         let t = &self.theme;
@@ -1421,7 +1550,36 @@ impl Launcher {
             ),
             None => row,
         };
-        row.into_any()
+        Self::with_item_mouse_handlers(row, format!("row-{filtered_ix}"), filtered_ix, cx)
+            .into_any()
+    }
+
+    /// Attach the standard list-item mouse behaviour: hovering moves the
+    /// selection to the item, a left click selects and runs it. The element
+    /// needs an id (stateful interactivity), so the caller supplies one.
+    fn with_item_mouse_handlers(
+        el: gpui::Div,
+        id: String,
+        filtered_ix: usize,
+        cx: &mut Context<Self>,
+    ) -> gpui::Stateful<gpui::Div> {
+        el.id(id)
+            .on_hover(cx.listener(move |this, hovered: &bool, _window, cx| {
+                if *hovered
+                    && matches!(this.state, LauncherState::Search)
+                    && this.selected != filtered_ix
+                {
+                    this.selected = filtered_ix;
+                    cx.notify();
+                }
+            }))
+            .on_click(cx.listener(move |this, event, _window, cx| {
+                if is_primary_click(event) && matches!(this.state, LauncherState::Search) {
+                    this.selected = filtered_ix;
+                    let action = this.execute_selected();
+                    this.perform_action(action, cx);
+                }
+            }))
     }
 
     /// The shortcuts bound to a target, for display next to its row: the
@@ -1458,6 +1616,15 @@ fn apply_md_style(mut el: gpui::Div, style: &gpui::TextStyle) -> gpui::Div {
     ts.font_weight = Some(style.font_weight);
     ts.font_style = Some(style.font_style);
     el
+}
+
+/// True for a left-mouse-button click (keyboard/touch-generated clicks
+/// are ignored).
+fn is_primary_click(event: &gpui::ClickEvent) -> bool {
+    matches!(
+        event,
+        gpui::ClickEvent::Mouse(m) if m.down.button == gpui::MouseButton::Left
+    )
 }
 
 /// Expand a leading `~` in a path to the user's home directory.
