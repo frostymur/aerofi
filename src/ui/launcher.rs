@@ -121,8 +121,13 @@ impl Launcher {
 
     /// Handle a keystroke. Returns the action that the host (main.rs) should perform.
     pub fn handle_keystroke(&mut self, ks: &gpui::Keystroke) -> LauncherAction {
-        // If we are showing output or running, intercept escape
-        if self.state != LauncherState::Search {
+        // Full-output pages (spinner and result view) swallow every
+        // keystroke; only Escape returns to the search list. Argument
+        // prompts and confirmations fall through so their own handlers run.
+        if matches!(
+            &self.state,
+            LauncherState::RunningFull { .. } | LauncherState::FullOutput { .. }
+        ) {
             if ks.key == "escape" {
                 self.state = LauncherState::Search;
             }
@@ -131,11 +136,14 @@ impl Launcher {
 
         // A configured key-combo shortcut (e.g. "cmd+r") runs its target
         // immediately; explicit config overrides the built-in bindings.
-        if let Some((_, name)) = self
-            .app_config
-            .shortcuts
-            .iter()
-            .find(|(combo, _)| combo_matches(combo, ks))
+        // Only honoured in plain search mode — while an argument prompt or
+        // confirmation is up, every keystroke belongs to that prompt.
+        if matches!(self.state, LauncherState::Search)
+            && let Some((_, name)) = self
+                .app_config
+                .shortcuts
+                .iter()
+                .find(|(combo, _)| combo_matches(combo, ks))
             && let Some(item) = self.all.iter().find(|t| t.name() == name)
         {
             let item = item.clone();
@@ -158,21 +166,40 @@ impl Launcher {
                 self.reset();
                 LauncherAction::Hide
             }
-            ("enter" | "return", false) if matches!(&self.state, LauncherState::Confirming { .. }) => {
-                if let LauncherState::Confirming { target, args_values } = &self.state {
+            ("enter" | "return", false)
+                if matches!(&self.state, LauncherState::Confirming { .. }) =>
+            {
+                if let LauncherState::Confirming {
+                    target,
+                    args_values,
+                } = &self.state
+                {
                     let t = target.clone();
                     let a = args_values.clone();
                     self.state = LauncherState::Search;
                     let action = self.execute_target_with_args(&t, a);
-                    if matches!(action, LauncherAction::Hide | LauncherAction::ExecuteScript(..) | LauncherAction::SetFullOutput { .. }) {
+                    if matches!(
+                        action,
+                        LauncherAction::Hide
+                            | LauncherAction::ExecuteScript(..)
+                            | LauncherAction::SetFullOutput { .. }
+                    ) {
                         self.reset();
                     }
                     return action;
                 }
                 LauncherAction::None
             }
-            ("enter" | "return", false) if matches!(&self.state, LauncherState::ArgumentInput { .. }) => {
-                if let LauncherState::ArgumentInput { target, args, values, focused_index } = &mut self.state {
+            ("enter" | "return", false)
+                if matches!(&self.state, LauncherState::ArgumentInput { .. }) =>
+            {
+                if let LauncherState::ArgumentInput {
+                    target,
+                    args,
+                    values,
+                    focused_index,
+                } = &mut self.state
+                {
                     if *focused_index < args.len() - 1 {
                         *focused_index += 1;
                         return LauncherAction::None;
@@ -180,12 +207,20 @@ impl Launcher {
                     let t = target.clone();
                     let vals = values.clone();
                     if t.needs_confirmation() {
-                        self.state = LauncherState::Confirming { target: t, args_values: vals };
+                        self.state = LauncherState::Confirming {
+                            target: t,
+                            args_values: vals,
+                        };
                         return LauncherAction::None;
                     } else {
                         self.state = LauncherState::Search;
                         let action = self.execute_target_with_args(&t, vals);
-                        if matches!(action, LauncherAction::Hide | LauncherAction::ExecuteScript(..) | LauncherAction::SetFullOutput { .. }) {
+                        if matches!(
+                            action,
+                            LauncherAction::Hide
+                                | LauncherAction::ExecuteScript(..)
+                                | LauncherAction::SetFullOutput { .. }
+                        ) {
                             self.reset();
                         }
                         return action;
@@ -194,13 +229,23 @@ impl Launcher {
                 LauncherAction::None
             }
             ("tab", false) if matches!(&self.state, LauncherState::ArgumentInput { .. }) => {
-                if let LauncherState::ArgumentInput { args, focused_index, .. } = &mut self.state {
+                if let LauncherState::ArgumentInput {
+                    args,
+                    focused_index,
+                    ..
+                } = &mut self.state
+                {
                     *focused_index = (*focused_index + 1) % args.len();
                 }
                 LauncherAction::None
             }
             ("backspace", false) if matches!(&self.state, LauncherState::ArgumentInput { .. }) => {
-                if let LauncherState::ArgumentInput { values, focused_index, .. } = &mut self.state {
+                if let LauncherState::ArgumentInput {
+                    values,
+                    focused_index,
+                    ..
+                } = &mut self.state
+                {
                     if values[*focused_index].pop().is_none() && *focused_index > 0 {
                         *focused_index -= 1;
                     }
@@ -216,7 +261,12 @@ impl Launcher {
                     && !c.is_empty()
                     && !c.chars().any(char::is_control)
                 {
-                    if let LauncherState::ArgumentInput { values, focused_index, .. } = &mut self.state {
+                    if let LauncherState::ArgumentInput {
+                        values,
+                        focused_index,
+                        ..
+                    } = &mut self.state
+                    {
                         values[*focused_index].push_str(c);
                     }
                 }
@@ -547,7 +597,9 @@ impl Render for Launcher {
 
         let target_height = match &self.state {
             LauncherState::RunningFull { .. } | LauncherState::FullOutput { .. } => t.window.height,
-            LauncherState::Search | LauncherState::ArgumentInput { .. } | LauncherState::Confirming { .. } => {
+            LauncherState::Search
+            | LauncherState::ArgumentInput { .. }
+            | LauncherState::Confirming { .. } => {
                 if require_input {
                     if should_show_list {
                         let item_h = t.element.padding.get(1).copied().unwrap_or(12.0) * 2.0
@@ -715,10 +767,19 @@ impl Launcher {
         let t = &self.theme;
         let ib = &t.inputbar;
 
-        let inner_view = if let LauncherState::ArgumentInput { target, args, values, focused_index } = &self.state {
-            let mut row = div().flex().flex_row().items_center().gap_2()
-                .child(div().text_color(rgb(Self::color(&t.element.text_color))).child(target.name().to_string()));
-            
+        let inner_view = if let LauncherState::ArgumentInput {
+            target,
+            args,
+            values,
+            focused_index,
+        } = &self.state
+        {
+            let mut row = div().flex().flex_row().items_center().gap_2().child(
+                div()
+                    .text_color(rgb(Self::color(&t.element.text_color)))
+                    .child(target.name().to_string()),
+            );
+
             for (i, arg) in args.iter().enumerate() {
                 let is_focused = i == *focused_index;
                 let bg_color = if is_focused {
@@ -743,8 +804,15 @@ impl Launcher {
                     rgb(Self::color(&ib.text_color))
                 };
                 row = row.child(
-                    div().px_2().py_1().rounded_sm().bg(bg_color).border_1().border_color(border_color)
-                        .text_color(t_color).child(display_text.to_string())
+                    div()
+                        .px_2()
+                        .py_1()
+                        .rounded_sm()
+                        .bg(bg_color)
+                        .border_1()
+                        .border_color(border_color)
+                        .text_color(t_color)
+                        .child(display_text.to_string()),
                 );
             }
             row.into_any()
@@ -1567,5 +1635,161 @@ mod tests {
         );
         l.handle_keystroke(&key("g"));
         assert_eq!(deferred(&l), Some((0, ScrollStrategy::Top)));
+    }
+
+    fn item_with_args(name: &str, n_args: usize, confirm: bool) -> Target {
+        use crate::core::item::{RaycastMetadata, ScriptArgument};
+        let mut metadata = RaycastMetadata::default();
+        for (i, slot) in [
+            &mut metadata.argument1,
+            &mut metadata.argument2,
+            &mut metadata.argument3,
+        ]
+        .iter_mut()
+        .enumerate()
+        .take(n_args)
+        {
+            **slot = Some(ScriptArgument {
+                arg_type: Some("text".to_string()),
+                placeholder: Some(format!("Arg {i}")),
+                optional: None,
+                percent_encoded: None,
+                data: None,
+            });
+        }
+        metadata.needs_confirmation = confirm.then_some(true);
+        Target::Script {
+            name: name.into(),
+            mode: ScriptMode::Compact,
+            icon: None,
+            path: std::sync::Arc::from(PathBuf::from(name)),
+            metadata: std::sync::Arc::new(metadata),
+            metatags: crate::core::item::ScriptMetatags::default(),
+            inline_output: None,
+        }
+    }
+
+    fn arg_state(l: &Launcher) -> Option<(Vec<String>, usize)> {
+        match &l.state {
+            LauncherState::ArgumentInput {
+                values,
+                focused_index,
+                ..
+            } => Some((values.clone(), *focused_index)),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn enter_on_script_with_args_starts_argument_prompt() {
+        let mut l = Launcher::new(
+            vec![item_with_args("Args Test", 2, false)],
+            ThemeConfig::default(),
+            AppConfig::default(),
+            History::test_new(PathBuf::new(), Vec::new()),
+        );
+        let action = l.handle_keystroke(&key("enter"));
+        assert_eq!(action, LauncherAction::None);
+        assert_eq!(arg_state(&l), Some((vec![String::new(), String::new()], 0)));
+    }
+
+    #[test]
+    fn argument_prompt_accepts_typing_focus_and_confirm() {
+        let mut l = Launcher::new(
+            vec![item_with_args("Args Test", 2, false)],
+            ThemeConfig::default(),
+            AppConfig::default(),
+            History::test_new(PathBuf::new(), Vec::new()),
+        );
+        l.handle_keystroke(&key("enter")); // enter the prompt
+        l.handle_keystroke(&key("h"));
+        l.handle_keystroke(&key("i"));
+        assert_eq!(
+            arg_state(&l),
+            Some((vec!["hi".to_string(), String::new()], 0))
+        );
+        l.handle_keystroke(&key("enter")); // advance to the next argument
+        assert_eq!(
+            arg_state(&l),
+            Some((vec!["hi".to_string(), String::new()], 1))
+        );
+        l.handle_keystroke(&key("tab")); // wraps back to the first
+        assert_eq!(
+            arg_state(&l),
+            Some((vec!["hi".to_string(), String::new()], 0))
+        );
+        l.handle_keystroke(&key("tab")); // back to the second
+        l.handle_keystroke(&key("t"));
+        l.handle_keystroke(&key("a"));
+        l.handle_keystroke(&key("b"));
+        l.handle_keystroke(&key("backspace")); // "ta"
+        let action = l.handle_keystroke(&key("enter")); // last arg -> run
+        assert!(matches!(
+            action,
+            LauncherAction::ExecuteScript(_, ref args)
+                if *args == vec!["hi".to_string(), "ta".to_string()]
+        ));
+        assert_eq!(l.state, LauncherState::Search);
+    }
+
+    #[test]
+    fn escape_cancels_argument_prompt() {
+        let mut l = Launcher::new(
+            vec![item_with_args("Args Test", 2, false)],
+            ThemeConfig::default(),
+            AppConfig::default(),
+            History::test_new(PathBuf::new(), Vec::new()),
+        );
+        l.handle_keystroke(&key("enter"));
+        l.handle_keystroke(&key("h"));
+        let action = l.handle_keystroke(&key("escape"));
+        assert_eq!(action, LauncherAction::None);
+        assert_eq!(l.state, LauncherState::Search);
+    }
+
+    #[test]
+    fn argument_prompt_confirms_before_executing() {
+        let mut l = Launcher::new(
+            vec![item_with_args("Confirm Args", 1, true)],
+            ThemeConfig::default(),
+            AppConfig::default(),
+            History::test_new(PathBuf::new(), Vec::new()),
+        );
+        l.handle_keystroke(&key("enter"));
+        l.handle_keystroke(&key("x"));
+        l.handle_keystroke(&key("enter")); // last arg -> confirmation
+        assert!(matches!(l.state, LauncherState::Confirming { .. }));
+        l.handle_keystroke(&key("escape")); // decline
+        assert_eq!(l.state, LauncherState::Search);
+        l.handle_keystroke(&key("enter")); // prompt again
+        l.handle_keystroke(&key("y"));
+        l.handle_keystroke(&key("enter"));
+        let action = l.handle_keystroke(&key("enter")); // confirm
+        assert!(matches!(
+            action,
+            LauncherAction::ExecuteScript(_, ref args) if *args == vec!["y".to_string()]
+        ));
+        assert_eq!(l.state, LauncherState::Search);
+    }
+
+    #[test]
+    fn full_output_still_swallows_keystrokes() {
+        let mut l = Launcher::new(
+            vec![item("Git Status")],
+            ThemeConfig::default(),
+            AppConfig::default(),
+            History::test_new(PathBuf::new(), Vec::new()),
+        );
+        l.state = LauncherState::FullOutput {
+            title: "t".into(),
+            text: "out".into(),
+        };
+        l.handle_keystroke(&key("a"));
+        assert_eq!(l.query, "");
+        l.handle_keystroke(&key("down"));
+        assert_eq!(l.selected, 0);
+        let action = l.handle_keystroke(&key("escape"));
+        assert_eq!(action, LauncherAction::None);
+        assert_eq!(l.state, LauncherState::Search);
     }
 }
