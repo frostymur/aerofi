@@ -45,8 +45,9 @@ pub enum LauncherState {
     Search,
     /// A fullOutput script is running; show a full page spinner.
     RunningFull { title: String },
-    /// A fullOutput script finished; show a full page output view.
-    FullOutput { title: String, text: String },
+    /// A fullOutput script finished; show a full page output view. The
+    /// parsed markdown blocks live in `Launcher::full_output_blocks`.
+    FullOutput { title: String },
     /// Prompting for arguments for a selected script.
     ArgumentInput {
         target: Target,
@@ -87,6 +88,9 @@ pub struct Launcher {
     state: LauncherState,
     /// Scroll state for fullOutput mode.
     full_output_scroll: UniformListScrollHandle,
+    /// Parsed markdown blocks of the current full-output result (empty
+    /// while not showing one; cleared on hide to release the memory).
+    full_output_blocks: Vec<crate::core::markdown::MdBlock>,
 }
 
 impl Launcher {
@@ -110,6 +114,7 @@ impl Launcher {
             theme,
             state: LauncherState::Search,
             full_output_scroll: UniformListScrollHandle::new(),
+            full_output_blocks: Vec::new(),
         }
     }
 
@@ -130,6 +135,7 @@ impl Launcher {
         ) {
             if ks.key == "escape" {
                 self.state = LauncherState::Search;
+                self.full_output_blocks.clear();
             }
             return LauncherAction::None;
         }
@@ -393,6 +399,7 @@ impl Launcher {
     /// memory while the launcher is not on screen.
     pub fn on_hide(&mut self) {
         self.filtered.clear();
+        self.full_output_blocks.clear();
     }
 
     /// Called when the window is shown.  Refills `filtered` from `all`
@@ -489,7 +496,10 @@ impl Launcher {
     }
 
     pub fn set_full_output(&mut self, title: String, text: String) {
-        self.state = LauncherState::FullOutput { title, text };
+        // Parse once here, not per render: the view re-renders on every
+        // keystroke while visible, and output can be large.
+        self.full_output_blocks = crate::core::markdown::parse(&text);
+        self.state = LauncherState::FullOutput { title };
         // We can't scroll here easily because we don't have cx, but GPUI UniformListScrollHandle
         // might not need it until render.
     }
@@ -618,8 +628,8 @@ impl Render for Launcher {
         window.resize(size(px(t.window.width), px(target_height)));
 
         // Inner content: the actual launcher widgets or full page views.
-        let inner = if let LauncherState::FullOutput { title, text } = &self.state {
-            self.render_full_output(cx, title, text)
+        let inner = if let LauncherState::FullOutput { title } = &self.state {
+            self.render_full_output(cx, title)
         } else if let LauncherState::RunningFull { title } = &self.state {
             self.render_full_output_running(title)
         } else {
@@ -941,12 +951,7 @@ impl Launcher {
             .into_any_element()
     }
 
-    fn render_full_output(
-        &self,
-        cx: &mut Context<Self>,
-        title: &str,
-        text: &str,
-    ) -> gpui::AnyElement {
+    fn render_full_output(&self, cx: &mut Context<Self>, title: &str) -> gpui::AnyElement {
         let t = &self.theme;
 
         let header = div()
@@ -977,39 +982,32 @@ impl Launcher {
             )
             .child(div().text_xs().text_color(rgb(0x565f89)).child("↵ Rerun"));
 
-        let lines: Vec<gpui::SharedString> = if text.is_empty() {
-            vec![gpui::SharedString::from("(no output)")]
+        let block_count = self.full_output_blocks.len();
+        let body = if block_count == 0 {
+            div()
+                .flex_1()
+                .text_sm()
+                .font_family("JetBrains Mono")
+                .text_color(rgb(Self::color(&t.inputbar.placeholder_color)))
+                .child("(no output)")
+                .into_any()
         } else {
-            text.lines()
-                .map(|l| gpui::SharedString::from(l.to_string()))
-                .collect()
+            gpui::uniform_list(
+                "full_output_blocks",
+                block_count,
+                cx.processor(
+                    move |this: &mut Launcher, range: std::ops::Range<usize>, _window, _cx| {
+                        range
+                            .map(|i| this.render_md_block(&this.full_output_blocks[i]))
+                            .collect()
+                    },
+                ),
+            )
+            .flex_1()
+            .w_full()
+            .track_scroll(&self.full_output_scroll)
+            .into_any()
         };
-        let line_count = lines.len();
-
-        let body = gpui::uniform_list(
-            "full_output_lines",
-            line_count,
-            cx.processor(
-                move |_this: &mut Launcher, range: std::ops::Range<usize>, _window, _cx| {
-                    let lines = lines.clone();
-                    let t = _this.theme.clone();
-                    range
-                        .map(move |i| {
-                            div()
-                                .py(px(1.5))
-                                .text_sm()
-                                .font_family("JetBrains Mono")
-                                .text_color(rgb(Self::color(&t.element.text_color)))
-                                .child(lines.get(i).map(|s| s.to_string()).unwrap_or_default())
-                                .into_any()
-                        })
-                        .collect()
-                },
-            ),
-        )
-        .flex_1()
-        .w_full()
-        .track_scroll(&self.full_output_scroll);
 
         div()
             .size_full()
@@ -1019,6 +1017,169 @@ impl Launcher {
             .child(header)
             .child(body)
             .into_any_element()
+    }
+
+    /// Render one markdown block of the full-output view.
+    fn render_md_block(&self, block: &crate::core::markdown::MdBlock) -> gpui::AnyElement {
+        use crate::core::markdown::MdBlock;
+        let t = &self.theme;
+        let text_color = rgb(Self::color(&t.element.text_color));
+        let dim_color = rgb(Self::color(&t.inputbar.placeholder_color));
+        let mono = gpui::SharedString::from("JetBrains Mono");
+
+        let base = gpui::TextStyle {
+            font_size: px(t.font.size).into(),
+            color: Self::hsla(&t.element.text_color),
+            ..Default::default()
+        };
+
+        match block {
+            MdBlock::Heading { level, text } => {
+                let scale = match *level {
+                    1 => 1.5,
+                    2 => 1.3,
+                    3 => 1.15,
+                    _ => 1.0,
+                };
+                let mut style = base.clone();
+                style.font_size = px(t.font.size * scale).into();
+                style.font_weight = gpui::FontWeight::BOLD;
+                apply_md_style(div().w_full().mt_2(), &style)
+                    .child(self.styled_md_text(text))
+                    .into_any()
+            }
+            MdBlock::Paragraph(text) => apply_md_style(div().w_full(), &base)
+                .child(self.styled_md_text(text))
+                .into_any(),
+            MdBlock::Blockquote(text) => {
+                let mut style = base.clone();
+                style.color = Self::hsla(&t.inputbar.placeholder_color);
+                apply_md_style(
+                    div()
+                        .w_full()
+                        .border_l_2()
+                        .border_color(rgb(Self::color(&t.window.border_color)))
+                        .pl_3(),
+                    &style,
+                )
+                .child(self.styled_md_text(text))
+                .into_any()
+            }
+            MdBlock::CodeBlock { lang, text } => {
+                let mut box_ = div()
+                    .w_full()
+                    .rounded_md()
+                    .border_1()
+                    .border_color(rgb(Self::color(&t.window.border_color)))
+                    .bg(rgb(Self::color(&t.inputbar.background)))
+                    .p_3();
+                if let Some(lang) = lang {
+                    box_ = box_.child(
+                        div()
+                            .text_xs()
+                            .text_color(dim_color)
+                            .mb_1()
+                            .child(lang.clone()),
+                    );
+                }
+                box_ = box_.child(
+                    div()
+                        .font_family(mono)
+                        .text_sm()
+                        .text_color(text_color)
+                        .child(text.clone()),
+                );
+                box_.into_any()
+            }
+            MdBlock::ListItem { number, text } => {
+                let marker = number.map_or_else(|| "•".to_string(), |n| format!("{n}."));
+                apply_md_style(div().w_full().flex().flex_row().gap_2(), &base)
+                    .child(div().text_color(text_color).child(marker))
+                    .child(div().flex_1().child(self.styled_md_text(text)))
+                    .into_any()
+            }
+            MdBlock::Rule => div()
+                .w_full()
+                .h(px(1.0))
+                .my_1()
+                .bg(rgb(Self::color(&t.window.border_color)))
+                .into_any(),
+            MdBlock::Plain(text) => div()
+                .w_full()
+                .font_family(mono)
+                .text_sm()
+                .text_color(dim_color)
+                .child(text.clone())
+                .into_any(),
+        }
+    }
+
+    /// Build a GPUI `StyledText` element for markdown text: one text layout
+    /// per block with per-range highlights for inline emphasis and a
+    /// monospace font override for inline code. The base style (family,
+    /// size, colour) is inherited from the parent element's `text_style`.
+    fn styled_md_text(&self, md: &crate::core::markdown::MdText) -> gpui::StyledText {
+        use crate::core::markdown::InlineKind;
+
+        let mut highlights: Vec<(std::ops::Range<usize>, gpui::HighlightStyle)> = Vec::new();
+        let mut code_ranges: Vec<(std::ops::Range<usize>, gpui::SharedString)> = Vec::new();
+        for mark in &md.marks {
+            let style = match mark.kind {
+                InlineKind::Bold => gpui::HighlightStyle {
+                    font_weight: Some(gpui::FontWeight::BOLD),
+                    ..Default::default()
+                },
+                InlineKind::Italic => gpui::HighlightStyle {
+                    font_style: Some(gpui::FontStyle::Italic),
+                    ..Default::default()
+                },
+                InlineKind::Strikethrough => gpui::HighlightStyle {
+                    strikethrough: Some(gpui::StrikethroughStyle::default()),
+                    ..Default::default()
+                },
+                InlineKind::Link => gpui::HighlightStyle {
+                    color: Some(Self::hsla_hex(0x7aa2f7)),
+                    underline: Some(gpui::UnderlineStyle::default()),
+                    ..Default::default()
+                },
+                InlineKind::Code => gpui::HighlightStyle {
+                    background_color: Some(Self::hsla_hex(0x3b4252).opacity(0.35)),
+                    ..Default::default()
+                },
+            };
+            if mark.kind == InlineKind::Code {
+                code_ranges.push((
+                    mark.range.clone(),
+                    gpui::SharedString::from("JetBrains Mono"),
+                ));
+            }
+            highlights.push((mark.range.clone(), style));
+        }
+
+        let mut styled = gpui::StyledText::new(md.text.clone());
+        if !code_ranges.is_empty() {
+            styled = styled.with_font_family_overrides(code_ranges);
+        }
+        if !highlights.is_empty() {
+            styled = styled.with_highlights(highlights);
+        }
+        styled
+    }
+
+    /// Resolve a theme hex colour string to an `Hsla` for `TextStyle` fields.
+    fn hsla(hex: &str) -> gpui::Hsla {
+        Self::hsla_hex(Self::color(hex))
+    }
+
+    /// Convert a 0xRRGGBB value to an `Hsla`.
+    fn hsla_hex(rgb: u32) -> gpui::Hsla {
+        gpui::Rgba {
+            r: ((rgb >> 16) & 0xff) as f32 / 255.0,
+            g: ((rgb >> 8) & 0xff) as f32 / 255.0,
+            b: (rgb & 0xff) as f32 / 255.0,
+            a: 1.0,
+        }
+        .into()
     }
 
     /// Render the result list styled from `theme.listview` and `theme.element`.
@@ -1286,6 +1447,17 @@ impl Launcher {
             .collect::<Vec<_>>();
         (!labels.is_empty()).then(|| labels.join("  "))
     }
+}
+
+/// Apply a full `TextStyle` to an element so its text children (including
+/// `StyledText`, which inherits the parent style) render with it.
+fn apply_md_style(mut el: gpui::Div, style: &gpui::TextStyle) -> gpui::Div {
+    let ts = el.text_style();
+    ts.color = Some(style.color);
+    ts.font_size = Some(style.font_size);
+    ts.font_weight = Some(style.font_weight);
+    ts.font_style = Some(style.font_style);
+    el
 }
 
 /// Expand a leading `~` in a path to the user's home directory.
@@ -1780,10 +1952,8 @@ mod tests {
             AppConfig::default(),
             History::test_new(PathBuf::new(), Vec::new()),
         );
-        l.state = LauncherState::FullOutput {
-            title: "t".into(),
-            text: "out".into(),
-        };
+        l.state = LauncherState::FullOutput { title: "t".into() };
+        l.full_output_blocks = crate::core::markdown::parse("out");
         l.handle_keystroke(&key("a"));
         assert_eq!(l.query, "");
         l.handle_keystroke(&key("down"));
