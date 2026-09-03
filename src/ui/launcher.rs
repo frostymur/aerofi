@@ -590,25 +590,21 @@ impl Launcher {
         path: &std::path::Path,
         output: Option<gpui::SharedString>,
     ) {
-        for target in &mut self.all {
-            let is_match = match target {
+        // Update the master list and the rendered rows in place. Inline
+        // output never affects ranking, so re-filtering (which resets the
+        // scroll position) is unnecessary.
+        for target in self.all.iter_mut().chain(self.filtered.iter_mut()) {
+            let is_match = matches!(
+                target,
                 Target::Script {
                     path: p,
                     mode: ScriptMode::Inline,
                     ..
-                } => p.as_ref() == path,
-                _ => false,
-            };
+                } if p.as_ref() == path
+            );
             if is_match {
-                target.set_inline_output(output);
-                break;
+                target.set_inline_output(output.clone());
             }
-        }
-        // Only rebuild search results if the window is visible.
-        // If hidden, the window will re-filter on the next show anyway,
-        // avoiding background memory leaks from GPUI image caching.
-        if crate::ui::window::is_visible() {
-            self.refilter();
         }
     }
 
@@ -1749,10 +1745,36 @@ mod tests {
         l.filtered.iter().map(|t| t.name().to_string()).collect()
     }
 
-    fn cap_config(max_results: usize) -> AppConfig {
+        fn cap_config(max_results: usize) -> AppConfig {
         let mut config = AppConfig::default();
         config.general.max_results = max_results;
         config
+    }
+
+    #[test]
+    fn inline_output_updates_rows_without_reordering() {
+        let mut inline = item("Inline Script");
+        if let Target::Script { mode, .. } = &mut inline {
+            *mode = crate::core::item::ScriptMode::Inline;
+        }
+        let mut l = Launcher::new(
+            vec![item("Alpha"), inline, item("Zeta")],
+            ThemeConfig::default(),
+            AppConfig::default(),
+            History::test_new(PathBuf::new(), Vec::new()),
+        );
+        let path = match &l.all[1] {
+            Target::Script { path, .. } => path.clone(),
+            _ => unreachable!(),
+        };
+
+        // A periodic refresh updates the subtitle on both the master list
+        // and the rendered rows, without re-filtering (which would reset
+        // the scroll position).
+        l.apply_inline_output(&path, Some("subtitle-updated".into()));
+        assert_eq!(l.all[1].inline_output(), Some("subtitle-updated"));
+        assert_eq!(l.filtered[1].inline_output(), Some("subtitle-updated"));
+        assert_eq!(names(&l), vec!["Alpha", "Inline Script", "Zeta"]);
     }
 
     #[test]
