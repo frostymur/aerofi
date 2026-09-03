@@ -1,9 +1,10 @@
 //! Execution of [`Target`]s.
 
+use std::io::Write;
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
-use crate::core::item::Target;
+use crate::core::item::{ScriptMode, Target};
 
 /// Build the `Command` that runs a script: the interpreter from its
 /// shebang (`#!/usr/bin/env bash`, `#!/usr/bin/env node`, ...). Without a
@@ -41,17 +42,60 @@ pub fn script_command(path: &Path) -> Command {
 
 /// Run the given target asynchronously or detached.
 ///
-/// Applications open via `open <path>`; scripts run as `sh <path>`.
-/// Failures are reported to stderr, never panics.
+/// Applications open via `open <path>`; scripts run through their shebang
+/// interpreter. `pipe` scripts capture stdout and copy it to the clipboard
+/// (`pbcopy`), matching the launcher path. Failures are reported to
+/// stderr, never panics.
 pub fn execute(target: &Target) {
-    let (program, path) = match target {
-        Target::App { path, .. } => ("open", path),
-        Target::Script { path, .. } => ("sh", path),
+    match target {
+        Target::App { path, .. } => {
+            if let Err(e) = Command::new("open").arg(&**path).spawn() {
+                eprintln!("aerofi: failed to run {}: {e}", target.name());
+            }
+        }
+        Target::Script {
+            mode: ScriptMode::Pipe,
+            path,
+            ..
+        } => {
+            // Pipe to clipboard without blocking the main thread (the
+            // global hotkey handler runs on it).
+            let path = path.clone();
+            let name = target.name().to_string();
+            let thread_name = name.clone();
+            let spawn_result = std::thread::Builder::new()
+                .name(format!("aerofi-pipe:{name}"))
+                .spawn(move || {
+                    let output = script_command(&path).output();
+                    let text = match output {
+                        Ok(out) => String::from_utf8_lossy(&out.stdout).to_string(),
+                        Err(e) => {
+                            eprintln!("aerofi: failed to run {thread_name}: {e}");
+                            return;
+                        }
+                    };
+                    let Ok(mut pbcopy) = Command::new("pbcopy").stdin(Stdio::piped()).spawn()
+                    else {
+                        eprintln!("aerofi: failed to spawn pbcopy for {thread_name}");
+                        return;
+                    };
+                    let _ = pbcopy
+                        .stdin
+                        .take()
+                        .map(|mut stdin| stdin.write_all(text.as_bytes()));
+                    let _ = pbcopy.wait();
+                });
+            if let Err(e) = spawn_result {
+                eprintln!("aerofi: failed to spawn pipe thread for {name}: {e}");
+            }
+        }
+        Target::Script { path, .. } => {
+            if let Err(e) = script_command(path).spawn() {
+                eprintln!("aerofi: failed to run {}: {e}", target.name());
+            }
+        }
         // Built-in actions are handled by the UI, never executed here.
-        Target::Builtin { .. } => return,
-    };
-    if let Err(e) = Command::new(program).arg(&**path).spawn() {
-        eprintln!("aerofi: failed to run {}: {e}", target.name());
+        Target::Builtin { .. } => {}
     }
 }
 
