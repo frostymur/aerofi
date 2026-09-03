@@ -334,6 +334,16 @@ impl Target {
         }
     }
 
+    /// Category label for the right-side row badge: "Script", "Application",
+    /// or "Aerofi".
+    pub fn category_label(&self) -> &'static str {
+        match self {
+            Self::Script { .. } => "Script",
+            Self::App { .. } => "Application",
+            Self::Builtin { .. } => "Aerofi",
+        }
+    }
+
     /// Parse a single script file into a `Target::Script`.
     pub fn script_from_file(path: &Path) -> Option<Self> {
         let file_stem = path.file_stem()?.to_string_lossy().into_owned();
@@ -456,6 +466,7 @@ impl Target {
 mod tests {
     use super::*;
     use std::io::Write;
+    use std::path::PathBuf;
 
     #[test]
     fn parses_all_raycast_tags() {
@@ -573,5 +584,27 @@ echo "Running script..."
         assert_eq!(ScriptMode::parse("inline"), ScriptMode::Inline);
         assert_eq!(ScriptMode::parse("pipe"), ScriptMode::Pipe);
         assert_eq!(ScriptMode::parse("unknown_mode"), ScriptMode::FullOutput);
+    }
+
+    #[test]
+    fn category_label_matches_target_variant() {
+        let app = Target::App {
+            name: "Safari".into(),
+            path: Arc::from(PathBuf::from("/Applications/Safari.app")),
+            icon_path: None,
+        };
+        let script = Target::Script {
+            name: "hello".into(),
+            path: Arc::from(PathBuf::from("/tmp/hello.sh")),
+            mode: ScriptMode::FullOutput,
+            icon: None,
+            metadata: Arc::new(RaycastMetadata::default()),
+            metatags: ScriptMetatags::default(),
+            inline_output: None,
+        };
+        let builtin = Target::reload_config();
+        assert_eq!(app.category_label(), "Application");
+        assert_eq!(script.category_label(), "Script");
+        assert_eq!(builtin.category_label(), "Aerofi");
     }
 }

@@ -190,6 +190,8 @@ pub struct ListViewConfig {
     pub scrollbar: bool,
     pub empty_text: String,
     pub empty_text_color: String,
+    /// Text color for the category badge (e.g. "Script", "Application").
+    pub category_color: String,
     /// When `true`, the list is hidden and the window shrinks to the
     /// inputbar until the user types a query.
     pub require_input: Option<bool>,
@@ -203,6 +205,7 @@ impl Default for ListViewConfig {
             scrollbar: false,
             empty_text: "No matches".to_string(),
             empty_text_color: "#565f89".to_string(),
+            category_color: "#7a88b5".to_string(),
             require_input: None,
         }
     }
@@ -262,6 +265,9 @@ pub struct ElementConfig {
     pub description_color: Option<String>,
     pub show_icons: bool,
     pub icon_size: f32,
+    /// Whether to show the right-side category badge ("Script", "Application",
+    /// "Aerofi") on each list row and grid cell.
+    pub show_category_badge: bool,
     pub layout: Option<Vec<String>>,
     pub selected: SelectedState,
     pub hover: Option<HoverState>,
@@ -277,6 +283,7 @@ impl Default for ElementConfig {
             description_color: Some("#565f89".to_string()),
             show_icons: true,
             icon_size: 24.0,
+            show_category_badge: true,
             layout: None,
             selected: SelectedState::default(),
             hover: Some(HoverState::default()),
@@ -345,6 +352,7 @@ impl ThemeConfig {
 
         // ListView
         resolve(&mut self.listview.empty_text_color, colors);
+        resolve(&mut self.listview.category_color, colors);
 
         // Element
         resolve(&mut self.element.background, colors);
