@@ -265,6 +265,9 @@ pub struct ElementConfig {
     pub description_color: Option<String>,
     pub show_icons: bool,
     pub icon_size: f32,
+    /// Whether to show the right-side category badge ("Script", "Application",
+    /// "Aerofi") on each list row and grid cell.
+    pub show_category_badge: bool,
     pub layout: Option<Vec<String>>,
     pub selected: SelectedState,
     pub hover: Option<HoverState>,
@@ -280,6 +283,7 @@ impl Default for ElementConfig {
             description_color: Some("#565f89".to_string()),
             show_icons: true,
             icon_size: 24.0,
+            show_category_badge: true,
             layout: None,
             selected: SelectedState::default(),
             hover: Some(HoverState::default()),

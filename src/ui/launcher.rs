@@ -1423,34 +1423,34 @@ impl Launcher {
 
         let pad_h = el.padding.first().copied().unwrap_or(8.0);
 
-        Self::with_item_mouse_handlers(
-            div()
-                .flex()
-                .flex_col()
-                .items_center()
-                .gap_1()
-                .p(px(pad_h))
-                .rounded(px(el.corner_radius))
-                .cursor(CursorStyle::PointingHand)
-                .bg(cell_bg)
-                .child(icon_element)
-                .child(
-                    div()
-                        .text_color(name_color)
-                        .text_size(px(t.font.size - 1.0))
-                        .child(item.name().to_string()),
-                )
-                .child(
-                    div()
-                        .text_size(px(t.font.size - 2.0))
-                        .text_color(rgb(Self::color(&t.listview.category_color)))
-                        .child(item.category_label().to_string()),
-                ),
-            format!("cell-{filtered_ix}"),
-            filtered_ix,
-            cx,
-        )
-        .into_any()
+        let mut cell = div()
+            .flex()
+            .flex_col()
+            .items_center()
+            .gap_1()
+            .p(px(pad_h))
+            .rounded(px(el.corner_radius))
+            .cursor(CursorStyle::PointingHand)
+            .bg(cell_bg)
+            .child(icon_element)
+            .child(
+                div()
+                    .text_color(name_color)
+                    .text_size(px(t.font.size - 1.0))
+                    .child(item.name().to_string()),
+            );
+
+        if el.show_category_badge {
+            cell = cell.child(
+                div()
+                    .text_size(px(t.font.size - 2.0))
+                    .text_color(rgb(Self::color(&t.listview.category_color)))
+                    .child(item.category_label().to_string()),
+            );
+        }
+
+        Self::with_item_mouse_handlers(cell, format!("cell-{filtered_ix}"), filtered_ix, cx)
+            .into_any()
     }
 
     /// Build a single list row for `filtered_ix` (position within `filtered`).
@@ -1558,13 +1558,17 @@ impl Launcher {
         };
 
         // Right-aligned category label (e.g. "Script", "Application").
-        let cat_color = rgb(Self::color(&t.listview.category_color));
-        let row = row.child(
-            div()
-                .text_size(px(t.font.size - 2.0))
-                .text_color(cat_color)
-                .child(item.category_label().to_string()),
-        );
+        let row = if el.show_category_badge {
+            let cat_color = rgb(Self::color(&t.listview.category_color));
+            row.child(
+                div()
+                    .text_size(px(t.font.size - 2.0))
+                    .text_color(cat_color)
+                    .child(item.category_label().to_string()),
+            )
+        } else {
+            row
+        };
         Self::with_item_mouse_handlers(row, format!("row-{filtered_ix}"), filtered_ix, cx)
             .into_any()
     }
