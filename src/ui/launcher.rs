@@ -1439,6 +1439,12 @@ impl Launcher {
                         .text_color(name_color)
                         .text_size(px(t.font.size - 1.0))
                         .child(item.name().to_string()),
+                )
+                .child(
+                    div()
+                        .text_size(px(t.font.size - 2.0))
+                        .text_color(rgb(Self::color(&t.listview.category_color)))
+                        .child(item.category_label().to_string()),
                 ),
             format!("cell-{filtered_ix}"),
             filtered_ix,
@@ -1550,6 +1556,15 @@ impl Launcher {
             ),
             None => row,
         };
+
+        // Right-aligned category label (e.g. "Script", "Application").
+        let cat_color = rgb(Self::color(&t.listview.category_color));
+        let row = row.child(
+            div()
+                .text_size(px(t.font.size - 2.0))
+                .text_color(cat_color)
+                .child(item.category_label().to_string()),
+        );
         Self::with_item_mouse_handlers(row, format!("row-{filtered_ix}"), filtered_ix, cx)
             .into_any()
     }
