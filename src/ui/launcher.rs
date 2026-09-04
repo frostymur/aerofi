@@ -1449,6 +1449,30 @@ impl Launcher {
             );
         }
 
+        // Alias pill badges in grid cells.
+        let aliases = self.alias_labels(item.name());
+        if !aliases.is_empty() {
+            let alias_color = rgb(Self::color(&t.listview.category_color));
+            let mut pills = div().flex().gap_1().items_center().justify_center();
+            for alias in &aliases {
+                pills = pills.child(
+                    div()
+                        .px_1()
+                        .py_0()
+                        .rounded(px(4.0))
+                        .border_1()
+                        .border_color(alias_color)
+                        .child(
+                            div()
+                                .text_size(px(t.font.size - 3.0))
+                                .text_color(alias_color)
+                                .child(alias.clone()),
+                        ),
+                );
+            }
+            cell = cell.child(pills);
+        }
+
         Self::with_item_mouse_handlers(cell, format!("cell-{filtered_ix}"), filtered_ix, cx)
             .into_any()
     }
@@ -1557,6 +1581,32 @@ impl Launcher {
             None => row,
         };
 
+        // Right-aligned alias pill badges (e.g. "twit", "gh").
+        let aliases = self.alias_labels(item.name());
+        let alias_color = rgb(Self::color(&t.listview.category_color));
+        let row = if aliases.is_empty() {
+            row
+        } else {
+            let mut r = row;
+            for alias in &aliases {
+                r = r.child(
+                    div()
+                        .px_1()
+                        .py_0()
+                        .rounded(px(4.0))
+                        .border_1()
+                        .border_color(alias_color)
+                        .child(
+                            div()
+                                .text_size(px(t.font.size - 3.0))
+                                .text_color(alias_color)
+                                .child(alias.clone()),
+                        ),
+                );
+            }
+            r
+        };
+
         // Right-aligned category label (e.g. "Script", "Application").
         let row = if el.show_category_badge {
             let cat_color = rgb(Self::color(&t.listview.category_color));
@@ -1623,6 +1673,16 @@ impl Launcher {
             .map(|combo| format_combo(&combo))
             .collect::<Vec<_>>();
         (!labels.is_empty()).then(|| labels.join("  "))
+    }
+
+    /// All aliases pointing at the given target name, for display as pill badges.
+    fn alias_labels(&self, name: &str) -> Vec<String> {
+        self.app_config
+            .aliases
+            .iter()
+            .filter(|(_, target)| target.as_str() == name)
+            .map(|(alias, _)| alias.clone())
+            .collect()
     }
 }
 
