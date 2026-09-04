@@ -1440,35 +1440,47 @@ impl Launcher {
                     .child(item.name().to_string()),
             );
 
-        if el.show_category_badge {
+        let cat_badge = &t.listview.category_badge;
+        if cat_badge.show {
+            let cat_badge = &t.listview.category_badge;
             cell = cell.child(
                 div()
-                    .text_size(px(t.font.size - 2.0))
-                    .text_color(rgb(Self::color(&t.listview.category_color)))
+                    .text_size(px(t.font.size - cat_badge.font_size_offset))
+                    .text_color(rgb(Self::color(&cat_badge.color)))
                     .child(item.category_label().to_string()),
             );
         }
 
         // Alias pill badges in grid cells.
         let aliases = self.alias_labels(item.name());
-        if !aliases.is_empty() {
-            let alias_color = rgb(Self::color(&t.listview.category_color));
+        let ab = &t.listview.alias_badge;
+        if ab.show && !aliases.is_empty() {
+            let ab = &t.listview.alias_badge;
+            let alias_color = rgb(Self::color(&ab.color));
+            let alias_border_color = rgb(Self::color(
+                ab.border_color.as_deref().unwrap_or(&ab.color),
+            ));
+            let alias_font_size = px(t.font.size - ab.font_size_offset);
+            let alias_radius = px(ab.radius);
+            let alias_px = px(ab.padding_x);
             let mut pills = div().flex().gap_1().items_center().justify_center();
             for alias in &aliases {
-                pills = pills.child(
-                    div()
-                        .px_1()
-                        .py_0()
-                        .rounded(px(4.0))
-                        .border_1()
-                        .border_color(alias_color)
-                        .child(
-                            div()
-                                .text_size(px(t.font.size - 3.0))
-                                .text_color(alias_color)
-                                .child(alias.clone()),
-                        ),
-                );
+                let pill = div()
+                    .px(alias_px)
+                    .py_0()
+                    .rounded(alias_radius)
+                    .child(
+                        div()
+                            .text_size(alias_font_size)
+                            .text_color(alias_color)
+                            .child(alias.clone()),
+                    );
+                let pill = if ab.border {
+                    pill.border_1().border_color(alias_border_color)
+                } else {
+                    pill
+                };
+                pills = pills.child(pill);
             }
             cell = cell.child(pills);
         }
@@ -1583,36 +1595,46 @@ impl Launcher {
 
         // Right-aligned alias pill badges (e.g. "twit", "gh").
         let aliases = self.alias_labels(item.name());
-        let alias_color = rgb(Self::color(&t.listview.category_color));
-        let row = if aliases.is_empty() {
-            row
-        } else {
+        let ab = &t.listview.alias_badge;
+        let row = if ab.show && !aliases.is_empty() {
+            let alias_color = rgb(Self::color(&ab.color));
+            let alias_border_color = rgb(Self::color(
+                ab.border_color.as_deref().unwrap_or(&ab.color),
+            ));
+            let alias_font_size = px(t.font.size - ab.font_size_offset);
+            let alias_radius = px(ab.radius);
+            let alias_px = px(ab.padding_x);
             let mut r = row;
             for alias in &aliases {
-                r = r.child(
-                    div()
-                        .px_1()
-                        .py_0()
-                        .rounded(px(4.0))
-                        .border_1()
-                        .border_color(alias_color)
-                        .child(
-                            div()
-                                .text_size(px(t.font.size - 3.0))
-                                .text_color(alias_color)
-                                .child(alias.clone()),
-                        ),
-                );
+                let pill = div()
+                    .px(alias_px)
+                    .py_0()
+                    .rounded(alias_radius)
+                    .child(
+                        div()
+                            .text_size(alias_font_size)
+                            .text_color(alias_color)
+                            .child(alias.clone()),
+                    );
+                let pill = if ab.border {
+                    pill.border_1().border_color(alias_border_color)
+                } else {
+                    pill
+                };
+                r = r.child(pill);
             }
             r
+        } else {
+            row
         };
 
         // Right-aligned category label (e.g. "Script", "Application").
-        let row = if el.show_category_badge {
-            let cat_color = rgb(Self::color(&t.listview.category_color));
+        let cat_badge = &t.listview.category_badge;
+        let row = if cat_badge.show {
+            let cat_color = rgb(Self::color(&t.listview.category_badge.color));
             row.child(
                 div()
-                    .text_size(px(t.font.size - 2.0))
+                    .text_size(px(t.font.size - t.listview.category_badge.font_size_offset))
                     .text_color(cat_color)
                     .child(item.category_label().to_string()),
             )

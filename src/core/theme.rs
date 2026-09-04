@@ -179,6 +179,44 @@ impl Default for InputBarConfig {
 }
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Badge config (shared by category and alias badges)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct BadgeConfig {
+    /// Whether to show this badge.
+    pub show: bool,
+    /// Text color.
+    pub color: String,
+    /// Font size offset (subtracted from the theme base font size).
+    pub font_size_offset: f32,
+    /// Corner radius.
+    pub radius: f32,
+    /// Horizontal padding.
+    pub padding_x: f32,
+    /// Whether to draw a border around the badge.
+    pub border: bool,
+    /// Border color (falls back to `color` if empty).
+    pub border_color: Option<String>,
+}
+
+impl Default for BadgeConfig {
+    fn default() -> Self {
+        Self {
+            show: true,
+            color: "#7a88b5".to_string(),
+            font_size_offset: 3.0,
+            radius: 4.0,
+            padding_x: 4.0,
+            border: false,
+            border_color: None,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // ListView
 // ---------------------------------------------------------------------------
 
@@ -190,8 +228,10 @@ pub struct ListViewConfig {
     pub scrollbar: bool,
     pub empty_text: String,
     pub empty_text_color: String,
-    /// Text color for the category badge (e.g. "Script", "Application").
-    pub category_color: String,
+    /// Styling for category badges ("Script", "Application", "Aerofi").
+    pub category_badge: BadgeConfig,
+    /// Styling for alias pill badges.
+    pub alias_badge: BadgeConfig,
     /// When `true`, the list is hidden and the window shrinks to the
     /// inputbar until the user types a query.
     pub require_input: Option<bool>,
@@ -199,13 +239,16 @@ pub struct ListViewConfig {
 
 impl Default for ListViewConfig {
     fn default() -> Self {
+        let mut alias_badge = BadgeConfig::default();
+        alias_badge.border = true;
         Self {
             columns: 1,
             spacing: 6.0,
             scrollbar: false,
             empty_text: "No matches".to_string(),
             empty_text_color: "#565f89".to_string(),
-            category_color: "#7a88b5".to_string(),
+            category_badge: BadgeConfig::default(),
+            alias_badge,
             require_input: None,
         }
     }
@@ -265,9 +308,6 @@ pub struct ElementConfig {
     pub description_color: Option<String>,
     pub show_icons: bool,
     pub icon_size: f32,
-    /// Whether to show the right-side category badge ("Script", "Application",
-    /// "Aerofi") on each list row and grid cell.
-    pub show_category_badge: bool,
     pub layout: Option<Vec<String>>,
     pub selected: SelectedState,
     pub hover: Option<HoverState>,
@@ -283,7 +323,6 @@ impl Default for ElementConfig {
             description_color: Some("#565f89".to_string()),
             show_icons: true,
             icon_size: 24.0,
-            show_category_badge: true,
             layout: None,
             selected: SelectedState::default(),
             hover: Some(HoverState::default()),
@@ -352,7 +391,9 @@ impl ThemeConfig {
 
         // ListView
         resolve(&mut self.listview.empty_text_color, colors);
-        resolve(&mut self.listview.category_color, colors);
+        resolve(&mut self.listview.category_badge.color, colors);
+        resolve(&mut self.listview.alias_badge.color, colors);
+        resolve_opt(&mut self.listview.alias_badge.border_color, colors);
 
         // Element
         resolve(&mut self.element.background, colors);
