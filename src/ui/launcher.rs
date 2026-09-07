@@ -316,19 +316,6 @@ impl Launcher {
                     self.query.push_str(c);
                     self.refilter();
                     self.selected = 0;
-                    // A configured alias: typing it exactly runs its target
-                    // immediately (no Enter needed).
-                    if let Some(item) = self.alias_target() {
-                        let item = item.clone();
-                        let action = self.execute_item(&item);
-                        if matches!(
-                            action,
-                            LauncherAction::Hide | LauncherAction::ExecuteScript(..)
-                        ) {
-                            self.reset();
-                        }
-                        return action;
-                    }
                 }
                 LauncherAction::None
             }
