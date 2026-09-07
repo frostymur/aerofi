@@ -63,6 +63,8 @@ pub enum LauncherState {
     Confirming {
         target: Target,
         args_values: Vec<String>,
+        /// Which button is focused: `true` = Yes, `false` = No.
+        focused_button: bool,
     },
 }
 
@@ -191,7 +193,27 @@ impl Launcher {
             ("enter" | "return", false)
                 if matches!(&self.state, LauncherState::Confirming { .. }) =>
             {
-                self.confirm_and_run()
+                if let LauncherState::Confirming { focused_button, .. } = &self.state {
+                    if *focused_button {
+                        self.confirm_and_run()
+                    } else {
+                        self.state = LauncherState::Search;
+                        LauncherAction::None
+                    }
+                } else {
+                    LauncherAction::None
+                }
+            }
+            ("left" | "right", false)
+                if matches!(&self.state, LauncherState::Confirming { .. }) =>
+            {
+                if let LauncherState::Confirming {
+                    focused_button, ..
+                } = &mut self.state
+                {
+                    *focused_button = !*focused_button;
+                }
+                LauncherAction::None
             }
             ("enter" | "return", false)
                 if matches!(&self.state, LauncherState::ArgumentInput { .. }) =>
@@ -213,6 +235,7 @@ impl Launcher {
                         self.state = LauncherState::Confirming {
                             target: t,
                             args_values: vals,
+                            focused_button: true,
                         };
                         return LauncherAction::None;
                     } else {
@@ -239,6 +262,30 @@ impl Launcher {
                 } = &mut self.state
                 {
                     *focused_index = (*focused_index + 1) % args.len();
+                }
+                LauncherAction::None
+            }
+            ("left", false) if matches!(&self.state, LauncherState::ArgumentInput { .. }) => {
+                if let LauncherState::ArgumentInput {
+                    focused_index, ..
+                } = &mut self.state
+                {
+                    if *focused_index > 0 {
+                        *focused_index -= 1;
+                    }
+                }
+                LauncherAction::None
+            }
+            ("right", false) if matches!(&self.state, LauncherState::ArgumentInput { .. }) => {
+                if let LauncherState::ArgumentInput {
+                    args,
+                    focused_index,
+                    ..
+                } = &mut self.state
+                {
+                    if *focused_index < args.len() - 1 {
+                        *focused_index += 1;
+                    }
                 }
                 LauncherAction::None
             }
@@ -442,6 +489,7 @@ impl Launcher {
                     self.state = LauncherState::Confirming {
                         target: item.clone(),
                         args_values: Vec::new(),
+                        focused_button: true,
                     };
                     return LauncherAction::None;
                 }
@@ -544,6 +592,7 @@ impl Launcher {
         let LauncherState::Confirming {
             target,
             args_values,
+            ..
         } = &self.state
         else {
             return LauncherAction::None;
@@ -732,8 +781,8 @@ impl Render for Launcher {
                                     inner_box = inner_box.child(self.render_listview(cx, columns));
                                 }
                             }
-                            LauncherState::Confirming { target, .. } => {
-                                inner_box = inner_box.child(self.render_confirmation(target, cx));
+                            LauncherState::Confirming { target, focused_button, .. } => {
+                                inner_box = inner_box.child(self.render_confirmation(target, *focused_button, cx));
                             }
                             LauncherState::ArgumentInput { .. } => {
                                 // Argument options list (dropdown) could be rendered here.
@@ -901,6 +950,19 @@ impl Launcher {
                         .text_color(t_color)
                         .cursor(CursorStyle::PointingHand)
                         .id(format!("arg-chip-{i}"))
+                        .on_hover(cx.listener(move |this, hovered: &bool, _window, cx| {
+                            if *hovered {
+                                if let LauncherState::ArgumentInput {
+                                    focused_index, ..
+                                } = &mut this.state
+                                {
+                                    if *focused_index != i {
+                                        *focused_index = i;
+                                        cx.notify();
+                                    }
+                                }
+                            }
+                        }))
                         .on_click(cx.listener(move |this, event, _window, cx| {
                             if is_primary_click(event) {
                                 this.focus_argument(i);
@@ -960,10 +1022,21 @@ impl Launcher {
             .into_any()
     }
 
-    fn render_confirmation(&self, target: &Target, cx: &mut Context<Self>) -> gpui::AnyElement {
+    fn render_confirmation(&self, target: &Target, focused_button: bool, cx: &mut Context<Self>) -> gpui::AnyElement {
         let t = &self.theme;
         let text_color = rgb(Self::color(&t.element.text_color));
         let sel_bg = rgb(Self::color(&t.element.selected.background));
+        let sel_text = rgb(Self::color(&t.element.selected.text_color));
+        let desc_color = rgb(Self::color(
+            t.element.description_color.as_deref().unwrap_or(&t.element.text_color),
+        ));
+
+        let yes_bg = if focused_button { sel_bg } else { rgba(0x00000000) };
+        let yes_text = if focused_button { sel_text } else { text_color };
+        let yes_border = if focused_button { sel_bg } else { desc_color };
+        let no_bg = if !focused_button { sel_bg } else { rgba(0x00000000) };
+        let no_text = if !focused_button { sel_text } else { text_color };
+        let no_border = if !focused_button { sel_bg } else { desc_color };
 
         div()
             .flex_1()
@@ -987,8 +1060,10 @@ impl Launcher {
                             .px_4()
                             .py_2()
                             .rounded_md()
-                            .bg(sel_bg)
-                            .text_color(text_color)
+                            .bg(yes_bg)
+                            .border_1()
+                            .border_color(yes_border)
+                            .text_color(yes_text)
                             .cursor(CursorStyle::PointingHand)
                             .id("confirm-yes")
                             .on_click(cx.listener(move |this, event, _window, cx| {
@@ -1004,9 +1079,10 @@ impl Launcher {
                             .px_4()
                             .py_2()
                             .rounded_md()
+                            .bg(no_bg)
                             .border_1()
-                            .border_color(sel_bg)
-                            .text_color(text_color)
+                            .border_color(no_border)
+                            .text_color(no_text)
                             .cursor(CursorStyle::PointingHand)
                             .id("confirm-no")
                             .on_click(cx.listener(move |this, event, _window, cx| {
