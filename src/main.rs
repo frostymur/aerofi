@@ -68,6 +68,13 @@ fn main() {
         match sys::carbon::parse_combo(combo) {
             Some((keycode, modifiers)) => {
                 if let Some(target) = targets.iter().find(|t| t.name() == name).cloned() {
+                    // Skip pipe-mode scripts: they copy to clipboard, no global hotkey needed.
+                    if matches!(target, crate::core::item::Target::Script { mode: crate::core::item::ScriptMode::Pipe, .. }) {
+                        eprintln!(
+                            "aerofi: warning: global shortcut {combo:?}: skipping pipe-mode script {name:?}"
+                        );
+                        continue;
+                    }
                     globals.push(sys::carbon::GlobalBinding {
                         keycode,
                         modifiers,

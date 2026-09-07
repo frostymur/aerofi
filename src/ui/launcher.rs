@@ -17,7 +17,7 @@ use gpui::{
 
 use crate::core::config::AppConfig;
 use crate::core::history::History;
-use crate::core::item::{BuiltinAction, ScriptMode, Target};
+use crate::core::item::{BuiltinAction, ScriptMetatags, ScriptMode, Target};
 use crate::core::search::SearchIndex;
 use crate::core::theme::{self, ThemeConfig, Widget, parse_hex_color};
 
@@ -95,6 +95,10 @@ pub struct Launcher {
     /// Parsed markdown blocks of the current full-output result (empty
     /// while not showing one; cleared on hide to release the memory).
     full_output_blocks: Vec<crate::core::markdown::MdBlock>,
+    /// Layout overrides (`@aerofi.show_search` / `@aerofi.columns`)
+    /// committed by the last executed script. Kept until the launcher is
+    /// hidden; never applied by selection alone.
+    sticky_metatags: Option<ScriptMetatags>,
 }
 
 impl Launcher {
@@ -118,7 +122,17 @@ impl Launcher {
             state: LauncherState::Search,
             full_output_scroll: UniformListScrollHandle::new(),
             full_output_blocks: Vec::new(),
+            sticky_metatags: None,
         }
+    }
+
+    /// Effective list columns: the sticky metatag override from the last
+    /// executed script, or the theme's configured value.
+    fn effective_columns(&self) -> usize {
+        self.sticky_metatags
+            .as_ref()
+            .and_then(|m| m.columns)
+            .unwrap_or(self.theme.listview.columns)
     }
 
     /// Convenience: resolve a theme hex colour string to a `u32` for
@@ -263,22 +277,22 @@ impl Launcher {
             }
             _ if !matches!(self.state, LauncherState::Search) => LauncherAction::None,
             ("up", false) => {
-                let cols = self.theme.listview.columns;
+                let cols = self.effective_columns();
                 let step = if cols > 1 { cols as isize } else { 1 };
                 self.move_selection(-step);
                 LauncherAction::None
             }
             ("down", false) => {
-                let cols = self.theme.listview.columns;
+                let cols = self.effective_columns();
                 let step = if cols > 1 { cols as isize } else { 1 };
                 self.move_selection(step);
                 LauncherAction::None
             }
-            ("left", false) if self.theme.listview.columns > 1 => {
+            ("left", false) if self.effective_columns() > 1 => {
                 self.move_selection(-1);
                 LauncherAction::None
             }
-            ("right", false) if self.theme.listview.columns > 1 => {
+            ("right", false) if self.effective_columns() > 1 => {
                 self.move_selection(1);
                 LauncherAction::None
             }
@@ -342,7 +356,7 @@ impl Launcher {
         }
         let len = self.filtered.len() as isize;
         self.selected = (self.selected as isize + delta).clamp(0, len - 1) as usize;
-        let cols = self.theme.listview.columns;
+        let cols = self.effective_columns();
         let scroll_ix = if cols > 1 {
             self.selected / cols
         } else {
@@ -370,6 +384,8 @@ impl Launcher {
     pub fn on_hide(&mut self) {
         self.filtered.clear();
         self.full_output_blocks.clear();
+        // The sticky layout override only lasts for the session.
+        self.sticky_metatags = None;
     }
 
     /// Called when the window is shown.  Refills `filtered` from `all`
@@ -442,6 +458,9 @@ impl Launcher {
     }
 
     fn execute_target_with_args(&mut self, item: &Target, args: Vec<String>) -> LauncherAction {
+        // Commit the script's layout metatags: execution, not selection,
+        // makes the override stick.
+        self.sticky_metatags = item.metatags().cloned();
         match item {
             Target::Script { mode, name, .. } => {
                 let identifier = item.identifier();
@@ -576,25 +595,21 @@ impl Launcher {
         path: &std::path::Path,
         output: Option<gpui::SharedString>,
     ) {
-        for target in &mut self.all {
-            let is_match = match target {
+        // Update the master list and the rendered rows in place. Inline
+        // output never affects ranking, so re-filtering (which resets the
+        // scroll position) is unnecessary.
+        for target in self.all.iter_mut().chain(self.filtered.iter_mut()) {
+            let is_match = matches!(
+                target,
                 Target::Script {
                     path: p,
                     mode: ScriptMode::Inline,
                     ..
-                } => p.as_ref() == path,
-                _ => false,
-            };
+                } if p.as_ref() == path
+            );
             if is_match {
-                target.set_inline_output(output);
-                break;
+                target.set_inline_output(output.clone());
             }
-        }
-        // Only rebuild search results if the window is visible.
-        // If hidden, the window will re-filter on the next show anyway,
-        // avoiding background memory leaks from GPUI image caching.
-        if crate::ui::window::is_visible() {
-            self.refilter();
         }
     }
 
@@ -646,15 +661,14 @@ impl Render for Launcher {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let t = &self.theme;
 
-        // Apply runtime metatags from the currently selected script, if any.
-        let selected_metatags = self
-            .selected_item()
-            .and_then(|item| item.metatags())
-            .cloned()
-            .unwrap_or_default();
-
-        let show_search = selected_metatags.show_search.unwrap_or(true);
-        let columns = selected_metatags.columns.unwrap_or(t.listview.columns);
+        // Layout overrides come only from the last executed script
+        // (sticky until the launcher hides); selection never applies them.
+        let show_search = self
+            .sticky_metatags
+            .as_ref()
+            .and_then(|m| m.show_search)
+            .unwrap_or(true);
+        let columns = self.effective_columns();
 
         // Determine whether the list should be visible.
         let require_input = t.listview.require_input.unwrap_or(false);
@@ -1834,10 +1848,93 @@ mod tests {
         l.filtered.iter().map(|t| t.name().to_string()).collect()
     }
 
-    fn cap_config(max_results: usize) -> AppConfig {
+        fn cap_config(max_results: usize) -> AppConfig {
         let mut config = AppConfig::default();
         config.general.max_results = max_results;
         config
+    }
+
+    fn grid_item(name: &str) -> Target {
+        let mut t = item(name);
+        if let Target::Script {
+            mode, metatags, ..
+        } = &mut t
+        {
+            *mode = crate::core::item::ScriptMode::Compact;
+            *metatags = ScriptMetatags {
+                show_search: Some(false),
+                columns: Some(3),
+            };
+        }
+        t
+    }
+
+    #[test]
+    fn metatags_commit_on_execute_not_on_hover() {
+        let mut l = Launcher::new(
+            vec![item("Alpha"), grid_item("Grid Script"), item("Zeta")],
+            ThemeConfig::default(),
+            AppConfig::default(),
+            History::test_new(PathBuf::new(), Vec::new()),
+        );
+
+        // Hovering/selecting the grid script alone must not change the layout.
+        l.selected = 1;
+        assert_eq!(l.effective_columns(), 1);
+
+        // Executing it commits the override...
+        let target = l.filtered[1].clone();
+        l.execute_target_with_args(&target, Vec::new());
+        assert_eq!(l.effective_columns(), 3);
+        assert_eq!(
+            l.sticky_metatags.as_ref().and_then(|m| m.show_search),
+            Some(false)
+        );
+
+        // ...and it survives moving the selection elsewhere.
+        l.selected = 2;
+        assert_eq!(l.effective_columns(), 3);
+
+        // Typing a new query keeps the override for the session.
+        l.handle_keystroke(&key("z"));
+        assert_eq!(l.effective_columns(), 3);
+
+        // Executing a script without metatags replaces the override with
+        // the theme defaults (the last executed script decides the layout).
+        l.handle_keystroke(&key("backspace")); // clear "z", full list back
+        let plain = l.all.iter().find(|t| t.name() == "Alpha").unwrap().clone();
+        l.execute_target_with_args(&plain, Vec::new());
+        assert_eq!(l.effective_columns(), 1);
+
+        // Hiding the launcher resets it.
+        l.on_hide();
+        assert_eq!(l.effective_columns(), 1);
+    }
+
+    #[test]
+    fn inline_output_updates_rows_without_reordering() {
+        let mut inline = item("Inline Script");
+        if let Target::Script { mode, .. } = &mut inline {
+            *mode = crate::core::item::ScriptMode::Inline;
+        }
+        let mut l = Launcher::new(
+            vec![item("Alpha"), inline, item("Zeta")],
+            ThemeConfig::default(),
+            AppConfig::default(),
+            History::test_new(PathBuf::new(), Vec::new()),
+        );
+        let path = match &l.all[1] {
+            Target::Script { path, .. } => path.clone(),
+            _ => unreachable!(),
+        };
+
+        // A periodic refresh updates the subtitle on both the master list
+        // and the rendered rows, without re-filtering (which would reset
+        // the scroll position).
+        l.apply_inline_output(&path, Some("subtitle-updated".into()));
+        assert_eq!(l.all[1].inline_output(), Some("subtitle-updated"));
+        assert_eq!(l.filtered[1].inline_output(), Some("subtitle-updated"));
+        assert_eq!(names(&l), vec!["Alpha", "Inline Script", "Zeta"]);
     }
 
     #[test]

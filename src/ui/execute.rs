@@ -33,34 +33,12 @@ pub fn execute_script(
     let toast_view = matches!(mode, ScriptMode::Compact | ScriptMode::Silent)
         .then(|| crate::ui::toast_window::open_toast_window(cx, theme, title.clone()));
 
-    // Helper: build a Command that respects the script's shebang.
     // The closure captures `path` by clone so the async block can own it.
     let path2 = path.clone();
     cx.spawn(move |_: &mut AsyncApp| async move {
         let result = executor
             .spawn(async move {
-                let content = std::fs::read_to_string(&*path2).ok();
-                let mut cmd = if let Some(ref c) = content {
-                    if let Some(first) = c.lines().next() {
-                        if let Some(shebang) = first.strip_prefix("#!") {
-                            let parts: Vec<&str> = shebang.split_whitespace().collect();
-                            if !parts.is_empty() {
-                                let mut cmd = std::process::Command::new(parts[0]);
-                                cmd.args(&parts[1..]);
-                                cmd.arg(&*path2);
-                                cmd
-                            } else {
-                                std::process::Command::new(&*path2)
-                            }
-                        } else {
-                            std::process::Command::new(&*path2)
-                        }
-                    } else {
-                        std::process::Command::new(&*path2)
-                    }
-                } else {
-                    std::process::Command::new(&*path2)
-                };
+                let mut cmd = crate::core::executor::script_command(&*path2);
                 cmd.args(args);
                 cmd.output()
             })

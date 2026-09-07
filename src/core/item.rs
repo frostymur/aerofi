@@ -149,8 +149,8 @@ pub enum BuiltinAction {
 }
 
 /// AeroFi-specific script metatags parsed from `# @aerofi.*` annotations.
-/// These temporarily override launcher UI settings while the script is the
-/// active context.
+/// Committed when the script is executed; stay active until the launcher
+/// is hidden. Selecting the script never applies them.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ScriptMetatags {
     /// Hide the search input bar (`# @aerofi.show_search false`).
