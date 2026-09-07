@@ -104,15 +104,14 @@ impl Launcher {
         app_config: AppConfig,
         history: History,
     ) -> Self {
-        let max_results = app_config.general.max_results;
-        let filtered = all.iter().take(max_results).cloned().collect();
+        let filtered = all.clone();
         Self {
             all,
             filtered,
             query: String::new(),
             selected: 0,
             list: UniformListScrollHandle::new(),
-            search: SearchIndex::new(&app_config.aliases, max_results),
+            search: SearchIndex::new(&app_config.aliases),
             history,
             app_config,
             theme,
@@ -613,16 +612,13 @@ impl Launcher {
     }
 
     /// Re-read `config.toml`, rescan the targets and rebuild the search
-    /// index (aliases, `max_results`, sources, ignored apps, script dirs).
+    /// index (aliases, sources, ignored apps, script dirs).
     fn reload(&mut self) {
         let config = crate::core::config::AppConfig::load();
         let targets = crate::core::scanner::scan_all(&config);
         self.app_config = config;
         self.all = targets;
-        self.search = SearchIndex::new(
-            &self.app_config.aliases,
-            self.app_config.general.max_results,
-        );
+        self.search = SearchIndex::new(&self.app_config.aliases);
         self.query.clear();
         self.refilter();
         self.selected = 0;
@@ -1981,16 +1977,16 @@ mod tests {
     }
 
     #[test]
-    fn list_is_capped_at_max_results() {
+    fn list_shows_all_items() {
         let mut l = Launcher::new(
             vec![item("A One"), item("A Two"), item("A Three")],
             ThemeConfig::default(),
             cap_config(2),
             History::test_new(PathBuf::new(), Vec::new()),
         );
-        assert_eq!(names(&l), vec!["A One".to_string(), "A Two".to_string()]);
+        assert_eq!(names(&l), vec!["A One".to_string(), "A Two".to_string(), "A Three".to_string()]);
         l.handle_keystroke(&key("a"));
-        assert!(names(&l).len() <= 2);
+        assert_eq!(names(&l).len(), 3);
     }
 
     #[test]

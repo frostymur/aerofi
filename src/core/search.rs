@@ -18,7 +18,6 @@ use gpui::SharedString;
 pub struct SearchIndex {
     matcher: Matcher,
     aliases_by_target: HashMap<SharedString, Vec<SharedString>>,
-    max_results: usize,
     needle_buf: Vec<char>,
     hay_buf: Vec<char>,
     /// Reused scratch buffer for (score, index) pairs — avoids a per-keystroke heap allocation.
@@ -27,11 +26,10 @@ pub struct SearchIndex {
 
 impl SearchIndex {
     /// Build an index that also matches the given `aliases` (alias ->
-    /// target display name) and returns at most `max_results` items per
-    /// query. Alias values must equal the target's display name exactly;
-    /// aliases pointing to a target that is not in the searched list
-    /// simply never match.
-    pub fn new(aliases: &HashMap<String, String>, max_results: usize) -> Self {
+    /// target display name). Alias values must equal the target's display
+    /// name exactly; aliases pointing to a target that is not in the
+    /// searched list simply never match.
+    pub fn new(aliases: &HashMap<String, String>) -> Self {
         let mut aliases_by_target: HashMap<SharedString, Vec<SharedString>> = HashMap::new();
         for (alias, target) in aliases {
             aliases_by_target
@@ -42,7 +40,6 @@ impl SearchIndex {
         Self {
             matcher: Matcher::new(Config::DEFAULT),
             aliases_by_target,
-            max_results,
             needle_buf: Vec::new(),
             hay_buf: Vec::new(),
             scored_buf: Vec::new(),
@@ -50,9 +47,8 @@ impl SearchIndex {
     }
 
     /// Rank `targets` against `query`, boosted by the frecency scores
-    /// from `history`, and return the best-matching ones (up to
-    /// `max_results`) as a ready-to-render `Vec<Target>`, best match
-    /// first.
+    /// from `history`, and return all matching ones as a ready-to-render
+    /// `Vec<Target>`, best match first.
     ///
     /// - Empty query: every target matches with a zero fuzzy score, so
     ///   the order is by frecency, descending. Targets with frecency 0
@@ -103,7 +99,6 @@ impl SearchIndex {
         self.scored_buf.sort_unstable_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
         self.scored_buf
             .iter()
-            .take(self.max_results)
             .map(|&(_, i)| targets[i].clone())
             .collect()
     }
@@ -157,7 +152,7 @@ mod tests {
 
     #[test]
     fn matches_names_without_aliases() {
-        let mut idx = SearchIndex::new(&HashMap::new(), 20);
+        let mut idx = SearchIndex::new(&HashMap::new());
         let history = empty_history();
         let targets = [target("Git Status"), target("Grep")];
         assert_eq!(
@@ -172,7 +167,7 @@ mod tests {
 
     #[test]
     fn alias_matches_when_name_does_not() {
-        let mut idx = SearchIndex::new(&aliases(&[("rm", "Uninstaller")]), 20);
+        let mut idx = SearchIndex::new(&aliases(&[("rm", "Uninstaller")]));
         let history = empty_history();
         let targets = [target("Uninstaller")];
         assert_eq!(
@@ -188,7 +183,7 @@ mod tests {
 
     #[test]
     fn name_still_matches_with_alias_configured() {
-        let mut idx = SearchIndex::new(&aliases(&[("notes", "TextEdit")]), 20);
+        let mut idx = SearchIndex::new(&aliases(&[("notes", "TextEdit")]));
         let history = empty_history();
         let targets = [target("TextEdit")];
         assert_eq!(
@@ -203,7 +198,7 @@ mod tests {
 
     #[test]
     fn alias_only_match_ranks_first() {
-        let mut idx = SearchIndex::new(&aliases(&[("un", "Unpack"), ("extract", "Unpack")]), 20);
+        let mut idx = SearchIndex::new(&aliases(&[("un", "Unpack"), ("extract", "Unpack")]));
         let history = empty_history();
         let targets = [target("Unpack"), target("Grep")];
         assert_eq!(
@@ -214,15 +209,15 @@ mod tests {
 
     #[test]
     fn alias_to_missing_target_never_matches() {
-        let mut idx = SearchIndex::new(&aliases(&[("zz", "Ghost App")]), 20);
+        let mut idx = SearchIndex::new(&aliases(&[("zz", "Ghost App")]));
         let history = empty_history();
         let targets = [target("Grep")];
         assert!(idx.filter_and_rank(&history, &targets, "zz").is_empty());
     }
 
     #[test]
-    fn results_capped_at_max_results() {
-        let mut idx = SearchIndex::new(&HashMap::new(), 2);
+    fn all_results_returned_without_cap() {
+        let mut idx = SearchIndex::new(&HashMap::new());
         let history = empty_history();
         let targets = [
             target("Alpha"),
@@ -231,15 +226,14 @@ mod tests {
             target("Delta"),
         ];
         let results = idx.filter_and_rank(&history, &targets, "");
-        assert_eq!(names(&results), vec!["Alpha", "Bravo"]);
+        assert_eq!(results.len(), 4);
         let results = idx.filter_and_rank(&history, &targets, "a");
-        assert_eq!(results.len(), 2);
-        assert_eq!(results[0].name(), "Alpha");
+        assert_eq!(results.len(), 4);
     }
 
     #[test]
     fn empty_query_sorts_by_frecency_desc() {
-        let mut idx = SearchIndex::new(&HashMap::new(), 20);
+        let mut idx = SearchIndex::new(&HashMap::new());
         let history = History::test_new(PathBuf::new(), vec![fresh_record("B")]);
         let targets = [target("A"), target("B"), target("C")];
         // B has a recent launch; A and C (frecency 0) keep their order.
@@ -249,7 +243,7 @@ mod tests {
 
     #[test]
     fn frecency_boosts_fuzzy_ranking() {
-        let mut idx = SearchIndex::new(&HashMap::new(), 20);
+        let mut idx = SearchIndex::new(&HashMap::new());
         // Five recent launches of "Zebra" (500 points) beat the stronger
         // fuzzy match of "Zed".
         let records = (0..5).map(|_| fresh_record("Zebra")).collect();
@@ -276,7 +270,7 @@ mod tests {
             }
         }
 
-        let mut idx = SearchIndex::new(&HashMap::new(), 20);
+        let mut idx = SearchIndex::new(&HashMap::new());
         let history = empty_history();
         // Generate 100 targets
         let targets: Vec<Target> = (0..100)
