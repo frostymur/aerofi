@@ -1406,6 +1406,9 @@ impl Launcher {
 
         let pad_h = el.padding.first().copied().unwrap_or(8.0);
 
+        // Alias pill badges in grid cells — placed right after the title.
+        let aliases = self.alias_labels(item.name());
+        let ab = &t.listview.alias_badge;
         let mut cell = div()
             .flex()
             .flex_col()
@@ -1422,23 +1425,7 @@ impl Launcher {
                     .text_size(px(t.font.size - 1.0))
                     .child(item.name().to_string()),
             );
-
-        let cat_badge = &t.listview.category_badge;
-        if cat_badge.show {
-            let cat_badge = &t.listview.category_badge;
-            cell = cell.child(
-                div()
-                    .text_size(px(t.font.size - cat_badge.font_size_offset))
-                    .text_color(rgb(Self::color(&cat_badge.color)))
-                    .child(item.category_label().to_string()),
-            );
-        }
-
-        // Alias pill badges in grid cells.
-        let aliases = self.alias_labels(item.name());
-        let ab = &t.listview.alias_badge;
         if ab.show && !aliases.is_empty() {
-            let ab = &t.listview.alias_badge;
             let alias_color = rgb(Self::color(&ab.color));
             let alias_border_color = rgb(Self::color(
                 ab.border_color.as_deref().unwrap_or(&ab.color),
@@ -1466,6 +1453,16 @@ impl Launcher {
                 pills = pills.child(pill);
             }
             cell = cell.child(pills);
+        }
+
+        let cat_badge = &t.listview.category_badge;
+        if cat_badge.show {
+            cell = cell.child(
+                div()
+                    .text_size(px(t.font.size - cat_badge.font_size_offset))
+                    .text_color(rgb(Self::color(&cat_badge.color)))
+                    .child(item.category_label().to_string()),
+            );
         }
 
         Self::with_item_mouse_handlers(cell, format!("cell-{filtered_ix}"), filtered_ix, cx)
@@ -1529,9 +1526,8 @@ impl Launcher {
         // Name column: for inline scripts show name + cached output as subtitle.
         let subtitle_opt = item.inline_output().or_else(|| item.package_name());
 
-        let name_col = if let Some(subtitle) = subtitle_opt {
+        let name_text = if let Some(subtitle) = subtitle_opt {
             div()
-                .flex_1()
                 .flex()
                 .flex_row()
                 .items_center()
@@ -1546,11 +1542,51 @@ impl Launcher {
                 .into_any()
         } else {
             div()
-                .flex_1()
                 .text_color(name_color)
                 .child(item.name().to_string())
                 .into_any()
         };
+
+        // Alias pill badges (e.g. "twit", "gh") — placed right after the title.
+        let aliases = self.alias_labels(item.name());
+        let ab = &t.listview.alias_badge;
+        let alias_elements: Vec<gpui::AnyElement> = if ab.show && !aliases.is_empty() {
+            let alias_color = rgb(Self::color(&ab.color));
+            let alias_border_color = rgb(Self::color(
+                ab.border_color.as_deref().unwrap_or(&ab.color),
+            ));
+            let alias_font_size = px(t.font.size - ab.font_size_offset);
+            let alias_radius = px(ab.radius);
+            let alias_px = px(ab.padding_x);
+            aliases
+                .iter()
+                .map(|alias| {
+                    let pill = div()
+                        .px(alias_px)
+                        .py_0()
+                        .rounded(alias_radius)
+                        .child(
+                            div()
+                                .text_size(alias_font_size)
+                                .text_color(alias_color)
+                                .child(alias.clone()),
+                        );
+                    let pill = if ab.border {
+                        pill.border_1().border_color(alias_border_color)
+                    } else {
+                        pill
+                    };
+                    pill.into_any()
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+
+        let mut name_and_alias = div().flex().items_center().gap_2().child(name_text);
+        for el in alias_elements {
+            name_and_alias = name_and_alias.child(el);
+        }
 
         let row = div()
             .flex()
@@ -1563,7 +1599,7 @@ impl Launcher {
             .cursor(CursorStyle::PointingHand)
             .bg(row_bg)
             .child(icon_element)
-            .child(name_col);
+            .child(name_and_alias.flex_1());
 
         // Right-aligned badge with the target's bound shortcuts, if any.
         let row = match self.shortcut_label(item.name()) {
@@ -1574,41 +1610,6 @@ impl Launcher {
                     .child(label),
             ),
             None => row,
-        };
-
-        // Right-aligned alias pill badges (e.g. "twit", "gh").
-        let aliases = self.alias_labels(item.name());
-        let ab = &t.listview.alias_badge;
-        let row = if ab.show && !aliases.is_empty() {
-            let alias_color = rgb(Self::color(&ab.color));
-            let alias_border_color = rgb(Self::color(
-                ab.border_color.as_deref().unwrap_or(&ab.color),
-            ));
-            let alias_font_size = px(t.font.size - ab.font_size_offset);
-            let alias_radius = px(ab.radius);
-            let alias_px = px(ab.padding_x);
-            let mut r = row;
-            for alias in &aliases {
-                let pill = div()
-                    .px(alias_px)
-                    .py_0()
-                    .rounded(alias_radius)
-                    .child(
-                        div()
-                            .text_size(alias_font_size)
-                            .text_color(alias_color)
-                            .child(alias.clone()),
-                    );
-                let pill = if ab.border {
-                    pill.border_1().border_color(alias_border_color)
-                } else {
-                    pill
-                };
-                r = r.child(pill);
-            }
-            r
-        } else {
-            row
         };
 
         // Right-aligned category label (e.g. "Script", "Application").
