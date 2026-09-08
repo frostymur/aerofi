@@ -497,3 +497,61 @@ fn full_output_still_swallows_keystrokes() {
     assert_eq!(action, LauncherAction::None);
     assert_eq!(l.state, LauncherState::Search);
 }
+
+#[test]
+fn launcher_initializes_widget_registry_from_theme() {
+    use crate::core::theme::WidgetDef;
+    let mut theme = ThemeConfig::default();
+    theme.widgets.push(WidgetDef::Text {
+        id: "greeting".to_string(),
+        text: Some("Hello".to_string()),
+        color: None,
+        font_size: None,
+        font_weight: None,
+        align: None,
+    });
+    let l = Launcher::new(
+        vec![item("Git Status")],
+        theme,
+        AppConfig::default(),
+        History::test_new(PathBuf::new(), Vec::new()),
+    );
+    assert!(l.widget_registry.get("greeting").is_some());
+}
+
+#[test]
+fn button_widget_in_registry() {
+    use crate::core::theme::WidgetDef;
+    let mut theme = ThemeConfig::default();
+    theme.widgets.push(WidgetDef::Button {
+        id: "btn_test".to_string(),
+        text: Some("Action".to_string()),
+        icon: Some("⚡".to_string()),
+        action: Some("reload".to_string()),
+        color: None,
+        background: None,
+        hover_background: None,
+        hover_color: None,
+        border_color: None,
+        border_width: None,
+        radius: None,
+        padding: None,
+        font_size: None,
+        font_weight: None,
+        gap: None,
+    });
+    let l = Launcher::new(
+        vec![item("Git Status")],
+        theme,
+        AppConfig::default(),
+        History::test_new(PathBuf::new(), Vec::new()),
+    );
+    let btn = l.widget_registry.get("btn_test");
+    assert!(btn.is_some());
+    if let Some(WidgetDef::Button { action, icon, .. }) = btn {
+        assert_eq!(action.as_deref(), Some("reload"));
+        assert_eq!(icon.as_deref(), Some("⚡"));
+    } else {
+        panic!("expected Button widget");
+    }
+}

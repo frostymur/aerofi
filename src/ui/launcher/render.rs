@@ -6,7 +6,7 @@ use gpui::{
 };
 
 use crate::core::item::Target;
-use crate::core::theme::{Widget, parse_hex_color};
+use crate::core::theme::{BuiltinWidget, Widget, parse_hex_color};
 
 use super::helpers::{apply_md_style, expand_tilde_path, format_combo, is_primary_click};
 use super::state::Launcher;
@@ -76,11 +76,11 @@ impl Render for Launcher {
 
             for widget in &t.mainbox.children {
                 match widget {
-                    Widget::InputBar if !show_search => {}
-                    Widget::InputBar => {
+                    Widget::Builtin(BuiltinWidget::InputBar) if !show_search => {}
+                    Widget::Builtin(BuiltinWidget::InputBar) => {
                         inner_box = inner_box.child(self.render_inputbar(cx));
                     }
-                    Widget::ListView => {
+                    Widget::Builtin(BuiltinWidget::ListView) => {
                         match &self.state {
                             LauncherState::Search => {
                                 if should_show_list {
@@ -96,7 +96,7 @@ impl Render for Launcher {
                             _ => {}
                         }
                     }
-                    Widget::Banner => {
+                    Widget::Builtin(BuiltinWidget::Banner) => {
                         if let Some(path) = t.banner.as_ref().and_then(|b| b.image_path.as_ref()) {
                             let resolved = expand_tilde_path(path);
                             let height = t.banner.as_ref().map(|b| b.height).unwrap_or(120.0);
@@ -107,6 +107,11 @@ impl Render for Launcher {
                                     .object_fit(gpui::ObjectFit::Cover)
                                     .rounded_md(),
                             );
+                        }
+                    }
+                    Widget::Custom(id) => {
+                        if let Some(element) = self.render_custom_widget(id, cx) {
+                            inner_box = inner_box.child(element);
                         }
                     }
                     _ => {}

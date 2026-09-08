@@ -8,6 +8,7 @@ use crate::core::history::History;
 use crate::core::item::{BuiltinAction, ScriptMetatags, ScriptMode, Target};
 use crate::core::search::SearchIndex;
 use crate::core::theme::ThemeConfig;
+use crate::core::widget::WidgetRegistry;
 
 use super::helpers::combo_matches;
 use super::types::{LauncherAction, LauncherState};
@@ -45,6 +46,9 @@ pub struct Launcher {
     /// committed by the last executed script. Kept until the launcher is
     /// hidden; never applied by selection alone.
     pub(super) sticky_metatags: Option<ScriptMetatags>,
+    /// Registry of custom widget definitions from `[[widgets]]` in the
+    /// theme file. Used by `render_custom_widget` in `custom_widgets.rs`.
+    pub(super) widget_registry: WidgetRegistry,
 }
 
 impl Launcher {
@@ -55,6 +59,7 @@ impl Launcher {
         history: History,
     ) -> Self {
         let filtered = all.clone();
+        let widget_registry = WidgetRegistry::from_theme(&theme.widgets);
         Self {
             all,
             filtered,
@@ -69,6 +74,7 @@ impl Launcher {
             full_output_scroll: UniformListScrollHandle::new(),
             full_output_blocks: Vec::new(),
             sticky_metatags: None,
+            widget_registry,
         }
     }
 
@@ -368,7 +374,7 @@ impl Launcher {
 
     /// Run a target: built-in actions act in place, apps open and scripts
     /// run asynchronously via `LauncherAction::ExecuteScript`.
-    fn execute_item(&mut self, item: &Target) -> LauncherAction {
+    pub(super) fn execute_item(&mut self, item: &Target) -> LauncherAction {
         match item {
             Target::Builtin {
                 action: BuiltinAction::ReloadConfig,
@@ -578,6 +584,7 @@ impl Launcher {
         self.app_config = config;
         self.all = targets;
         self.search = SearchIndex::new(&self.app_config.aliases);
+        self.widget_registry = WidgetRegistry::from_theme(&theme.widgets);
         self.theme = theme;
         self.query.clear();
         self.refilter();
@@ -611,6 +618,43 @@ impl Launcher {
         {
             Ok(_) => {}
             Err(e) => eprintln!("aerofi: failed to open {name} in {editor}: {e}"),
+        }
+    }
+
+    /// Execute an action triggered by a custom button widget.
+    pub(super) fn handle_widget_button_action(&mut self, action: &str, cx: &mut Context<Self>) {
+        let trimmed = action.trim();
+        if trimmed.eq_ignore_ascii_case("reload") {
+            self.reload();
+            cx.notify();
+            return;
+        }
+        if trimmed.eq_ignore_ascii_case("hide") {
+            self.on_hide();
+            cx.notify();
+            crate::ui::window::hide();
+            return;
+        }
+        if let Some(cmd) = trimmed.strip_prefix("command:") {
+            let cmd = cmd.trim().to_string();
+            std::thread::spawn(move || {
+                let _ = std::process::Command::new("sh").arg("-c").arg(cmd).spawn();
+            });
+            return;
+        }
+
+        let target_name = trimmed
+            .strip_prefix("target:")
+            .or_else(|| trimmed.strip_prefix("run:"))
+            .or_else(|| trimmed.strip_prefix("script:"))
+            .unwrap_or(trimmed);
+
+        if let Some(target) = self.all.iter().find(|t| t.name() == target_name).cloned() {
+            let action = self.execute_item(&target);
+            self.perform_action(action, cx);
+            cx.notify();
+        } else {
+            eprintln!("aerofi: warning: button target not found: {target_name}");
         }
     }
 }

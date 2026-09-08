@@ -10,6 +10,7 @@
 //! argument chips and confirmation buttons are clickable, and the list
 //! scrolls with the wheel (handled natively by GPUI's list element).
 
+mod custom_widgets;
 mod helpers;
 mod render;
 mod state;

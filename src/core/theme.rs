@@ -17,10 +17,20 @@ use serde::Deserialize;
 // ---------------------------------------------------------------------------
 
 /// Identifies a launcher widget that can appear in a container's children
-/// list.
+/// list. Built-in names are case-sensitive; any other string is treated as
+/// a reference to a custom widget defined in `[[widgets]]`.
 #[derive(Debug, Clone, Deserialize, PartialEq)]
-#[serde(rename_all = "lowercase")]
+#[serde(untagged)]
 pub enum Widget {
+    #[serde(deserialize_with = "deserialize_builtin_widget")]
+    Builtin(BuiltinWidget),
+    Custom(String),
+}
+
+/// The fixed set of built-in widgets that the launcher knows how to render
+/// natively.
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub enum BuiltinWidget {
     InputBar,
     ListView,
     Prompt,
@@ -28,6 +38,134 @@ pub enum Widget {
     Banner,
     SidebarImage,
     ContentBox,
+}
+
+/// Deserialise a `BuiltinWidget` from its case-sensitive name.
+fn deserialize_builtin_widget<'de, D>(deserializer: D) -> Result<BuiltinWidget, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    match s.as_str() {
+        "InputBar" => Ok(BuiltinWidget::InputBar),
+        "ListView" => Ok(BuiltinWidget::ListView),
+        "Prompt" => Ok(BuiltinWidget::Prompt),
+        "Entry" => Ok(BuiltinWidget::Entry),
+        "Banner" => Ok(BuiltinWidget::Banner),
+        "SidebarImage" => Ok(BuiltinWidget::SidebarImage),
+        "ContentBox" => Ok(BuiltinWidget::ContentBox),
+        _ => Err(serde::de::Error::custom(format!(
+            "unknown builtin widget: {s}"
+        ))),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Custom widget definitions
+// ---------------------------------------------------------------------------
+
+/// A single custom widget definition from the `[[widgets]]` array in a
+/// theme file. Each variant maps to a `type` value in the TOML.
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum WidgetDef {
+    Text {
+        id: String,
+        text: Option<String>,
+        color: Option<String>,
+        font_size: Option<f32>,
+        font_weight: Option<String>,
+        align: Option<String>,
+    },
+    Icon {
+        id: String,
+        icon: String,
+        size: Option<f32>,
+        color: Option<String>,
+    },
+    Image {
+        id: String,
+        path: String,
+        width: Option<f32>,
+        height: Option<f32>,
+        radius: Option<f32>,
+    },
+    Spacer {
+        id: String,
+    },
+    Divider {
+        id: String,
+        color: Option<String>,
+        thickness: Option<f32>,
+        margin: Option<f32>,
+    },
+    Box {
+        id: String,
+        orientation: Option<String>,
+        gap: Option<f32>,
+        padding: Option<Vec<f32>>,
+        align: Option<String>,
+        background: Option<String>,
+        radius: Option<f32>,
+        children: Vec<String>,
+    },
+    Button {
+        id: String,
+        text: Option<String>,
+        icon: Option<String>,
+        action: Option<String>,
+        color: Option<String>,
+        background: Option<String>,
+        hover_background: Option<String>,
+        hover_color: Option<String>,
+        border_color: Option<String>,
+        border_width: Option<f32>,
+        radius: Option<f32>,
+        padding: Option<Vec<f32>>,
+        font_size: Option<f32>,
+        font_weight: Option<String>,
+        gap: Option<f32>,
+    },
+}
+
+impl WidgetDef {
+    /// The unique id of this widget definition.
+    pub fn id(&self) -> &str {
+        match self {
+            Self::Text { id, .. }
+            | Self::Icon { id, .. }
+            | Self::Image { id, .. }
+            | Self::Spacer { id }
+            | Self::Divider { id, .. }
+            | Self::Box { id, .. }
+            | Self::Button { id, .. } => id,
+        }
+    }
+
+    /// Resolve `$alias` colour references within this widget's fields.
+    pub fn resolve_colors(&mut self, colors: &HashMap<String, String>) {
+        match self {
+            Self::Text { color, .. } => resolve_opt(color, colors),
+            Self::Icon { color, .. } => resolve_opt(color, colors),
+            Self::Divider { color, .. } => resolve_opt(color, colors),
+            Self::Box { background, .. } => resolve_opt(background, colors),
+            Self::Button {
+                color,
+                background,
+                hover_background,
+                hover_color,
+                border_color,
+                ..
+            } => {
+                resolve_opt(color, colors);
+                resolve_opt(background, colors);
+                resolve_opt(hover_background, colors);
+                resolve_opt(hover_color, colors);
+                resolve_opt(border_color, colors);
+            }
+            Self::Image { .. } | Self::Spacer { .. } => {}
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -115,7 +253,10 @@ impl Default for ContainerConfig {
     fn default() -> Self {
         Self {
             orientation: "vertical".to_string(),
-            children: vec![Widget::InputBar, Widget::ListView],
+            children: vec![
+                Widget::Builtin(BuiltinWidget::InputBar),
+                Widget::Builtin(BuiltinWidget::ListView),
+            ],
         }
     }
 }
@@ -239,8 +380,10 @@ pub struct ListViewConfig {
 
 impl Default for ListViewConfig {
     fn default() -> Self {
-        let mut alias_badge = BadgeConfig::default();
-        alias_badge.border = true;
+        let alias_badge = BadgeConfig {
+            border: true,
+            ..Default::default()
+        };
         Self {
             columns: 1,
             spacing: 6.0,
@@ -348,6 +491,9 @@ pub struct ThemeConfig {
     pub inputbar: InputBarConfig,
     pub listview: ListViewConfig,
     pub element: ElementConfig,
+    /// Custom widget definitions from `[[widgets]]`.
+    #[serde(default)]
+    pub widgets: Vec<WidgetDef>,
     /// Named colour aliases: `$key` in any colour field is replaced with
     /// the corresponding hex value from this map.
     #[serde(default)]
@@ -366,6 +512,7 @@ impl Default for ThemeConfig {
             inputbar: InputBarConfig::default(),
             listview: ListViewConfig::default(),
             element: ElementConfig::default(),
+            widgets: Vec::new(),
             colors: HashMap::new(),
         }
     }
@@ -410,6 +557,11 @@ impl ThemeConfig {
             resolve(&mut hover.background, colors);
             resolve(&mut hover.text_color, colors);
             resolve_opt(&mut hover.description_color, colors);
+        }
+
+        // Custom widgets
+        for w in &mut self.widgets {
+            w.resolve_colors(colors);
         }
     }
 }
@@ -526,11 +678,26 @@ mod tests {
     }
 
     #[test]
+    fn example_tokyo_night_theme_is_valid() {
+        let content = std::fs::read_to_string("examples/themes/tokyo-night.toml")
+            .expect("should read example theme");
+        let t: ThemeConfig =
+            toml::from_str(&content).expect("tokyo-night.toml should parse cleanly");
+        assert_eq!(t.name, "Tokyo Night");
+    }
+
+    #[test]
     fn default_mainbox_children_are_inputbar_and_listview() {
         let t = ThemeConfig::default();
         assert_eq!(t.mainbox.children.len(), 2);
-        assert_eq!(t.mainbox.children[0], Widget::InputBar);
-        assert_eq!(t.mainbox.children[1], Widget::ListView);
+        assert_eq!(
+            t.mainbox.children[0],
+            Widget::Builtin(BuiltinWidget::InputBar)
+        );
+        assert_eq!(
+            t.mainbox.children[1],
+            Widget::Builtin(BuiltinWidget::ListView)
+        );
     }
 
     #[test]
@@ -594,5 +761,176 @@ mod tests {
         t.window.background = "#1a1b26".to_string();
         t.resolve_colors();
         assert_eq!(t.window.background, "#1a1b26");
+    }
+
+    #[test]
+    fn widget_def_deserializes_from_toml() {
+        let toml = r##"
+            [[widgets]]
+            id = "greeting"
+            type = "text"
+            text = "Hello"
+            color = "#ff0000"
+            font_size = 14.0
+
+            [[widgets]]
+            id = "logo"
+            type = "icon"
+            icon = "🚀"
+            size = 32.0
+
+            [[widgets]]
+            id = "flex"
+            type = "spacer"
+
+            [[widgets]]
+            id = "sep"
+            type = "divider"
+            color = "#414868"
+            thickness = 2.0
+            margin = 8.0
+
+            [[widgets]]
+            id = "avatar"
+            type = "image"
+            path = "~/.config/aerofi/avatar.png"
+            width = 48.0
+            height = 48.0
+            radius = 24.0
+
+            [[widgets]]
+            id = "btn"
+            type = "button"
+            icon = "⚡"
+            text = "Reload"
+            action = "reload"
+            color = "#7aa2f7"
+            background = "#24283b"
+            hover_background = "#414868"
+            hover_color = "#bb9af7"
+            border_color = "#3b4261"
+            border_width = 1.0
+            radius = 6.0
+            padding = [8.0, 4.0]
+            gap = 4.0
+
+            [[widgets]]
+            id = "header"
+            type = "box"
+            orientation = "horizontal"
+            gap = 8.0
+            padding = [8.0, 12.0]
+            children = ["logo", "greeting", "flex", "btn"]
+        "##;
+
+        #[derive(Deserialize)]
+        struct Partial {
+            widgets: Vec<WidgetDef>,
+        }
+        let parsed: Partial = toml::from_str(toml).expect("should parse");
+        assert_eq!(parsed.widgets.len(), 7);
+        assert_eq!(parsed.widgets[0].id(), "greeting");
+        assert_eq!(parsed.widgets[1].id(), "logo");
+        assert_eq!(parsed.widgets[2].id(), "flex");
+        assert_eq!(parsed.widgets[3].id(), "sep");
+        assert_eq!(parsed.widgets[4].id(), "avatar");
+        assert_eq!(parsed.widgets[5].id(), "btn");
+        assert_eq!(parsed.widgets[6].id(), "header");
+
+        // Verify Button widget
+        if let WidgetDef::Button {
+            action,
+            icon,
+            text,
+            radius,
+            ..
+        } = &parsed.widgets[5]
+        {
+            assert_eq!(action.as_deref(), Some("reload"));
+            assert_eq!(icon.as_deref(), Some("⚡"));
+            assert_eq!(text.as_deref(), Some("Reload"));
+            assert_eq!(*radius, Some(6.0));
+        } else {
+            panic!("expected Button widget");
+        }
+
+        // Verify Box children
+        if let WidgetDef::Box { children, gap, .. } = &parsed.widgets[6] {
+            assert_eq!(children, &["logo", "greeting", "flex", "btn"]);
+            assert_eq!(*gap, Some(8.0));
+        } else {
+            panic!("expected Box widget");
+        }
+    }
+
+    #[test]
+    fn widget_custom_in_mainbox_children() {
+        let toml = r#"
+            name = "Test"
+            [mainbox]
+            children = ["InputBar", "header", "ListView"]
+        "#;
+        let t: ThemeConfig = toml::from_str(toml).expect("should parse");
+        assert_eq!(t.mainbox.children.len(), 3);
+        assert_eq!(
+            t.mainbox.children[0],
+            Widget::Builtin(BuiltinWidget::InputBar)
+        );
+        assert_eq!(t.mainbox.children[1], Widget::Custom("header".to_string()));
+        assert_eq!(
+            t.mainbox.children[2],
+            Widget::Builtin(BuiltinWidget::ListView)
+        );
+    }
+
+    #[test]
+    fn resolve_colors_resolves_widget_aliases() {
+        let mut t = ThemeConfig::default();
+        t.colors.insert("accent".to_string(), "#7aa2f7".to_string());
+        t.colors.insert("bg_btn".to_string(), "#24283b".to_string());
+        t.widgets.push(WidgetDef::Text {
+            id: "test".to_string(),
+            text: Some("hi".to_string()),
+            color: Some("$accent".to_string()),
+            font_size: None,
+            font_weight: None,
+            align: None,
+        });
+        t.widgets.push(WidgetDef::Button {
+            id: "btn".to_string(),
+            text: Some("Click".to_string()),
+            icon: None,
+            action: Some("hide".to_string()),
+            color: Some("$accent".to_string()),
+            background: Some("$bg_btn".to_string()),
+            hover_background: Some("$accent".to_string()),
+            hover_color: None,
+            border_color: None,
+            border_width: None,
+            radius: None,
+            padding: None,
+            font_size: None,
+            font_weight: None,
+            gap: None,
+        });
+        t.resolve_colors();
+        if let WidgetDef::Text { color, .. } = &t.widgets[0] {
+            assert_eq!(color.as_deref(), Some("#7aa2f7"));
+        } else {
+            panic!("expected Text widget");
+        }
+        if let WidgetDef::Button {
+            color,
+            background,
+            hover_background,
+            ..
+        } = &t.widgets[1]
+        {
+            assert_eq!(color.as_deref(), Some("#7aa2f7"));
+            assert_eq!(background.as_deref(), Some("#24283b"));
+            assert_eq!(hover_background.as_deref(), Some("#7aa2f7"));
+        } else {
+            panic!("expected Button widget");
+        }
     }
 }
