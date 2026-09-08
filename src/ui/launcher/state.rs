@@ -595,9 +595,13 @@ impl Launcher {
     /// Open the highlighted script in `$EDITOR` (defaulting to `vim`).
     /// Applications have no source to edit, so this is a no-op for them.
     fn open_in_editor(&mut self) {
-        let Some(item) = self.selected_item() else {
-            return;
-        };
+        if let Some(item) = self.selected_item().cloned() {
+            Self::open_target_in_editor(&item);
+        }
+    }
+
+    /// Open a specific script target in `$EDITOR` (defaulting to `vim`).
+    pub(super) fn open_target_in_editor(item: &Target) {
         let path = match item {
             Target::Script { path, .. } => path.clone(),
             // Applications and built-in actions have no source to edit.
@@ -621,9 +625,40 @@ impl Launcher {
         }
     }
 
-    /// Execute an action triggered by a custom button widget.
-    pub(super) fn handle_widget_button_action(&mut self, action: &str, cx: &mut Context<Self>) {
+    /// Execute an action triggered by a custom button widget. If rendered
+    /// inside a list item row, `row_item` is provided to allow contextual
+    /// actions like "run", "edit", or "copy".
+    pub(super) fn handle_widget_button_action(
+        &mut self,
+        action: &str,
+        row_item: Option<&Target>,
+        cx: &mut Context<Self>,
+    ) {
         let trimmed = action.trim();
+
+        // Row-context actions
+        if trimmed.eq_ignore_ascii_case("run") || trimmed.eq_ignore_ascii_case("execute") {
+            if let Some(item) = row_item.cloned() {
+                let action = self.execute_item(&item);
+                self.perform_action(action, cx);
+                cx.notify();
+            }
+            return;
+        }
+        if trimmed.eq_ignore_ascii_case("edit") {
+            if let Some(item) = row_item {
+                Self::open_target_in_editor(item);
+            }
+            return;
+        }
+        if trimmed.eq_ignore_ascii_case("copy") {
+            if let Some(item) = row_item {
+                cx.write_to_clipboard(gpui::ClipboardItem::new_string(item.name().to_string()));
+            }
+            return;
+        }
+
+        // Global actions
         if trimmed.eq_ignore_ascii_case("reload") {
             self.reload();
             cx.notify();

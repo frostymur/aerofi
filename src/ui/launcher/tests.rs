@@ -555,3 +555,64 @@ fn button_widget_in_registry() {
         panic!("expected Button widget");
     }
 }
+
+#[test]
+fn element_layout_accepts_custom_slot_ordering() {
+    let mut theme = ThemeConfig::default();
+    theme.element.layout = Some(vec![
+        "name".to_string(),
+        "spacer".to_string(),
+        "icon".to_string(),
+        "shortcuts".to_string(),
+    ]);
+    let l = Launcher::new(
+        vec![item("Git Status")],
+        theme,
+        AppConfig::default(),
+        History::test_new(PathBuf::new(), Vec::new()),
+    );
+    assert_eq!(
+        l.theme.element.layout.as_ref().unwrap(),
+        &["name", "spacer", "icon", "shortcuts"]
+    );
+}
+
+#[test]
+fn element_layout_supports_custom_widgets_in_row() {
+    use crate::core::theme::WidgetDef;
+    let mut theme = ThemeConfig::default();
+    theme.widgets.push(WidgetDef::Button {
+        id: "btn_run".to_string(),
+        text: Some("Run".to_string()),
+        icon: Some("▶".to_string()),
+        action: Some("run".to_string()),
+        color: None,
+        background: None,
+        hover_background: None,
+        hover_color: None,
+        border_color: None,
+        border_width: None,
+        radius: None,
+        padding: None,
+        font_size: None,
+        font_weight: None,
+        gap: None,
+    });
+    theme.element.layout = Some(vec![
+        "icon".to_string(),
+        "name".to_string(),
+        "spacer".to_string(),
+        "btn_run".to_string(),
+    ]);
+    let l = Launcher::new(
+        vec![item("Test Script")],
+        theme,
+        AppConfig::default(),
+        History::test_new(PathBuf::new(), Vec::new()),
+    );
+    assert!(l.widget_registry.get("btn_run").is_some());
+    assert_eq!(
+        l.theme.element.layout.as_ref().unwrap(),
+        &["icon", "name", "spacer", "btn_run"]
+    );
+}

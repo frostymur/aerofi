@@ -6,6 +6,7 @@
 
 use gpui::{Context, CursorStyle, div, img, prelude::*, px, rgb};
 
+use crate::core::item::Target;
 use crate::core::theme::{WidgetDef, parse_hex_color};
 
 use super::helpers::{expand_tilde_path, is_primary_click};
@@ -18,12 +19,38 @@ impl Launcher {
         id: &str,
         cx: &mut Context<Self>,
     ) -> Option<gpui::AnyElement> {
+        self.render_custom_widget_scoped(id, None, cx)
+    }
+
+    /// Render a custom widget by id inside a list item row, passing the row
+    /// index and target so buttons can perform context-aware actions.
+    pub(super) fn render_custom_widget_for_row(
+        &self,
+        id: &str,
+        row_ix: usize,
+        item: &Target,
+        cx: &mut Context<Self>,
+    ) -> Option<gpui::AnyElement> {
+        self.render_custom_widget_scoped(id, Some((row_ix, item)), cx)
+    }
+
+    fn render_custom_widget_scoped(
+        &self,
+        id: &str,
+        row_context: Option<(usize, &Target)>,
+        cx: &mut Context<Self>,
+    ) -> Option<gpui::AnyElement> {
         let def = self.widget_registry.get(id)?;
-        Some(self.render_widget_def(def, cx))
+        Some(self.render_widget_def(def, row_context, cx))
     }
 
     /// Dispatch to the type-specific renderer.
-    fn render_widget_def(&self, def: &WidgetDef, cx: &mut Context<Self>) -> gpui::AnyElement {
+    fn render_widget_def(
+        &self,
+        def: &WidgetDef,
+        row_context: Option<(usize, &Target)>,
+        cx: &mut Context<Self>,
+    ) -> gpui::AnyElement {
         match def {
             WidgetDef::Text {
                 text,
@@ -40,7 +67,10 @@ impl Launcher {
                 align.as_deref(),
             ),
             WidgetDef::Icon {
-                icon, size, color, ..
+                icon,
+                size,
+                color,
+                ..
             } => self.render_widget_icon(icon, *size, color.as_deref()),
             WidgetDef::Image {
                 path,
@@ -73,6 +103,7 @@ impl Launcher {
                 background.as_deref(),
                 *radius,
                 children,
+                row_context,
                 cx,
             ),
             WidgetDef::Button {
@@ -107,6 +138,7 @@ impl Launcher {
                 *font_size,
                 font_weight.as_deref(),
                 *gap,
+                row_context,
                 cx,
             ),
         }
@@ -223,6 +255,7 @@ impl Launcher {
         background: Option<&str>,
         radius: Option<f32>,
         children: &[String],
+        row_context: Option<(usize, &Target)>,
         cx: &mut Context<Self>,
     ) -> gpui::AnyElement {
         let is_horizontal = orientation.unwrap_or("horizontal") == "horizontal";
@@ -260,7 +293,7 @@ impl Launcher {
 
         // Recurse into children.
         for child_id in children {
-            if let Some(child_el) = self.render_custom_widget(child_id, cx) {
+            if let Some(child_el) = self.render_custom_widget_scoped(child_id, row_context, cx) {
                 container = container.child(child_el);
             }
         }
@@ -286,11 +319,16 @@ impl Launcher {
         font_size: Option<f32>,
         font_weight: Option<&str>,
         gap: Option<f32>,
+        row_context: Option<(usize, &Target)>,
         cx: &mut Context<Self>,
     ) -> gpui::AnyElement {
         let t = &self.theme;
+        let btn_id = match row_context {
+            Some((ix, _)) => format!("row-{ix}-widget-button-{id}"),
+            None => format!("widget-button-{id}"),
+        };
         let mut btn = div()
-            .id(format!("widget-button-{id}"))
+            .id(btn_id)
             .cursor(CursorStyle::PointingHand)
             .flex()
             .items_center()
@@ -359,9 +397,10 @@ impl Launcher {
 
         if let Some(act) = action {
             let action_string = act.to_string();
+            let row_item_clone = row_context.map(|(_, item)| item.clone());
             btn = btn.on_click(cx.listener(move |this, event, _window, cx| {
                 if is_primary_click(event) {
-                    this.handle_widget_button_action(&action_string, cx);
+                    this.handle_widget_button_action(&action_string, row_item_clone.as_ref(), cx);
                 }
             }));
         }

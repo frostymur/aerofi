@@ -105,7 +105,10 @@ text_color       = "$text"        # string — item name color
 description_color = "$subtle"     # opt<string> — shortcut / description color
 show_icons       = true           # bool — show item icons
 icon_size        = 24.0           # f32 — icon dimensions (square)
-# layout           = ["icon", "name", "badge"] # opt<vec<string>> — custom layout
+# Custom slot ordering and row widgets (opt):
+# Available built-in slots: "icon", "name", "spacer" (or "flex"), "shortcuts", "badge"
+# You can also include any custom widget id defined in [[widgets]]!
+# layout           = ["icon", "name", "spacer", "btn_edit", "btn_run", "shortcuts"]
 
 # Selected row state
 [element.selected]

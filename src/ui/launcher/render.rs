@@ -826,9 +826,76 @@ impl Launcher {
             (rgba(0x00000000), rgb(Self::color(&el.text_color)))
         };
 
+        let pad_h = el.padding.first().copied().unwrap_or(8.0);
+        let pad_v = el.padding.get(1).copied().unwrap_or(12.0);
+
+        let desc_color = rgb(Self::color(
+            el.description_color.as_deref().unwrap_or(&el.text_color),
+        ));
+
+        let mut row = div()
+            .flex()
+            .items_center()
+            .gap_2()
+            .w_full()
+            .px(px(pad_h))
+            .py(px(pad_v))
+            .rounded(px(el.corner_radius))
+            .cursor(CursorStyle::PointingHand)
+            .bg(row_bg);
+
+        if let Some(layout) = &el.layout {
+            for slot in layout {
+                match slot.as_str() {
+                    "icon" => {
+                        row = row.child(self.render_row_icon(item));
+                    }
+                    "name" => {
+                        row = row.child(self.render_row_name(item, name_color, desc_color));
+                    }
+                    "spacer" | "flex" => {
+                        row = row.child(div().flex_1());
+                    }
+                    "shortcuts" | "shortcut" => {
+                        if let Some(sc) = self.render_shortcut_badge(item, desc_color) {
+                            row = row.child(sc);
+                        }
+                    }
+                    "badge" | "category" | "category_badge" => {
+                        if t.listview.category_badge.show {
+                            row = row.child(self.render_category_badge(item));
+                        }
+                    }
+                    custom_id => {
+                        if let Some(widget_el) =
+                            self.render_custom_widget_for_row(custom_id, filtered_ix, item, cx)
+                        {
+                            row = row.child(widget_el);
+                        }
+                    }
+                }
+            }
+        } else {
+            row = row
+                .child(self.render_row_icon(item))
+                .child(self.render_row_name(item, name_color, desc_color));
+            if t.listview.category_badge.show {
+                row = row.child(self.render_category_badge(item));
+            }
+            if let Some(sc) = self.render_shortcut_badge(item, desc_color) {
+                row = row.child(sc);
+            }
+        }
+
+        Self::with_item_mouse_handlers(row, format!("row-{filtered_ix}"), filtered_ix, cx)
+            .into_any()
+    }
+
+    fn render_row_icon(&self, item: &Target) -> gpui::AnyElement {
+        let t = &self.theme;
+        let el = &t.element;
         let icon_size = px(el.icon_size);
-        let show = el.show_icons;
-        let icon_element = if show {
+        if el.show_icons {
             if let Some(path) = item.icon_path() {
                 img(path).w(icon_size).h(icon_size).rounded_sm().into_any()
             } else {
@@ -855,19 +922,19 @@ impl Launcher {
             }
         } else {
             div().into_any()
-        };
+        }
+    }
 
-        let pad_h = el.padding.first().copied().unwrap_or(8.0);
-        let pad_v = el.padding.get(1).copied().unwrap_or(12.0);
-
-        let desc_color = rgb(Self::color(
-            el.description_color.as_deref().unwrap_or(&el.text_color),
-        ));
-
-        // Name column: for inline scripts show name + cached output as subtitle.
+    fn render_row_name(
+        &self,
+        item: &Target,
+        name_color: gpui::Rgba,
+        desc_color: gpui::Rgba,
+    ) -> gpui::AnyElement {
+        let t = &self.theme;
         let subtitle_opt = item.inline_output().or_else(|| item.package_name());
 
-        let name_col = if let Some(subtitle) = subtitle_opt {
+        if let Some(subtitle) = subtitle_opt {
             div()
                 .flex_1()
                 .flex()
@@ -888,33 +955,42 @@ impl Launcher {
                 .text_color(name_color)
                 .child(item.name().to_string())
                 .into_any()
-        };
+        }
+    }
 
-        let row = div()
-            .flex()
-            .items_center()
-            .gap_2()
-            .w_full()
-            .px(px(pad_h))
-            .py(px(pad_v))
-            .rounded(px(el.corner_radius))
-            .cursor(CursorStyle::PointingHand)
-            .bg(row_bg)
-            .child(icon_element)
-            .child(name_col);
+    fn render_category_badge(&self, item: &Target) -> gpui::AnyElement {
+        let t = &self.theme;
+        let b = &t.listview.category_badge;
+        let col = rgb(Self::color(&b.color));
+        let font_sz = px((t.font.size - b.font_size_offset).max(8.0));
+        let mut badge = div().text_color(col).text_size(font_sz);
+        if b.padding_x > 0.0 {
+            badge = badge.px(px(b.padding_x));
+        }
+        if b.radius > 0.0 {
+            badge = badge.rounded(px(b.radius));
+        }
+        if b.border {
+            let bc = b.border_color.as_deref().unwrap_or(&b.color);
+            badge = badge.border(px(1.0)).border_color(rgb(Self::color(bc)));
+        }
+        badge.child(item.category_label().to_string()).into_any()
+    }
 
-        // Right-aligned badge with the target's bound shortcuts, if any.
-        let row = match self.shortcut_label(item.name()) {
-            Some(label) => row.child(
-                div()
-                    .text_size(px(t.font.size - 2.0))
-                    .text_color(desc_color)
-                    .child(label),
-            ),
-            None => row,
-        };
-        Self::with_item_mouse_handlers(row, format!("row-{filtered_ix}"), filtered_ix, cx)
-            .into_any()
+    fn render_shortcut_badge(
+        &self,
+        item: &Target,
+        desc_color: gpui::Rgba,
+    ) -> Option<gpui::AnyElement> {
+        let label = self.shortcut_label(item.name())?;
+        let t = &self.theme;
+        Some(
+            div()
+                .text_size(px(t.font.size - 2.0))
+                .text_color(desc_color)
+                .child(label)
+                .into_any(),
+        )
     }
 
     /// Attach the standard list-item mouse behaviour: hovering moves the
