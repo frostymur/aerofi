@@ -46,14 +46,15 @@ impl WidgetRegistry {
     }
 
     /// Validate the registry: check for unknown child references in Box
-    /// widgets and detect circular nesting.
+    /// widgets and detect circular nesting. Built-in widgets (InputBar, ListView, etc.)
+    /// are recognized and allowed inside Box containers.
     pub fn validate(&self) -> Result<(), Vec<String>> {
         let mut errors = Vec::new();
 
         for def in self.defs.values() {
             if let WidgetDef::Box { id, children, .. } = def {
                 for child_id in children {
-                    if !self.defs.contains_key(child_id) {
+                    if !is_builtin(child_id) && !self.defs.contains_key(child_id) {
                         errors.push(format!("widget '{id}': child '{child_id}' is not defined"));
                     }
                 }
@@ -82,6 +83,9 @@ impl WidgetRegistry {
     /// DFS cycle detection: returns `true` if following Box children from
     /// `id` leads back to an already-visited node.
     fn has_cycle(&self, id: &str, visited: &mut HashSet<String>) -> bool {
+        if is_builtin(id) {
+            return false;
+        }
         if !visited.insert(id.to_string()) {
             return true;
         }
@@ -95,6 +99,14 @@ impl WidgetRegistry {
         visited.remove(id);
         false
     }
+}
+
+/// Check if an id refers to a built-in launcher widget (e.g. InputBar, ListView).
+pub fn is_builtin(name: &str) -> bool {
+    matches!(
+        name.to_lowercase().as_str(),
+        "inputbar" | "listview" | "banner" | "prompt" | "entry" | "sidebarimage" | "contentbox"
+    )
 }
 
 #[cfg(test)]
@@ -126,6 +138,9 @@ mod tests {
             align: None,
             background: None,
             radius: None,
+            width: None,
+            height: None,
+            flex: None,
             children: children.into_iter().map(|s| s.to_string()).collect(),
         }
     }
@@ -209,6 +224,14 @@ mod tests {
             text_widget("greeting"),
             spacer_widget("flex"),
             box_widget("header", vec!["greeting", "flex"]),
+        ]);
+        assert!(reg.validate().is_ok());
+    }
+
+    #[test]
+    fn box_with_builtin_children_passes_validation() {
+        let reg = WidgetRegistry::from_theme(&[
+            box_widget("main_pane", vec!["InputBar", "ListView"]),
         ]);
         assert!(reg.validate().is_ok());
     }

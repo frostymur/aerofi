@@ -93,6 +93,9 @@ impl Launcher {
                 align,
                 background,
                 radius,
+                width,
+                height,
+                flex,
                 children,
                 ..
             } => self.render_widget_box(
@@ -102,6 +105,9 @@ impl Launcher {
                 align.as_deref(),
                 background.as_deref(),
                 *radius,
+                *width,
+                *height,
+                *flex,
                 children,
                 row_context,
                 cx,
@@ -254,6 +260,9 @@ impl Launcher {
         align: Option<&str>,
         background: Option<&str>,
         radius: Option<f32>,
+        width: Option<f32>,
+        height: Option<f32>,
+        flex: Option<bool>,
         children: &[String],
         row_context: Option<(usize, &Target)>,
         cx: &mut Context<Self>,
@@ -265,6 +274,16 @@ impl Launcher {
             container = container.flex_row();
         } else {
             container = container.flex_col();
+        }
+
+        if let Some(w) = width {
+            container = container.w(px(w));
+        }
+        if let Some(h) = height {
+            container = container.h(px(h));
+        }
+        if flex.unwrap_or(false) {
+            container = container.flex_1();
         }
 
         if let Some(g) = gap {
@@ -291,9 +310,22 @@ impl Launcher {
             container = container.rounded(px(r));
         }
 
-        // Recurse into children.
+        // Recurse into children: supports built-ins (InputBar, ListView) as well as custom widgets.
         for child_id in children {
-            if let Some(child_el) = self.render_custom_widget_scoped(child_id, row_context, cx) {
+            if child_id.eq_ignore_ascii_case("inputbar") {
+                container = container.child(self.render_inputbar(cx));
+            } else if child_id.eq_ignore_ascii_case("listview") {
+                match &self.state {
+                    crate::ui::launcher::types::LauncherState::Search => {
+                        let columns = self.theme.listview.columns.max(1);
+                        container = container.child(self.render_listview(cx, columns));
+                    }
+                    crate::ui::launcher::types::LauncherState::Confirming { target, .. } => {
+                        container = container.child(self.render_confirmation(target, cx));
+                    }
+                    _ => {}
+                }
+            } else if let Some(child_el) = self.render_custom_widget_scoped(child_id, row_context, cx) {
                 container = container.child(child_el);
             }
         }

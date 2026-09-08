@@ -113,6 +113,9 @@ pub enum WidgetDef {
         align: Option<String>,
         background: Option<String>,
         radius: Option<f32>,
+        width: Option<f32>,
+        height: Option<f32>,
+        flex: Option<bool>,
         #[serde(default)]
         children: Vec<String>,
     },
@@ -737,6 +740,26 @@ mod tests {
         let t: ThemeConfig =
             toml::from_str(&content).expect("tokyo-night.toml should parse cleanly");
         assert_eq!(t.name, "Tokyo Night");
+    }
+
+    #[test]
+    fn example_horizon_theme_is_valid() {
+        let content = std::fs::read_to_string("examples/themes/horizon.toml")
+            .expect("should read horizon theme");
+        let mut t: ThemeConfig =
+            toml::from_str(&content).expect("horizon.toml should parse cleanly");
+        assert_eq!(t.name, "Horizon");
+        assert_eq!(t.mainbox.orientation, "horizontal");
+        t.resolve_colors();
+        assert_eq!(t.window.background, "#0d1117");
+
+        let reg = crate::core::widget::WidgetRegistry::from_theme(&t.widgets);
+        assert!(reg.validate().is_ok());
+        assert!(reg.get("sidebar").is_some());
+        assert!(reg.get("main_pane").is_some());
+        assert!(reg.get("btn_run").is_some());
+        assert!(reg.get("btn_edit").is_some());
+        assert!(reg.get("btn_copy").is_some());
     }
 
     #[test]

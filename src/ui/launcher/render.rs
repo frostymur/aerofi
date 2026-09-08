@@ -216,7 +216,7 @@ impl Launcher {
     }
 
     /// Render the input bar styled from `theme.inputbar`.
-    fn render_inputbar(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+    pub(super) fn render_inputbar(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
         let t = &self.theme;
         let ib = &t.inputbar;
 
@@ -326,7 +326,8 @@ impl Launcher {
             .into_any()
     }
 
-    fn render_confirmation(&self, target: &Target, cx: &mut Context<Self>) -> gpui::AnyElement {
+    /// Render the `LauncherState::Confirming` view when a dangerous action requires confirmation.
+    pub(super) fn render_confirmation(&self, target: &Target, cx: &mut Context<Self>) -> gpui::AnyElement {
         let t = &self.theme;
         let text_color = rgb(Self::color(&t.element.text_color));
         let sel_bg = rgb(Self::color(&t.element.selected.background));
@@ -659,7 +660,7 @@ impl Launcher {
 
     /// Render the result list styled from `theme.listview` and `theme.element`.
     /// When `columns > 1`, items are laid out in a grid.
-    fn render_listview(&self, cx: &mut Context<Self>, columns: usize) -> impl IntoElement {
+    pub(super) fn render_listview(&self, cx: &mut Context<Self>, columns: usize) -> impl IntoElement {
         let t = &self.theme;
 
         if self.filtered.is_empty() {
