@@ -656,15 +656,26 @@ pub fn load_theme(theme_name: &str) -> ThemeConfig {
         return ThemeConfig::default();
     }
 
-    let Some(config_dir) = dirs::config_dir() else {
-        eprintln!("aerofi: warning: cannot determine config dir, using default theme");
-        return ThemeConfig::default();
-    };
+    let file_name = format!("{theme_name}.toml");
 
-    let path = config_dir
-        .join("aerofi")
-        .join("themes")
-        .join(format!("{theme_name}.toml"));
+    // Check ~/.config/aerofi/themes/{name}.toml first (standard per config.rs).
+    let dot_config_path = dirs::home_dir()
+        .map(|h| h.join(".config").join("aerofi").join("themes").join(&file_name));
+
+    // Fallback to dirs::config_dir() (~/Library/Application Support/aerofi/themes/ on macOS).
+    let app_support_path = dirs::config_dir()
+        .map(|c| c.join("aerofi").join("themes").join(&file_name));
+
+    let path = match (&dot_config_path, &app_support_path) {
+        (Some(p), _) if p.is_file() => p.clone(),
+        (_, Some(p)) if p.is_file() => p.clone(),
+        (Some(p), _) => p.clone(),
+        (_, Some(p)) => p.clone(),
+        _ => {
+            eprintln!("aerofi: warning: cannot determine config dir, using default theme");
+            return ThemeConfig::default();
+        }
+    };
 
     let contents = match fs::read_to_string(&path) {
         Ok(c) => c,
@@ -786,6 +797,13 @@ mod tests {
     fn load_theme_missing_file_returns_builtin() {
         let t = load_theme("nonexistent_theme_12345");
         assert_eq!(t.name, "Tokyo Night");
+    }
+
+    #[test]
+    fn load_theme_loads_from_dot_config_or_app_support() {
+        let t = load_theme("horizon");
+        assert_eq!(t.name, "Horizon");
+        assert_eq!(t.mainbox.orientation, "horizontal");
     }
 
     #[test]
