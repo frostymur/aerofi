@@ -899,11 +899,29 @@ impl Launcher {
         if el.show_icons {
             if let Some(path) = item.icon_path() {
                 img(path).w(icon_size).h(icon_size).rounded_sm().into_any()
-            } else {
-                let fallback = item.icon().unwrap_or("•");
-                if fallback.starts_with('/') || fallback.starts_with('~') {
-                    let p = expand_tilde_path(fallback);
-                    img(std::path::PathBuf::from(p))
+            } else if let Some(icon_str) = item.icon() {
+                let is_image = icon_str.starts_with('/')
+                    || icon_str.starts_with('~')
+                    || icon_str.starts_with("./")
+                    || icon_str.ends_with(".png")
+                    || icon_str.ends_with(".jpg")
+                    || icon_str.ends_with(".jpeg")
+                    || icon_str.ends_with(".webp")
+                    || icon_str.ends_with(".tiff");
+
+                if is_image {
+                    let resolved = if icon_str.starts_with('~') || icon_str.starts_with('/') {
+                        std::path::PathBuf::from(expand_tilde_path(icon_str))
+                    } else {
+                        match item {
+                            Target::Script { path, .. } => path
+                                .parent()
+                                .map(|d| d.join(icon_str))
+                                .unwrap_or_else(|| std::path::PathBuf::from(icon_str)),
+                            _ => std::path::PathBuf::from(icon_str),
+                        }
+                    };
+                    img(resolved)
                         .w(icon_size)
                         .h(icon_size)
                         .rounded_sm()
@@ -917,9 +935,20 @@ impl Launcher {
                                 .as_deref()
                                 .unwrap_or(&t.inputbar.text_color),
                         )))
-                        .child(fallback.to_string())
+                        .child(icon_str.to_string())
                         .into_any()
                 }
+            } else {
+                div()
+                    .w(icon_size)
+                    .text_color(rgb(Self::color(
+                        t.inputbar
+                            .icon_color
+                            .as_deref()
+                            .unwrap_or(&t.inputbar.text_color),
+                    )))
+                    .child("•".to_string())
+                    .into_any()
             }
         } else {
             div().into_any()

@@ -193,19 +193,38 @@ impl Launcher {
         color: Option<&str>,
     ) -> gpui::AnyElement {
         let t = &self.theme;
-        let col = color
-            .and_then(parse_hex_color)
-            .unwrap_or_else(|| parse_hex_color(&t.element.text_color).unwrap_or(0));
         let sz = size.unwrap_or(t.element.icon_size);
 
-        div()
-            .text_color(rgb(col))
-            .text_size(px(sz))
-            .flex()
-            .items_center()
-            .justify_center()
-            .child(icon.to_string())
-            .into_any()
+        let is_image = icon.starts_with('/')
+            || icon.starts_with('~')
+            || icon.starts_with("./")
+            || icon.ends_with(".png")
+            || icon.ends_with(".jpg")
+            || icon.ends_with(".jpeg")
+            || icon.ends_with(".webp")
+            || icon.ends_with(".tiff");
+
+        if is_image {
+            let resolved = expand_tilde_path(icon);
+            img(std::path::PathBuf::from(resolved))
+                .w(px(sz))
+                .h(px(sz))
+                .rounded_sm()
+                .into_any()
+        } else {
+            let col = color
+                .and_then(parse_hex_color)
+                .unwrap_or_else(|| parse_hex_color(&t.element.text_color).unwrap_or(0));
+
+            div()
+                .text_color(rgb(col))
+                .text_size(px(sz))
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(icon.to_string())
+                .into_any()
+        }
     }
 
     fn render_widget_image(
@@ -426,7 +445,27 @@ impl Launcher {
         }
 
         if let Some(ic) = icon {
-            btn = btn.child(ic.to_string());
+            let is_image = ic.starts_with('/')
+                || ic.starts_with('~')
+                || ic.starts_with("./")
+                || ic.ends_with(".png")
+                || ic.ends_with(".jpg")
+                || ic.ends_with(".jpeg")
+                || ic.ends_with(".webp")
+                || ic.ends_with(".tiff");
+
+            if is_image {
+                let resolved = expand_tilde_path(ic);
+                let ic_sz = font_size.unwrap_or(14.0);
+                btn = btn.child(
+                    img(std::path::PathBuf::from(resolved))
+                        .w(px(ic_sz))
+                        .h(px(ic_sz))
+                        .rounded_sm(),
+                );
+            } else {
+                btn = btn.child(ic.to_string());
+            }
         }
 
         if let Some(txt) = text {
