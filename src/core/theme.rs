@@ -70,6 +70,7 @@ where
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum WidgetDef {
     Text {
+        #[serde(default)]
         id: String,
         text: Option<String>,
         color: Option<String>,
@@ -78,12 +79,14 @@ pub enum WidgetDef {
         align: Option<String>,
     },
     Icon {
+        #[serde(default)]
         id: String,
         icon: String,
         size: Option<f32>,
         color: Option<String>,
     },
     Image {
+        #[serde(default)]
         id: String,
         path: String,
         width: Option<f32>,
@@ -91,15 +94,18 @@ pub enum WidgetDef {
         radius: Option<f32>,
     },
     Spacer {
+        #[serde(default)]
         id: String,
     },
     Divider {
+        #[serde(default)]
         id: String,
         color: Option<String>,
         thickness: Option<f32>,
         margin: Option<f32>,
     },
     Box {
+        #[serde(default)]
         id: String,
         orientation: Option<String>,
         gap: Option<f32>,
@@ -107,9 +113,11 @@ pub enum WidgetDef {
         align: Option<String>,
         background: Option<String>,
         radius: Option<f32>,
+        #[serde(default)]
         children: Vec<String>,
     },
     Button {
+        #[serde(default)]
         id: String,
         text: Option<String>,
         icon: Option<String>,
@@ -142,6 +150,19 @@ impl WidgetDef {
         }
     }
 
+    /// Override the id of this widget (used when parsing `[widgets.<id>]` syntax).
+    pub fn set_id(&mut self, new_id: String) {
+        match self {
+            Self::Text { id, .. }
+            | Self::Icon { id, .. }
+            | Self::Image { id, .. }
+            | Self::Spacer { id }
+            | Self::Divider { id, .. }
+            | Self::Box { id, .. }
+            | Self::Button { id, .. } => *id = new_id,
+        }
+    }
+
     /// Resolve `$alias` colour references within this widget's fields.
     pub fn resolve_colors(&mut self, colors: &HashMap<String, String>) {
         match self {
@@ -165,6 +186,37 @@ impl WidgetDef {
             }
             Self::Image { .. } | Self::Spacer { .. } => {}
         }
+    }
+}
+
+/// Helper enum to deserialize custom widgets from either:
+/// 1. A table of widget definitions: `[widgets.<id>]`
+/// 2. An array of widget definitions: `[[widgets]]`
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum WidgetsRepr {
+    Map(std::collections::BTreeMap<String, WidgetDef>),
+    List(Vec<WidgetDef>),
+}
+
+/// Deserialize widgets supporting both `[widgets.<id>]` and `[[widgets]]` formats.
+pub fn deserialize_widgets<'de, D>(deserializer: D) -> Result<Vec<WidgetDef>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let repr = WidgetsRepr::deserialize(deserializer)?;
+    match repr {
+        WidgetsRepr::Map(map) => {
+            let mut list = Vec::with_capacity(map.len());
+            for (key, mut widget) in map {
+                if widget.id().is_empty() {
+                    widget.set_id(key);
+                }
+                list.push(widget);
+            }
+            Ok(list)
+        }
+        WidgetsRepr::List(list) => Ok(list),
     }
 }
 
@@ -491,8 +543,9 @@ pub struct ThemeConfig {
     pub inputbar: InputBarConfig,
     pub listview: ListViewConfig,
     pub element: ElementConfig,
-    /// Custom widget definitions from `[[widgets]]`.
-    #[serde(default)]
+    /// Custom widget definitions. Supports both table syntax (`[widgets.<id>]`)
+    /// and array-of-tables syntax (`[[widgets]]`).
+    #[serde(default, deserialize_with = "deserialize_widgets")]
     pub widgets: Vec<WidgetDef>,
     /// Named colour aliases: `$key` in any colour field is replaced with
     /// the corresponding hex value from this map.
@@ -929,6 +982,69 @@ mod tests {
             assert_eq!(color.as_deref(), Some("#7aa2f7"));
             assert_eq!(background.as_deref(), Some("#24283b"));
             assert_eq!(hover_background.as_deref(), Some("#7aa2f7"));
+        } else {
+            panic!("expected Button widget");
+        }
+    }
+
+    #[test]
+    fn widgets_table_map_syntax_deserializes_into_theme_config() {
+        let toml = r#"
+            name = "TableTest"
+
+            [widgets.logo]
+            type = "icon"
+            icon = "🚀"
+            size = 20.0
+
+            [widgets.flex]
+            type = "spacer"
+
+            [widgets.quick_stats]
+            type = "box"
+            orientation = "horizontal"
+            gap = 6.0
+            children = ["logo", "flex"]
+
+            [widgets.btn_reload]
+            type = "button"
+            icon = "🔄"
+            text = "Reload"
+            action = "reload"
+        "#;
+        let t: ThemeConfig = toml::from_str(toml).expect("should parse table widgets");
+        assert_eq!(t.widgets.len(), 4);
+
+        let by_id: HashMap<&str, &WidgetDef> = t.widgets.iter().map(|w| (w.id(), w)).collect();
+        assert!(by_id.contains_key("logo"));
+        assert!(by_id.contains_key("flex"));
+        assert!(by_id.contains_key("quick_stats"));
+        assert!(by_id.contains_key("btn_reload"));
+
+        if let WidgetDef::Icon { icon, size, .. } = by_id["logo"] {
+            assert_eq!(icon, "🚀");
+            assert_eq!(*size, Some(20.0));
+        } else {
+            panic!("expected Icon widget");
+        }
+
+        if let WidgetDef::Spacer { id } = by_id["flex"] {
+            assert_eq!(id, "flex");
+        } else {
+            panic!("expected Spacer widget");
+        }
+
+        if let WidgetDef::Box { children, gap, .. } = by_id["quick_stats"] {
+            assert_eq!(children, &["logo", "flex"]);
+            assert_eq!(*gap, Some(6.0));
+        } else {
+            panic!("expected Box widget");
+        }
+
+        if let WidgetDef::Button { action, icon, text, .. } = by_id["btn_reload"] {
+            assert_eq!(action.as_deref(), Some("reload"));
+            assert_eq!(icon.as_deref(), Some("🔄"));
+            assert_eq!(text.as_deref(), Some("Reload"));
         } else {
             panic!("expected Button widget");
         }

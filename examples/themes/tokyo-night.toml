@@ -107,7 +107,7 @@ show_icons       = true           # bool — show item icons
 icon_size        = 24.0           # f32 — icon dimensions (square)
 # Custom slot ordering and row widgets (opt):
 # Available built-in slots: "icon", "name", "spacer" (or "flex"), "shortcuts", "badge"
-# You can also include any custom widget id defined in [[widgets]]!
+# You can also include any custom widget id defined under [widgets.<id>]!
 # layout           = ["icon", "name", "spacer", "btn_edit", "btn_run", "shortcuts"]
 
 # Selected row state
@@ -141,44 +141,40 @@ yellow    = "#e0af68"
 
 # ---------------------------------------------------------------------------
 # Custom Widgets (optional)
-# Define arbitrary UI elements (text, icon, image, spacer, divider, box, button)
-# and reference their `id` in [mainbox].children alongside "InputBar" and "ListView".
+# Define arbitrary UI elements under [widgets.<id>] (text, icon, image, spacer,
+# divider, box, button) and reference their id in [mainbox].children or [element].layout.
+# Both table syntax `[widgets.<id>]` and array syntax `[[widgets]]` are supported.
 # ---------------------------------------------------------------------------
-# [[widgets]]
-# id          = "logo"
-# type        = "icon"
-# icon        = "🚀"
-# size        = 18.0
-# color       = "$accent"
+# [widgets.logo]
+# type  = "icon"
+# icon  = "🚀"
+# size  = 18.0
+# color = "$accent"
 #
-# [[widgets]]
-# id          = "title"
+# [widgets.title]
 # type        = "text"
 # text        = "AeroFi"
 # color       = "$text"
 # font_size   = 14.0
 # font_weight = "bold"
 #
-# [[widgets]]
-# id          = "flex"
-# type        = "spacer"
+# [widgets.flex]
+# type = "spacer"
 #
-# [[widgets]]
-# id          = "btn_reload"
-# type        = "button"
-# icon        = "🔄"
-# text        = "Reload"
-# action      = "reload"
-# color       = "$subtle"
-# hover_color = "$accent"
+# [widgets.btn_reload]
+# type             = "button"
+# icon             = "🔄"
+# text             = "Reload"
+# action           = "reload"
+# color            = "$subtle"
+# hover_color      = "$accent"
 # hover_background = "$surface"
-# radius      = 6.0
-# padding     = [8.0, 4.0]
-# font_size   = 12.0
-# gap         = 4.0
+# radius           = 6.0
+# padding          = [8.0, 4.0]
+# font_size        = 12.0
+# gap              = 4.0
 #
-# [[widgets]]
-# id          = "header"
+# [widgets.header]
 # type        = "box"
 # orientation = "horizontal"
 # gap         = 8.0
