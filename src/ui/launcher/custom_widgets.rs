@@ -382,17 +382,23 @@ impl Launcher {
             btn = btn.bg(rgb(bg));
         }
 
-        if let Some(hbg) = hover_background.and_then(parse_hex_color) {
-            btn = btn.hover(move |s| s.bg(rgb(hbg)));
-        }
-
         let col = color
             .and_then(parse_hex_color)
             .unwrap_or_else(|| parse_hex_color(&t.element.text_color).unwrap_or(0xffffff));
         btn = btn.text_color(rgb(col));
 
-        if let Some(hc) = hover_color.and_then(parse_hex_color) {
-            btn = btn.hover(move |s| s.text_color(rgb(hc)));
+        let hbg_opt = hover_background.and_then(parse_hex_color);
+        let hc_opt = hover_color.and_then(parse_hex_color);
+        if hbg_opt.is_some() || hc_opt.is_some() {
+            btn = btn.hover(move |mut s| {
+                if let Some(hbg) = hbg_opt {
+                    s = s.bg(rgb(hbg));
+                }
+                if let Some(hc) = hc_opt {
+                    s = s.text_color(rgb(hc));
+                }
+                s
+            });
         }
 
         if let Some(bc) = border_color.and_then(parse_hex_color) {
