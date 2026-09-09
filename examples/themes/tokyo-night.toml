@@ -105,7 +105,10 @@ text_color       = "$text"        # string — item name color
 description_color = "$subtle"     # opt<string> — shortcut / description color
 show_icons       = true           # bool — show item icons
 icon_size        = 24.0           # f32 — icon dimensions (square)
-# layout           = ["icon", "name", "badge"] # opt<vec<string>> — custom layout
+# Custom slot ordering and row widgets (opt):
+# Available built-in slots: "icon", "name", "spacer" (or "flex"), "shortcuts", "badge"
+# You can also include any custom widget id defined under [widgets.<id>]!
+# layout           = ["icon", "name", "spacer", "btn_edit", "btn_run", "shortcuts"]
 
 # Selected row state
 [element.selected]
@@ -135,3 +138,50 @@ accent    = "#7aa2f7"
 green     = "#9ece6a"
 red       = "#f7768e"
 yellow    = "#e0af68"
+
+# ---------------------------------------------------------------------------
+# Custom Widgets (optional)
+# Define arbitrary UI elements under [widgets.<id>] (text, icon, image, spacer,
+# divider, box, button) and reference their id in [mainbox].children or [element].layout.
+# Both table syntax `[widgets.<id>]` and array syntax `[[widgets]]` are supported.
+# ---------------------------------------------------------------------------
+# [widgets.logo]
+# type  = "icon"
+# icon  = "🚀"
+# size  = 18.0
+# color = "$accent"
+#
+# [widgets.title]
+# type        = "text"
+# text        = "AeroFi"
+# color       = "$text"
+# font_size   = 14.0
+# font_weight = "bold"
+#
+# [widgets.flex]
+# type = "spacer"
+#
+# [widgets.btn_reload]
+# type             = "button"
+# icon             = "🔄"
+# text             = "Reload"
+# action           = "reload"
+# color            = "$subtle"
+# hover_color      = "$accent"
+# hover_background = "$surface"
+# radius           = 6.0
+# padding          = [8.0, 4.0]
+# font_size        = 12.0
+# gap              = 4.0
+#
+# [widgets.header]
+# type        = "box"
+# orientation = "horizontal"
+# gap         = 8.0
+# align       = "center"
+# padding     = [0.0, 4.0]
+# children    = ["logo", "title", "flex", "btn_reload"]
+#
+# To use this header, update [mainbox].children:
+# children    = ["header", "InputBar", "ListView"]
+
