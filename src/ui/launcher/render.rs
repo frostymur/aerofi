@@ -1184,7 +1184,7 @@ impl Launcher {
 
         let mut row = div().flex().gap(spacing).w_full();
         for global_ix in start_ix..end_ix {
-            let item = &self.filtered[global_ix];
+            let item = &self.all[self.filtered[global_ix]];
             let is_selected = global_ix == self.selected;
             row = row.child(div().flex_1().child(self.render_grid_cell(
                 item,
@@ -1278,7 +1278,7 @@ impl Launcher {
 
     /// Build a single list row for `filtered_ix` (position within `filtered`).
     fn render_row(&self, filtered_ix: usize, cx: &mut Context<Self>) -> gpui::AnyElement {
-        let item = &self.filtered[filtered_ix];
+        let item = &self.all[self.filtered[filtered_ix]];
         let is_selected = filtered_ix == self.selected;
         let t = &self.theme;
         let el = &t.element;
