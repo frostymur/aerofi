@@ -2,10 +2,9 @@
 //!
 //! Composition root only: scans the scripts folder, opens the GPUI window,
 //! wires keystrokes and the global hotkey. Everything else lives in
-//! `common/` (types), `core/` (business logic), `ui/` (rendering) and
+//! `core/` (types & business logic), `ui/` (rendering) and
 //! `sys/` (macOS system calls). See ARCHITECTURE.md.
 
-mod common;
 mod core;
 mod sys;
 mod ui;
@@ -127,7 +126,7 @@ fn main() {
                 return;
             }
             view_clone.update(cx, |launcher, cx| {
-                let action = launcher.handle_keystroke(&event.keystroke);
+                let action = launcher.handle_keystroke(&event.keystroke, Some(cx));
                 cx.notify();
                 launcher.perform_action(action, cx);
             });

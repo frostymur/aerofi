@@ -75,12 +75,12 @@ fn metatags_commit_on_execute_not_on_hover() {
     assert_eq!(l.effective_columns(), 3);
 
     // Typing a new query keeps the override for the session.
-    l.handle_keystroke(&key("z"));
+    l.handle_keystroke(&key("z"), None);
     assert_eq!(l.effective_columns(), 3);
 
     // Executing a script without metatags replaces the override with
     // the theme defaults (the last executed script decides the layout).
-    l.handle_keystroke(&key("backspace")); // clear "z", full list back
+    l.handle_keystroke(&key("backspace"), None); // clear "z", full list back
     let plain = l.all.iter().find(|t| t.name() == "Alpha").unwrap().clone();
     l.execute_target_with_args(&plain, Vec::new());
     assert_eq!(l.effective_columns(), 1);
@@ -198,7 +198,7 @@ fn typing_filters_fuzzy_and_excludes_non_matches() {
         AppConfig::default(),
         History::test_new(PathBuf::new(), Vec::new()),
     );
-    l.handle_keystroke(&key("g"));
+    l.handle_keystroke(&key("g"), None);
     let n = names(&l);
     assert!(n.contains(&"Git Status".to_string()));
     assert!(n.contains(&"Grep".to_string()));
@@ -213,11 +213,11 @@ fn backspace_restores_previous_results() {
         AppConfig::default(),
         History::test_new(PathBuf::new(), Vec::new()),
     );
-    l.handle_keystroke(&key("g"));
+    l.handle_keystroke(&key("g"), None);
     assert_eq!(names(&l).len(), 2);
-    l.handle_keystroke(&key("g")); // "gg" matches neither
+    l.handle_keystroke(&key("g"), None); // "gg" matches neither
     assert!(names(&l).is_empty());
-    l.handle_keystroke(&key("backspace")); // back to "g"
+    l.handle_keystroke(&key("backspace"), None); // back to "g"
     assert!(names(&l).contains(&"Git Status".to_string()));
 }
 
@@ -230,13 +230,13 @@ fn arrows_move_and_clamp_selection() {
         History::test_new(PathBuf::new(), Vec::new()),
     );
     assert_eq!(l.selected, 0);
-    l.handle_keystroke(&key("down"));
+    l.handle_keystroke(&key("down"), None);
     assert_eq!(l.selected, 1);
-    l.handle_keystroke(&key("down"));
+    l.handle_keystroke(&key("down"), None);
     assert_eq!(l.selected, 2);
-    l.handle_keystroke(&key("down")); // clamps at the last row
+    l.handle_keystroke(&key("down"), None); // clamps at the last row
     assert_eq!(l.selected, 2);
-    l.handle_keystroke(&key("up"));
+    l.handle_keystroke(&key("up"), None);
     assert_eq!(l.selected, 1);
 }
 
@@ -256,7 +256,7 @@ fn list_shows_all_items() {
             "A Three".to_string()
         ]
     );
-    l.handle_keystroke(&key("a"));
+    l.handle_keystroke(&key("a"), None);
     assert_eq!(names(&l).len(), 3);
 }
 
@@ -268,9 +268,9 @@ fn escape_signals_hide_and_resets_query() {
         AppConfig::default(),
         History::test_new(PathBuf::new(), Vec::new()),
     );
-    l.handle_keystroke(&key("g"));
+    l.handle_keystroke(&key("g"), None);
     assert_eq!(l.query, "g");
-    assert_eq!(l.handle_keystroke(&key("escape")), LauncherAction::Hide);
+    assert_eq!(l.handle_keystroke(&key("escape"), None), LauncherAction::Hide);
     assert_eq!(l.query, "");
     assert_eq!(l.selected, 0);
 }
@@ -291,7 +291,7 @@ fn arrow_key_defers_scroll_to_selected_item() {
         AppConfig::default(),
         History::test_new(PathBuf::new(), Vec::new()),
     );
-    l.handle_keystroke(&key("down"));
+    l.handle_keystroke(&key("down"), None);
     assert_eq!(deferred(&l), Some((1, ScrollStrategy::Nearest)));
 }
 
@@ -340,7 +340,7 @@ fn typing_defers_scroll_back_to_top() {
         AppConfig::default(),
         History::test_new(PathBuf::new(), Vec::new()),
     );
-    l.handle_keystroke(&key("g"));
+    l.handle_keystroke(&key("g"), None);
     assert_eq!(deferred(&l), Some((0, ScrollStrategy::Top)));
 }
 
@@ -395,7 +395,7 @@ fn enter_on_script_with_args_starts_argument_prompt() {
         AppConfig::default(),
         History::test_new(PathBuf::new(), Vec::new()),
     );
-    let action = l.handle_keystroke(&key("enter"));
+    let action = l.handle_keystroke(&key("enter"), None);
     assert_eq!(action, LauncherAction::None);
     assert_eq!(arg_state(&l), Some((vec![String::new(), String::new()], 0)));
 }
@@ -408,29 +408,29 @@ fn argument_prompt_accepts_typing_focus_and_confirm() {
         AppConfig::default(),
         History::test_new(PathBuf::new(), Vec::new()),
     );
-    l.handle_keystroke(&key("enter")); // enter the prompt
-    l.handle_keystroke(&key("h"));
-    l.handle_keystroke(&key("i"));
+    l.handle_keystroke(&key("enter"), None); // enter the prompt
+    l.handle_keystroke(&key("h"), None);
+    l.handle_keystroke(&key("i"), None);
     assert_eq!(
         arg_state(&l),
         Some((vec!["hi".to_string(), String::new()], 0))
     );
-    l.handle_keystroke(&key("enter")); // advance to the next argument
+    l.handle_keystroke(&key("enter"), None); // advance to the next argument
     assert_eq!(
         arg_state(&l),
         Some((vec!["hi".to_string(), String::new()], 1))
     );
-    l.handle_keystroke(&key("tab")); // wraps back to the first
+    l.handle_keystroke(&key("tab"), None); // wraps back to the first
     assert_eq!(
         arg_state(&l),
         Some((vec!["hi".to_string(), String::new()], 0))
     );
-    l.handle_keystroke(&key("tab")); // back to the second
-    l.handle_keystroke(&key("t"));
-    l.handle_keystroke(&key("a"));
-    l.handle_keystroke(&key("b"));
-    l.handle_keystroke(&key("backspace")); // "ta"
-    let action = l.handle_keystroke(&key("enter")); // last arg -> run
+    l.handle_keystroke(&key("tab"), None); // back to the second
+    l.handle_keystroke(&key("t"), None);
+    l.handle_keystroke(&key("a"), None);
+    l.handle_keystroke(&key("b"), None);
+    l.handle_keystroke(&key("backspace"), None); // "ta"
+    let action = l.handle_keystroke(&key("enter"), None); // last arg -> run
     assert!(matches!(
         action,
         LauncherAction::ExecuteScript(_, ref args)
@@ -447,9 +447,9 @@ fn escape_cancels_argument_prompt() {
         AppConfig::default(),
         History::test_new(PathBuf::new(), Vec::new()),
     );
-    l.handle_keystroke(&key("enter"));
-    l.handle_keystroke(&key("h"));
-    let action = l.handle_keystroke(&key("escape"));
+    l.handle_keystroke(&key("enter"), None);
+    l.handle_keystroke(&key("h"), None);
+    let action = l.handle_keystroke(&key("escape"), None);
     assert_eq!(action, LauncherAction::None);
     assert_eq!(l.state, LauncherState::Search);
 }
@@ -462,16 +462,16 @@ fn argument_prompt_confirms_before_executing() {
         AppConfig::default(),
         History::test_new(PathBuf::new(), Vec::new()),
     );
-    l.handle_keystroke(&key("enter"));
-    l.handle_keystroke(&key("x"));
-    l.handle_keystroke(&key("enter")); // last arg -> confirmation
+    l.handle_keystroke(&key("enter"), None);
+    l.handle_keystroke(&key("x"), None);
+    l.handle_keystroke(&key("enter"), None); // last arg -> confirmation
     assert!(matches!(l.state, LauncherState::Confirming { .. }));
-    l.handle_keystroke(&key("escape")); // decline
+    l.handle_keystroke(&key("escape"), None); // decline
     assert_eq!(l.state, LauncherState::Search);
-    l.handle_keystroke(&key("enter")); // prompt again
-    l.handle_keystroke(&key("y"));
-    l.handle_keystroke(&key("enter"));
-    let action = l.handle_keystroke(&key("enter")); // confirm
+    l.handle_keystroke(&key("enter"), None); // prompt again
+    l.handle_keystroke(&key("y"), None);
+    l.handle_keystroke(&key("enter"), None);
+    let action = l.handle_keystroke(&key("enter"), None); // confirm
     assert!(matches!(
         action,
         LauncherAction::ExecuteScript(_, ref args) if *args == vec!["y".to_string()]
@@ -489,11 +489,11 @@ fn full_output_still_swallows_keystrokes() {
     );
     l.state = LauncherState::FullOutput { title: "t".into() };
     l.full_output_blocks = crate::core::markdown::parse("out");
-    l.handle_keystroke(&key("a"));
+    l.handle_keystroke(&key("a"), None);
     assert_eq!(l.query, "");
-    l.handle_keystroke(&key("down"));
+    l.handle_keystroke(&key("down"), None);
     assert_eq!(l.selected, 0);
-    let action = l.handle_keystroke(&key("escape"));
+    let action = l.handle_keystroke(&key("escape"), None);
     assert_eq!(action, LauncherAction::None);
     assert_eq!(l.state, LauncherState::Search);
 }
@@ -528,6 +528,7 @@ fn button_widget_in_registry() {
         text: Some("Action".to_string()),
         icon: Some("⚡".to_string()),
         action: Some("reload".to_string()),
+        hotkey: None,
         color: None,
         background: None,
         hover_background: None,
@@ -554,6 +555,41 @@ fn button_widget_in_registry() {
     } else {
         panic!("expected Button widget");
     }
+}
+
+#[test]
+fn button_hotkey_triggers_action() {
+    use crate::core::theme::WidgetDef;
+    let mut theme = ThemeConfig::default();
+    theme.widgets.push(WidgetDef::Button {
+        id: "btn_reload".to_string(),
+        text: Some("Reload".to_string()),
+        icon: None,
+        action: Some("reload".to_string()),
+        hotkey: Some("cmd+r".to_string()),
+        color: None,
+        background: None,
+        hover_background: None,
+        hover_color: None,
+        border_color: None,
+        border_width: None,
+        radius: None,
+        padding: None,
+        font_size: None,
+        font_weight: None,
+        gap: None,
+    });
+    let l = Launcher::new(
+        vec![Target::reload_config()],
+        theme,
+        AppConfig::default(),
+        History::test_new(PathBuf::new(), Vec::new()),
+    );
+    assert_eq!(l.button_hotkeys.len(), 1);
+    assert_eq!(
+        l.button_hotkeys.get("cmd+r").map(|s| s.as_str()),
+        Some("reload")
+    );
 }
 
 #[test]
@@ -586,6 +622,7 @@ fn element_layout_supports_custom_widgets_in_row() {
         text: Some("Run".to_string()),
         icon: Some("▶".to_string()),
         action: Some("run".to_string()),
+        hotkey: None,
         color: None,
         background: None,
         hover_background: None,

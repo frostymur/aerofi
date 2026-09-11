@@ -45,6 +45,27 @@ impl WidgetRegistry {
         self.defs.get(id)
     }
 
+    /// Collect all button hotkey bindings: maps hotkey combo string to
+    /// the button's action string. Only buttons with both `hotkey` and
+    /// `action` set are included.
+    pub fn button_hotkeys(&self) -> HashMap<String, String> {
+        self.defs
+            .values()
+            .filter_map(|def| {
+                if let WidgetDef::Button {
+                    hotkey: Some(hotkey),
+                    action: Some(action),
+                    ..
+                } = def
+                {
+                    Some((hotkey.clone(), action.clone()))
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
     /// Validate the registry: check for unknown child references in Box
     /// widgets and detect circular nesting. Built-in widgets (InputBar, ListView, etc.)
     /// are recognized and allowed inside Box containers.
@@ -192,6 +213,7 @@ mod tests {
             text: Some("btn".to_string()),
             icon: None,
             action: Some(action.to_string()),
+            hotkey: None,
             color: None,
             background: None,
             hover_background: None,

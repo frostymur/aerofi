@@ -129,7 +129,7 @@ pub fn start_daemon(
                         // No polling, no waker spinning — zero CPU between script outputs.
                         cx.spawn(move |_: &mut gpui::AsyncApp| async move {
                             use futures::StreamExt;
-                            let mut cx_async = cx_async;
+                            let cx_async = cx_async;
                             while let Some(text) = rx.next().await {
                                 let _ = cx_async.update(|cx| {
                                     view2.update(cx, |launcher, cx| {

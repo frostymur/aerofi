@@ -129,6 +129,10 @@ pub fn execute_script(
                         cx.notify();
                     });
                 }
+                // gui: interactive sessions are managed by the Launcher
+                // state machine directly (start_gui_session). This mode
+                // should never reach execute_script.
+                ScriptMode::Gui => {}
             }
         });
     })

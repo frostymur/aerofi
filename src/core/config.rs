@@ -22,6 +22,9 @@ theme = "default"
 [general]
 # Maximum number of results shown in the launcher list.
 max_results = 20
+# Editor command to open scripts for editing (opens in a new Terminal window).
+# Examples: "vim", "nvim", "code --wait"
+editor = "vim"
 
 [sources]
 # Which target sources the launcher indexes.
@@ -64,11 +67,17 @@ ignored = ["Uninstall*", "Installer"]
 pub struct GeneralConfig {
     /// Maximum number of results shown in the launcher list.
     pub max_results: usize,
+    /// Editor command used to open scripts for editing (e.g. "vim", "nvim",
+    /// "code"). Opened in a new Terminal.app window.
+    pub editor: String,
 }
 
 impl Default for GeneralConfig {
     fn default() -> Self {
-        Self { max_results: 20 }
+        Self {
+            max_results: 20,
+            editor: "vim".to_string(),
+        }
     }
 }
 

@@ -1,9 +1,14 @@
 //! Launcher state: struct definition and controller logic (keystroke
 //! handling, filtering, execution, configuration reload).
 
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+
 use gpui::{Context, ScrollStrategy, UniformListScrollHandle};
 
 use crate::core::config::AppConfig;
+use crate::core::gui_protocol::GuiCommand;
+use crate::core::gui_session::{self, GuiSession, ReadResult};
 use crate::core::history::History;
 use crate::core::item::{BuiltinAction, ScriptMetatags, ScriptMode, Target};
 use crate::core::search::SearchIndex;
@@ -49,6 +54,12 @@ pub struct Launcher {
     /// Registry of custom widget definitions from `[[widgets]]` in the
     /// theme file. Used by `render_custom_widget` in `custom_widgets.rs`.
     pub(super) widget_registry: WidgetRegistry,
+    /// Hotkey bindings from button widgets: maps combo string (e.g. "cmd+r")
+    /// to the button's action string. Rebuilt on config reload.
+    pub(super) button_hotkeys: HashMap<String, String>,
+    /// Active GUI-mode script session (stdin/stdout pipe to child).
+    /// Wrapped in Arc<Mutex<>> so it can be shared with async tasks.
+    pub(super) gui_session: Option<Arc<Mutex<GuiSession>>>,
 }
 
 impl Launcher {
@@ -60,6 +71,7 @@ impl Launcher {
     ) -> Self {
         let filtered = all.clone();
         let widget_registry = WidgetRegistry::from_theme(&theme.widgets);
+        let button_hotkeys = widget_registry.button_hotkeys();
         Self {
             all,
             filtered,
@@ -75,6 +87,8 @@ impl Launcher {
             full_output_blocks: Vec::new(),
             sticky_metatags: None,
             widget_registry,
+            button_hotkeys,
+            gui_session: None,
         }
     }
 
@@ -88,7 +102,7 @@ impl Launcher {
     }
 
     /// Handle a keystroke. Returns the action that the host (main.rs) should perform.
-    pub fn handle_keystroke(&mut self, ks: &gpui::Keystroke) -> LauncherAction {
+    pub fn handle_keystroke(&mut self, ks: &gpui::Keystroke, cx: Option<&mut Context<Self>>) -> LauncherAction {
         // Full-output pages (spinner and result view) swallow every
         // keystroke; only Escape returns to the search list. Argument
         // prompts and confirmations fall through so their own handlers run.
@@ -100,6 +114,12 @@ impl Launcher {
                 self.back_from_full_output();
             }
             return LauncherAction::None;
+        }
+
+        // GUI-mode interactive script: handle keystrokes within the
+        // script-driven list.
+        if matches!(&self.state, LauncherState::GuiMode { .. }) {
+            return self.handle_gui_mode_keystroke(ks, cx);
         }
 
         // A configured key-combo shortcut (e.g. "cmd+r") runs its target
@@ -124,6 +144,22 @@ impl Launcher {
             }
             return action;
         }
+
+        // Button widget hotkeys (e.g. "cmd+r" mapped to a sidebar button's
+        // action). Only honoured in plain search mode.
+        if matches!(self.state, LauncherState::Search)
+            && let Some((_, action)) = self
+                .button_hotkeys
+                .iter()
+                .find(|(combo, _)| combo_matches(combo, ks))
+        {
+            let action = action.clone();
+            if let Some(cx) = cx {
+                self.handle_widget_button_action(&action, None, cx);
+            }
+            return LauncherAction::None;
+        }
+
         let cmd = ks.modifiers.platform;
         match (ks.key.as_str(), cmd) {
             ("escape", _) => {
@@ -343,6 +379,12 @@ impl Launcher {
         self.full_output_blocks.clear();
         // The sticky layout override only lasts for the session.
         self.sticky_metatags = None;
+        // Kill any active GUI session.
+        if let Some(session) = self.gui_session.take() {
+            if let Ok(mut s) = session.lock() {
+                s.kill();
+            }
+        }
     }
 
     /// Called when the window is shown.  Refills `filtered` from `all`
@@ -439,6 +481,7 @@ impl Launcher {
                     }
                     ScriptMode::Compact => LauncherAction::ExecuteScript(item.clone(), args),
                     ScriptMode::Inline => LauncherAction::ExecuteScript(item.clone(), args),
+                    ScriptMode::Gui => LauncherAction::StartGuiSession(item.clone(), args),
                 }
             }
             Target::Builtin { .. } | Target::App { .. } => LauncherAction::None,
@@ -479,6 +522,10 @@ impl Launcher {
             }
             LauncherAction::SetInlineOutput { path, output } => {
                 self.apply_inline_output(&path, output);
+                cx.notify();
+            }
+            LauncherAction::StartGuiSession(target, args) => {
+                self.start_gui_session(&target, args, cx);
                 cx.notify();
             }
             LauncherAction::ExecuteScript(target, args) => {
@@ -585,6 +632,7 @@ impl Launcher {
         self.all = targets;
         self.search = SearchIndex::new(&self.app_config.aliases);
         self.widget_registry = WidgetRegistry::from_theme(&theme.widgets);
+        self.button_hotkeys = self.widget_registry.button_hotkeys();
         self.theme = theme;
         self.query.clear();
         self.refilter();
@@ -592,32 +640,45 @@ impl Launcher {
         println!("aerofi: configuration reloaded");
     }
 
-    /// Open the highlighted script in `$EDITOR` (defaulting to `vim`).
+    /// Open the highlighted script in the configured editor.
     /// Applications have no source to edit, so this is a no-op for them.
     fn open_in_editor(&mut self) {
         if let Some(item) = self.selected_item().cloned() {
-            Self::open_target_in_editor(&item);
+            let editor = self.app_config.general.editor.clone();
+            Self::open_target_in_editor(&item, &editor);
         }
     }
 
-    /// Open a specific script target in `$EDITOR` (defaulting to `vim`).
-    pub(super) fn open_target_in_editor(item: &Target) {
+    /// Open a specific script target in the configured editor, launched in a
+    /// new Terminal.app window.
+    pub(super) fn open_target_in_editor(item: &Target, editor: &str) {
         let path = match item {
             Target::Script { path, .. } => path.clone(),
             // Applications and built-in actions have no source to edit.
             Target::App { .. } | Target::Builtin { .. } => return,
         };
         let name = item.name().to_string();
-        let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vim".to_string());
-        // `EDITOR` may be "cmd -arg ..."; split into program + initial args.
-        let mut parts = editor.split_whitespace();
-        let program = parts.next().unwrap_or("vim");
-        match std::process::Command::new(program)
-            .args(parts)
-            .arg(path.as_os_str())
+        let path_str = path.to_string_lossy();
+        // Build the shell command: "cd <dir> && <editor> <file>"
+        let dir = path
+            .parent()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let shell_cmd = if dir.is_empty() {
+            format!("{editor} {path_str}")
+        } else {
+            format!("cd {dir} && {editor} {path_str}")
+        };
+        // Use osascript to open a new Terminal.app window with the command.
+        let script = format!(
+            "tell application \"Terminal\"\n  activate\n  do script \"{}\"\nend tell",
+            shell_cmd.replace('\\', "\\\\").replace('"', "\\\"")
+        );
+        match std::process::Command::new("osascript")
+            .args(["-e", &script])
             .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::inherit())
-            .stderr(std::process::Stdio::inherit())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
             .spawn()
         {
             Ok(_) => {}
@@ -647,7 +708,8 @@ impl Launcher {
         }
         if trimmed.eq_ignore_ascii_case("edit") {
             if let Some(item) = row_item {
-                Self::open_target_in_editor(item);
+                let editor = self.app_config.general.editor.clone();
+                Self::open_target_in_editor(item, &editor);
             }
             return;
         }
@@ -683,7 +745,6 @@ impl Launcher {
             .or_else(|| trimmed.strip_prefix("run:"))
             .or_else(|| trimmed.strip_prefix("script:"))
             .unwrap_or(trimmed);
-
         if let Some(target) = self.all.iter().find(|t| t.name() == target_name).cloned() {
             let action = self.execute_item(&target);
             self.perform_action(action, cx);
@@ -691,5 +752,303 @@ impl Launcher {
         } else {
             eprintln!("aerofi: warning: button target not found: {target_name}");
         }
+    }
+
+    // ── GUI-mode interactive script session ────────────────────────────
+
+    /// Spawn a GUI session for an interactive script and read its initial
+    /// burst of output.  Transitions to `LauncherState::GuiMode`.
+    fn start_gui_session(
+        &mut self,
+        target: &Target,
+        args: Vec<String>,
+        cx: &mut Context<Self>,
+    ) {
+        let Target::Script { path, name, .. } = target else {
+            return;
+        };
+        let title = name.to_string();
+
+        // Commit metatags (same as other modes).
+        self.sticky_metatags = target.metatags().cloned();
+
+        // Record in history.
+        let identifier = target.identifier();
+        self.history.record_launch(identifier);
+
+        let path = path.clone();
+        match GuiSession::spawn(&path, args) {
+            Ok(session) => {
+                let session = Arc::new(Mutex::new(session));
+                self.gui_session = Some(session.clone());
+
+                // Read initial burst on a background thread, then update UI.
+                let view = cx.entity();
+                let title2 = title.clone();
+                let cx_async = cx.to_async();
+                let (tx, rx) = futures::channel::oneshot::channel();
+                std::thread::spawn(move || {
+                    let burst = {
+                        let session = session.lock().unwrap();
+                        session.read_burst(std::time::Duration::from_secs(5))
+                    };
+                    let _ = tx.send(burst);
+                });
+                cx.spawn(move |_, _: &mut gpui::AsyncApp| async move {
+                    if let Ok(burst) = rx.await {
+                        let _ = cx_async.update(|cx| {
+                            let _ = view.update(cx, |launcher, cx| {
+                                launcher.gui_handle_read_result(burst, &title2);
+                                cx.notify();
+                            });
+                        });
+                    }
+                })
+                .detach();
+
+                // Set a temporary "loading" GUI mode while waiting for the burst.
+                self.state = LauncherState::GuiMode {
+                    title,
+                    rows: Vec::new(),
+                    filtered_rows: Vec::new(),
+                    prompt: None,
+                    message: Some("Loading…".to_string()),
+                    no_custom: false,
+                    selected: 0,
+                    columns: None,
+                    query: String::new(),
+                };
+            }
+            Err(e) => {
+                eprintln!("aerofi: failed to start GUI session for {title}: {e}");
+            }
+        }
+    }
+
+    /// Handle the read result from a GUI session burst.
+    fn gui_handle_read_result(
+        &mut self,
+        result: ReadResult,
+        title: &str,
+    ) {
+        match result {
+            ReadResult::Burst(burst) => {
+                self.gui_apply_burst(burst, title);
+            }
+            ReadResult::BurstThenExit(burst) => {
+                self.gui_apply_burst(burst, title);
+                // Script exited after this burst — mark session as done.
+                // The UI will stay showing the last rows but selecting will
+                // leave GUI mode.
+                self.gui_session = None;
+            }
+            ReadResult::Exited => {
+                // Script exited with no output — return to search.
+                self.gui_leave();
+            }
+            ReadResult::Error(e) => {
+                eprintln!("aerofi: GUI script error: {e}");
+                self.gui_leave();
+            }
+        }
+    }
+
+    /// Apply a GUI burst (commands + rows) to the current GuiMode state.
+    fn gui_apply_burst(
+        &mut self,
+        burst: crate::core::gui_protocol::GuiBurst,
+        title: &str,
+    ) {
+        let mut prompt = None;
+        let mut message = None;
+        let mut no_custom = false;
+        let mut keep_selection: Option<String> = None;
+        let mut columns = None;
+
+        for cmd in &burst.commands {
+            match cmd {
+                GuiCommand::SetPrompt(p) => prompt = Some(p.clone()),
+                GuiCommand::SetMessage(m) => message = Some(m.clone()),
+                GuiCommand::EnableMarkup => {} // future
+                GuiCommand::NoCustom(v) => no_custom = *v,
+                GuiCommand::KeepSelection(s) => keep_selection = Some(s.clone()),
+                GuiCommand::SetColumns(n) => columns = Some(*n),
+            }
+        }
+
+        let row_count = burst.rows.len();
+        let filtered_rows: Vec<usize> = (0..row_count).collect();
+
+        // Find pre-selected row if requested.
+        let selected = keep_selection
+            .and_then(|sel| burst.rows.iter().position(|r| r.text == sel))
+            .unwrap_or(0);
+
+        self.state = LauncherState::GuiMode {
+            title: title.to_string(),
+            rows: burst.rows,
+            filtered_rows,
+            prompt,
+            message,
+            no_custom,
+            selected,
+            columns,
+            query: String::new(),
+        };
+    }
+
+    /// Handle keystrokes while in `LauncherState::GuiMode`.
+    fn handle_gui_mode_keystroke(
+        &mut self,
+        ks: &gpui::Keystroke,
+        cx: Option<&mut Context<Self>>,
+    ) -> LauncherAction {
+        let cmd = ks.modifiers.platform;
+        match (ks.key.as_str(), cmd) {
+            ("escape", _) => {
+                self.gui_leave();
+                LauncherAction::None
+            }
+            ("enter" | "return", false) => {
+                if let Some(cx) = cx {
+                    self.gui_select_row(cx);
+                }
+                LauncherAction::None
+            }
+            ("up", false) => {
+                self.gui_move_selection(-1);
+                LauncherAction::None
+            }
+            ("down", false) => {
+                self.gui_move_selection(1);
+                LauncherAction::None
+            }
+            ("backspace", false) => {
+                if let LauncherState::GuiMode { query, .. } = &mut self.state {
+                    if query.pop().is_some() {
+                        self.gui_refilter();
+                    }
+                }
+                LauncherAction::None
+            }
+            _ => {
+                if !cmd
+                    && !ks.modifiers.control
+                    && !ks.modifiers.alt
+                    && ks.key != "tab"
+                    && let Some(c) = ks.key_char.as_deref()
+                    && !c.is_empty()
+                    && !c.chars().any(char::is_control)
+                {
+                    if let LauncherState::GuiMode { query, .. } = &mut self.state {
+                        query.push_str(c);
+                        self.gui_refilter();
+                    }
+                }
+                LauncherAction::None
+            }
+        }
+    }
+
+    /// Move the selection cursor within the filtered GUI rows.
+    fn gui_move_selection(&mut self, delta: isize) {
+        if let LauncherState::GuiMode {
+            filtered_rows,
+            selected,
+            ..
+        } = &mut self.state
+        {
+            if filtered_rows.is_empty() {
+                return;
+            }
+            let len = filtered_rows.len() as isize;
+            *selected = (*selected as isize + delta).clamp(0, len - 1) as usize;
+        }
+    }
+
+    /// User selected a row in GUI mode — send it to the script's stdin
+    /// and read the next burst.
+    pub(super) fn gui_select_row(&mut self, cx: &mut Context<Self>) {
+        let LauncherState::GuiMode {
+            rows,
+            filtered_rows,
+            selected,
+            title,
+            ..
+        } = &self.state
+        else {
+            return;
+        };
+
+        // Get the selected row's text.
+        let Some(&row_idx) = filtered_rows.get(*selected) else {
+            return;
+        };
+        let row = &rows[row_idx];
+        if row.nonselectable {
+            return;
+        }
+        let selected_text = row.text.clone();
+        let title = title.clone();
+
+        let Some(session) = self.gui_session.clone() else {
+            // Session already exited — leave GUI mode.
+            self.gui_leave();
+            return;
+        };
+
+        // Send selection and read next burst on a background thread.
+        let view = cx.entity();
+        let cx_async = cx.to_async();
+        let (tx, rx) = futures::channel::oneshot::channel();
+        std::thread::spawn(move || {
+            let result = {
+                let mut session = session.lock().unwrap();
+                if session.send_selection(&selected_text).is_err() {
+                    ReadResult::Exited
+                } else {
+                    session.read_burst(std::time::Duration::from_secs(5))
+                }
+            };
+            let _ = tx.send(result);
+        });
+        cx.spawn(move |_, _: &mut gpui::AsyncApp| async move {
+            if let Ok(result) = rx.await {
+                let _ = cx_async.update(|cx| {
+                    let _ = view.update(cx, |launcher, cx| {
+                        launcher.gui_handle_read_result(result, &title);
+                        cx.notify();
+                    });
+                });
+            }
+        })
+        .detach();
+    }
+
+    /// Re-filter GUI rows based on the current query.
+    fn gui_refilter(&mut self) {
+        if let LauncherState::GuiMode {
+            rows,
+            filtered_rows,
+            query,
+            selected,
+            ..
+        } = &mut self.state
+        {
+            *filtered_rows = gui_session::filter_gui_rows(rows, query);
+            if *selected >= filtered_rows.len() {
+                *selected = 0;
+            }
+        }
+    }
+
+    /// Leave GUI mode: kill the session and return to the search list.
+    fn gui_leave(&mut self) {
+        if let Some(session) = self.gui_session.take() {
+            if let Ok(mut s) = session.lock() {
+                s.kill();
+            }
+        }
+        self.state = LauncherState::Search;
     }
 }

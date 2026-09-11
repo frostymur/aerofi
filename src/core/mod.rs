@@ -3,6 +3,8 @@
 
 pub mod config;
 pub mod executor;
+pub mod gui_protocol;
+pub mod gui_session;
 pub mod history;
 pub mod item;
 pub mod markdown;
