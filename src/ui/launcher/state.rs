@@ -247,13 +247,18 @@ impl Launcher {
                 LauncherAction::None
             }
             ("tab", false) if matches!(&self.state, LauncherState::ArgumentInput { .. }) => {
+                let shift = ks.modifiers.shift;
                 if let LauncherState::ArgumentInput {
                     args,
                     focused_index,
                     ..
                 } = &mut self.state
                 {
-                    *focused_index = (*focused_index + 1) % args.len();
+                    if shift {
+                        *focused_index = (*focused_index + args.len() - 1) % args.len();
+                    } else {
+                        *focused_index = (*focused_index + 1) % args.len();
+                    }
                 }
                 LauncherAction::None
             }

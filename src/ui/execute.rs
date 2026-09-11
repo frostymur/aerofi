@@ -30,8 +30,11 @@ pub fn execute_script(
     let executor = cx.background_executor().clone();
     let cx_async = cx.to_async();
 
-    let toast_view = matches!(mode, ScriptMode::Compact | ScriptMode::Silent)
-        .then(|| crate::ui::toast_window::open_toast_window(cx, theme, title.clone()));
+    let toast_view = if mode == ScriptMode::Compact {
+        Some(crate::ui::toast_window::open_toast_window(cx, theme.clone(), title.clone()))
+    } else {
+        None
+    };
 
     // The closure captures `path` by clone so the async block can own it.
     let path2 = path.clone();
@@ -74,31 +77,33 @@ pub fn execute_script(
                         Err(e) => format!("Error: {e}"),
                     };
                     view.update(cx, |launcher, cx| {
-                        launcher.set_full_output(title, text);
+                        launcher.set_full_output(title.clone(), text);
                         cx.notify();
                     });
                 }
                 // compact/silent: update the floating toast window.
                 ScriptMode::Compact | ScriptMode::Silent => {
+                    let mut has_output = true;
                     let (text, is_error) = match result {
                         Ok(out) => {
                             let is_err = !out.status.success();
                             let src = if is_err { &out.stderr } else { &out.stdout };
                             let raw = String::from_utf8_lossy(src);
                             // Show the last non-empty line (Raycast compact behaviour).
-                            let last = raw
-                                .lines()
-                                .rfind(|l| !l.trim().is_empty())
-                                .unwrap_or(if is_err { "Script failed." } else { "Done." })
-                                .to_string();
-                            (last, is_err)
+                            if let Some(l) = raw.lines().rfind(|l| !l.trim().is_empty()) {
+                                (l.to_string(), is_err)
+                            } else {
+                                has_output = false;
+                                (if is_err { "Script failed.".to_string() } else { "Done.".to_string() }, is_err)
+                            }
                         }
                         Err(e) => (format!("Error: {e}"), true),
                     };
-                    if let Some((win_handle, toast)) = toast_view {
+
+                    let handle_toast = |cx: &mut App, win_handle: gpui::AnyWindowHandle, toast: Entity<crate::ui::toast_window::ToastWindow>| {
                         let mut cx_async = cx.to_async();
                         toast.update(cx, |t, cx| {
-                            t.set_done(text, is_error);
+                            t.set_done(text.clone(), is_error);
                             cx.notify();
                             cx.spawn(move |_, _: &mut AsyncApp| async move {
                                 cx_async
@@ -111,6 +116,24 @@ pub fn execute_script(
                             })
                             .detach();
                         });
+                    };
+
+                    if mode == ScriptMode::Compact {
+                        if let Some((win_handle, toast)) = toast_view {
+                            if !has_output && !is_error {
+                                let mut cx_async = cx.to_async();
+                                let _ = cx_async.update_window(win_handle, |_, window, _| {
+                                    window.remove_window()
+                                });
+                            } else {
+                                handle_toast(cx, win_handle, toast);
+                            }
+                        }
+                    } else if mode == ScriptMode::Silent {
+                        if has_output || is_error {
+                            let (win_handle, toast) = crate::ui::toast_window::open_toast_window(cx, theme.clone(), title.clone());
+                            handle_toast(cx, win_handle, toast);
+                        }
                     }
                 }
                 // inline: update the subtitle in the list row.
