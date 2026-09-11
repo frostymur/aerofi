@@ -825,6 +825,9 @@ impl Launcher {
                     active_indices: Vec::new(),
                     data: None,
                     preview_blocks: None,
+                    multi_select: false,
+                    toggled_indices: std::collections::HashSet::new(),
+                    markup_rows: false,
                 };
             }
             Err(e) => {
@@ -877,6 +880,9 @@ impl Launcher {
         let mut active_indices = Vec::new();
         let mut data = None;
         let mut preview_blocks = None;
+        let mut multi_select = false;
+        let mut toggled_indices = std::collections::HashSet::new();
+        let mut markup_rows = false;
 
         // Inherit flags if we are updating an existing GuiMode session
         if let LauncherState::GuiMode {
@@ -887,6 +893,9 @@ impl Launcher {
             active_indices: prev_active_indices,
             data: prev_data,
             preview_blocks: prev_preview_blocks,
+            multi_select: prev_multi_select,
+            toggled_indices: prev_toggled_indices,
+            markup_rows: prev_markup_rows,
             ..
         } = &self.state
         {
@@ -897,6 +906,9 @@ impl Launcher {
             active_indices = prev_active_indices.clone();
             data = prev_data.clone();
             preview_blocks = prev_preview_blocks.clone();
+            multi_select = *prev_multi_select;
+            toggled_indices = prev_toggled_indices.clone();
+            markup_rows = *prev_markup_rows;
         }
 
         for cmd in &burst.commands {
@@ -921,6 +933,8 @@ impl Launcher {
                         preview_blocks = Some(crate::core::markdown::parse(&text));
                     }
                 }
+                GuiCommand::MultiSelect(b) => multi_select = *b,
+                GuiCommand::MarkupRows(b) => markup_rows = *b,
             }
         }
 
@@ -947,6 +961,9 @@ impl Launcher {
             active_indices,
             data,
             preview_blocks,
+            multi_select,
+            toggled_indices,
+            markup_rows,
         };
     }
 
@@ -992,6 +1009,14 @@ impl Launcher {
             }
             ("down", false, false, false, false) => {
                 self.gui_move_selection(1);
+                LauncherAction::None
+            }
+            ("tab", false, false, false, false) => {
+                self.gui_toggle_selection(1);
+                LauncherAction::None
+            }
+            ("tab", false, false, false, true) => {
+                self.gui_toggle_selection(-1);
                 LauncherAction::None
             }
             ("backspace", false, false, false, false) => {
@@ -1067,6 +1092,37 @@ impl Launcher {
         }
     }
 
+    /// Toggle selection of the currently focused row if multi-select is enabled.
+    fn gui_toggle_selection(&mut self, delta: isize) {
+        let selected_copy = if let LauncherState::GuiMode {
+            filtered_rows,
+            selected,
+            multi_select,
+            toggled_indices,
+            ..
+        } = &mut self.state
+        {
+            if !*multi_select || filtered_rows.is_empty() {
+                // If not multi_select, tab does nothing but we could just let it move selection?
+                // For now just return.
+                return;
+            }
+            let row_idx = filtered_rows[*selected];
+            if toggled_indices.contains(&row_idx) {
+                toggled_indices.remove(&row_idx);
+            } else {
+                toggled_indices.insert(row_idx);
+            }
+            Some(*selected)
+        } else {
+            None
+        };
+
+        if selected_copy.is_some() {
+            self.gui_move_selection(delta);
+        }
+    }
+
     /// User selected a row in GUI mode with standard Enter.
     pub(super) fn gui_select_row(&mut self, cx: &mut Context<Self>) {
         self.gui_dispatch_selection(cx, "enter", false);
@@ -1092,6 +1148,7 @@ impl Launcher {
             no_custom,
             query,
             data,
+            toggled_indices,
             ..
         } = &self.state
         else {
@@ -1111,6 +1168,24 @@ impl Launcher {
             }
             let id = row.id.clone().unwrap_or_default();
             let text = row.text.clone();
+
+            let mut selected_ids = Vec::new();
+            let mut selected_texts = Vec::new();
+
+            if toggled_indices.is_empty() {
+                selected_ids.push(id.clone());
+                selected_texts.push(text.clone());
+            } else {
+                // Return all toggled rows in order they appear in the *original* rows vector
+                // (or filtered vector? Usually original rows order).
+                for (idx, r) in rows.iter().enumerate() {
+                    if toggled_indices.contains(&idx) {
+                        selected_ids.push(r.id.clone().unwrap_or_default());
+                        selected_texts.push(r.text.clone());
+                    }
+                }
+            }
+
             if is_action {
                 crate::core::gui_protocol::GuiEvent::Action {
                     key: key.to_string(),
@@ -1119,6 +1194,8 @@ impl Launcher {
                     text,
                     retv,
                     data: data.clone(),
+                    selected_ids,
+                    selected_texts,
                 }
             } else {
                 crate::core::gui_protocol::GuiEvent::Select {
@@ -1128,6 +1205,8 @@ impl Launcher {
                     text,
                     retv,
                     data: data.clone(),
+                    selected_ids,
+                    selected_texts,
                 }
             }
         } else if !no_custom && !query.is_empty() {

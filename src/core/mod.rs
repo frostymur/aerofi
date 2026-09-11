@@ -8,6 +8,7 @@ pub mod gui_session;
 pub mod history;
 pub mod item;
 pub mod markdown;
+pub mod pango;
 pub mod scanner;
 pub mod scheduler;
 pub mod search;

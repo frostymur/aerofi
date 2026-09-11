@@ -348,6 +348,9 @@ impl Launcher {
             loading,
             active_indices,
             preview_blocks,
+            multi_select,
+            toggled_indices,
+            markup_rows,
             ..
         } = &self.state
         else {
@@ -457,6 +460,9 @@ impl Launcher {
             let rows_clone = rows.clone();
             let active_indices_clone = active_indices.clone();
             let selected_val = *selected;
+            let multi_select_val = *multi_select;
+            let toggled_indices_clone = toggled_indices.clone();
+            let markup_rows_val = *markup_rows;
 
             let list = uniform_list(
                 "gui_rows",
@@ -473,10 +479,16 @@ impl Launcher {
                             let is_urgent = row.urgent;
                             let is_disabled = row.disabled;
                             let is_selectable = !row.nonselectable && !is_disabled;
+                            let is_toggled = toggled_indices_clone.contains(&row_idx);
 
                             let (row_bg, name_color) = if is_selected {
                                 (
                                     rgb(Self::color(&el.selected.background)),
+                                    rgb(Self::color(&el.selected.text_color)),
+                                )
+                            } else if is_toggled {
+                                (
+                                    rgb(Self::color(&el.selected.background)).opacity(0.4),
                                     rgb(Self::color(&el.selected.text_color)),
                                 )
                             } else if !is_selectable {
@@ -503,16 +515,32 @@ impl Launcher {
                                     .bg(row_bg)
                                     .cursor(CursorStyle::PointingHand);
 
+                                if multi_select_val {
+                                    let toggle_icon = if is_toggled { "☑" } else { "☐" };
+                                    row_div = row_div.child(
+                                        div()
+                                            .text_color(if is_toggled { rgb(0x73daca) } else { desc_color })
+                                            .text_size(px(t.font.size))
+                                            .child(toggle_icon),
+                                    );
+                                }
+
                                 if el.show_icons {
                                     row_div = row_div.child(Self::render_gui_row_icon(icon_size, &row.icon));
                                 }
 
-                                row_div = row_div.child(
-                                    div()
-                                        .flex_1()
-                                        .text_color(name_color)
-                                        .child(row.text.clone()),
-                                );
+                                let text_div = div().flex_1().text_color(name_color);
+                                let text_div = if markup_rows_val {
+                                    let (plain, highlights) = crate::core::pango::parse_pango(&row.text);
+                                    let mut st = gpui::StyledText::new(plain);
+                                    if !highlights.is_empty() {
+                                        st = st.with_highlights(highlights);
+                                    }
+                                    text_div.child(st)
+                                } else {
+                                    text_div.child(row.text.clone())
+                                };
+                                row_div = row_div.child(text_div);
 
                                 if is_urgent {
                                     row_div = row_div.child(
@@ -585,16 +613,32 @@ impl Launcher {
                                     row_div = row_div.opacity(0.4);
                                 }
 
+                                if multi_select_val {
+                                    let toggle_icon = if is_toggled { "☑" } else { "☐" };
+                                    row_div = row_div.child(
+                                        div()
+                                            .text_color(if is_toggled { rgb(0x73daca) } else { desc_color })
+                                            .text_size(px(t.font.size))
+                                            .child(toggle_icon),
+                                    );
+                                }
+
                                 if el.show_icons {
                                     row_div = row_div.child(Self::render_gui_row_icon(icon_size, &row.icon));
                                 }
 
-                                row_div = row_div.child(
-                                    div()
-                                        .flex_1()
-                                        .text_color(name_color)
-                                        .child(row.text.clone()),
-                                );
+                                let text_div = div().flex_1().text_color(name_color);
+                                let text_div = if markup_rows_val {
+                                    let (plain, highlights) = crate::core::pango::parse_pango(&row.text);
+                                    let mut st = gpui::StyledText::new(plain);
+                                    if !highlights.is_empty() {
+                                        st = st.with_highlights(highlights);
+                                    }
+                                    text_div.child(st)
+                                } else {
+                                    text_div.child(row.text.clone())
+                                };
+                                row_div = row_div.child(text_div);
 
                                 if is_urgent {
                                     row_div = row_div.child(

@@ -79,6 +79,12 @@ pub enum LauncherState {
         data: Option<String>,
         /// Parsed markdown blocks from `\0preview` or `\0preview-file`.
         preview_blocks: Option<Vec<crate::core::markdown::MdBlock>>,
+        /// Whether multi-selection is enabled.
+        multi_select: bool,
+        /// The set of row indices that have been toggled for multi-selection.
+        toggled_indices: std::collections::HashSet<usize>,
+        /// Whether inline Pango-like markup is enabled for row text.
+        markup_rows: bool,
     },
 }
 

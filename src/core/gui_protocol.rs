@@ -51,6 +51,10 @@ pub enum GuiCommand {
     PreviewText(String),
     /// Load and display markdown from a file in the right panel.
     PreviewFile(String),
+    /// Enable multi-selection via Tab/Shift+Tab.
+    MultiSelect(bool),
+    /// Enable Pango-style inline markup rendering for rows.
+    MarkupRows(bool),
 }
 
 /// A single selectable (or non-selectable) row entry.
@@ -115,6 +119,8 @@ pub enum GuiEvent {
         text: String,
         retv: i32,
         data: Option<String>,
+        selected_ids: Vec<String>,
+        selected_texts: Vec<String>,
     },
     /// Contextual action on a row
     Action {
@@ -124,6 +130,8 @@ pub enum GuiEvent {
         text: String,
         retv: i32,
         data: Option<String>,
+        selected_ids: Vec<String>,
+        selected_texts: Vec<String>,
     },
     /// Custom input entered in the prompt
     Custom {
@@ -149,9 +157,13 @@ impl GuiEvent {
                 text,
                 retv,
                 data,
+                selected_ids,
+                selected_texts,
             } => {
                 let data_str = data.as_ref().map(|d| format!("\x1fdata:{d}")).unwrap_or_default();
-                format!("\0event\x1fselect\x1fkey:{key}\x1findex:{index}\x1fid:{id}\x1ftext:{text}\x1fretv:{retv}{data_str}")
+                let ids_str = selected_ids.join(",");
+                let texts_str = selected_texts.join(",");
+                format!("\0event\x1fselect\x1fkey:{key}\x1findex:{index}\x1fid:{id}\x1ftext:{text}\x1fretv:{retv}\x1fids:{ids_str}\x1ftexts:{texts_str}{data_str}")
             }
             GuiEvent::Action {
                 key,
@@ -160,9 +172,13 @@ impl GuiEvent {
                 text,
                 retv,
                 data,
+                selected_ids,
+                selected_texts,
             } => {
                 let data_str = data.as_ref().map(|d| format!("\x1fdata:{d}")).unwrap_or_default();
-                format!("\0event\x1faction\x1fkey:{key}\x1findex:{index}\x1fid:{id}\x1ftext:{text}\x1fretv:{retv}{data_str}")
+                let ids_str = selected_ids.join(",");
+                let texts_str = selected_texts.join(",");
+                format!("\0event\x1faction\x1fkey:{key}\x1findex:{index}\x1fid:{id}\x1ftext:{text}\x1fretv:{retv}\x1fids:{ids_str}\x1ftexts:{texts_str}{data_str}")
             }
             GuiEvent::Custom { key, text, retv, data } => {
                 let data_str = data.as_ref().map(|d| format!("\x1fdata:{d}")).unwrap_or_default();
@@ -257,6 +273,8 @@ fn try_parse_command(rest: &str) -> Option<GuiCommand> {
         "data" => Some(GuiCommand::SetData(value.to_string())),
         "preview" => Some(GuiCommand::PreviewText(value.to_string())),
         "preview-file" => Some(GuiCommand::PreviewFile(value.to_string())),
+        "multi-select" => Some(GuiCommand::MultiSelect(value.eq_ignore_ascii_case("true"))),
+        "markup-rows" => Some(GuiCommand::MarkupRows(value.eq_ignore_ascii_case("true"))),
         _ => None,
     }
 }
@@ -567,10 +585,12 @@ mod tests {
             text: "Home Network".to_string(),
             retv: 1,
             data: Some("my_state".to_string()),
+            selected_ids: vec!["wifi_home".to_string()],
+            selected_texts: vec!["Home Network".to_string()],
         };
         assert_eq!(
             select_ev.to_event_line(),
-            "\0event\x1fselect\x1fkey:enter\x1findex:2\x1fid:wifi_home\x1ftext:Home Network\x1fretv:1\x1fdata:my_state"
+            "\0event\x1fselect\x1fkey:enter\x1findex:2\x1fid:wifi_home\x1ftext:Home Network\x1fretv:1\x1fids:wifi_home\x1ftexts:Home Network\x1fdata:my_state"
         );
         assert_eq!(select_ev.to_pipe_line(), "Home Network\x1fwifi_home\x1f2");
 
@@ -581,10 +601,12 @@ mod tests {
             text: "Home Network".to_string(),
             retv: 12,
             data: None,
+            selected_ids: vec!["wifi_home".to_string()],
+            selected_texts: vec!["Home Network".to_string()],
         };
         assert_eq!(
             action_ev.to_event_line(),
-            "\0event\x1faction\x1fkey:ctrl+d\x1findex:2\x1fid:wifi_home\x1ftext:Home Network\x1fretv:12"
+            "\0event\x1faction\x1fkey:ctrl+d\x1findex:2\x1fid:wifi_home\x1ftext:Home Network\x1fretv:12\x1fids:wifi_home\x1ftexts:Home Network"
         );
 
         let custom_ev = GuiEvent::Custom {
