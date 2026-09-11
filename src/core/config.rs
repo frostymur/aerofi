@@ -20,6 +20,9 @@ const DEFAULT_CONFIG: &str = r#"# aerofi configuration
 theme = "default"
 
 [general]
+# Global hotkey to toggle the launcher visibility.
+# Examples: "opt+space", "cmd+space", "ctrl+shift+p"
+toggle_hotkey = "opt+space"
 # Maximum number of results shown in the launcher list.
 max_results = 20
 # Editor command to open scripts for editing (opens in a new Terminal window).
@@ -69,6 +72,8 @@ ignored = ["Uninstall*", "Installer"]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct GeneralConfig {
+    /// Global hotkey used to toggle the launcher (e.g. "opt+space").
+    pub toggle_hotkey: String,
     /// Maximum number of results shown in the launcher list.
     pub max_results: usize,
     /// Editor command used to open scripts for editing (e.g. "vim", "nvim",
@@ -79,6 +84,7 @@ pub struct GeneralConfig {
 impl Default for GeneralConfig {
     fn default() -> Self {
         Self {
+            toggle_hotkey: "opt+space".to_string(),
             max_results: 20,
             editor: "vim".to_string(),
         }

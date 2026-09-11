@@ -381,6 +381,34 @@ impl Launcher {
         let padding_v = ib.padding.get(1).copied().unwrap_or(16.0);
         let margin_bottom = ib.margin.get(2).copied().unwrap_or(8.0);
 
+        let is_image = icon_label.starts_with('/')
+            || icon_label.starts_with('~')
+            || icon_label.starts_with("./")
+            || icon_label.ends_with(".png")
+            || icon_label.ends_with(".jpg")
+            || icon_label.ends_with(".jpeg")
+            || icon_label.ends_with(".webp")
+            || icon_label.ends_with(".tiff");
+
+        let icon_el = if is_image {
+            let resolved = crate::ui::launcher::helpers::expand_tilde_path(icon_label);
+            img(std::path::PathBuf::from(resolved))
+                .w(px(ib.height * 0.4))
+                .h(px(ib.height * 0.4))
+                .into_any()
+        } else {
+            div()
+                .flex()
+                .items_center()
+                .justify_center()
+                .w(px(ib.height - padding_v * 2.0))
+                .h(px(ib.height - padding_v * 2.0))
+                .text_size(px(ib.height * 0.4))
+                .text_color(rgb(Self::color(icon_color)))
+                .child(icon_label.to_string())
+                .into_any()
+        };
+
         let mut inputbar = div()
             .flex()
             .items_center()
@@ -392,17 +420,7 @@ impl Launcher {
             .mb(px(margin_bottom))
             .bg(rgb(Self::color(&ib.background)))
             .rounded(px(ib.corner_radius))
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .w(px(ib.height - padding_v * 2.0))
-                    .h(px(ib.height - padding_v * 2.0))
-                    .text_size(px(ib.height * 0.4))
-                    .text_color(rgb(Self::color(icon_color)))
-                    .child(icon_label.to_string()),
-            )
+            .child(icon_el)
             .child(inner_view);
 
         if *loading {

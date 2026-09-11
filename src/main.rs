@@ -102,6 +102,7 @@ fn main() {
         // active and MainThreadMarker is available.
         sys::icons::extract_all(&mut targets);
         let theme = core::theme::load_theme(&app_config.theme);
+        let toggle_hotkey = app_config.general.toggle_hotkey.clone();
         let view =
             ui::window::create_launcher_window(cx, targets.clone(), theme, app_config, history);
 
@@ -133,9 +134,9 @@ fn main() {
         })
         .detach();
 
-        // Global hotkeys: Option+Space toggles the launcher; configured
+        // Global hotkeys: toggle_hotkey toggles the launcher; configured
         // `[global_shortcuts]` run their targets directly.
-        if let Err(e) = sys::carbon::install(globals) {
+        if let Err(e) = sys::carbon::install(&toggle_hotkey, globals) {
             eprintln!("aerofi: failed to register global hotkeys: {e}");
         }
 

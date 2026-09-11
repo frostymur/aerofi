@@ -161,6 +161,39 @@ impl Launcher {
         }
 
         let cmd = ks.modifiers.platform;
+        let ctrl = ks.modifiers.control;
+        let alt = ks.modifiers.alt;
+
+        // Common text editing and navigation hotkeys
+        if matches!(self.state, LauncherState::Search) {
+            match (ks.key.as_str(), cmd, ctrl, alt) {
+                ("u", false, true, false) | ("backspace", true, false, false) => {
+                    self.reset();
+                    return LauncherAction::None;
+                }
+                ("w", false, true, false) | ("backspace", false, false, true) => {
+                    let len = self.query.trim_end().rfind(' ').map(|i| i + 1).unwrap_or(0);
+                    self.query.truncate(len);
+                    self.refilter();
+                    self.selected = 0;
+                    return LauncherAction::None;
+                }
+                ("n", false, true, false) | ("j", false, true, false) => {
+                    let cols = self.effective_columns();
+                    let step = if cols > 1 { cols as isize } else { 1 };
+                    self.move_selection(step);
+                    return LauncherAction::None;
+                }
+                ("p", false, true, false) | ("k", false, true, false) => {
+                    let cols = self.effective_columns();
+                    let step = if cols > 1 { cols as isize } else { 1 };
+                    self.move_selection(-step);
+                    return LauncherAction::None;
+                }
+                _ => {}
+            }
+        }
+
         match (ks.key.as_str(), cmd) {
             ("escape", _) => {
                 if !matches!(self.state, LauncherState::Search) {
@@ -266,6 +299,20 @@ impl Launcher {
                 let cols = self.effective_columns();
                 let step = if cols > 1 { cols as isize } else { 1 };
                 self.move_selection(step);
+                LauncherAction::None
+            }
+            ("up", true) => {
+                if self.filtered.is_empty() {
+                    return LauncherAction::None;
+                }
+                self.selected = 0;
+                LauncherAction::None
+            }
+            ("down", true) => {
+                if self.filtered.is_empty() {
+                    return LauncherAction::None;
+                }
+                self.selected = self.filtered.len() - 1;
                 LauncherAction::None
             }
             ("left", false) if self.effective_columns() > 1 => {
@@ -1024,14 +1071,22 @@ impl Launcher {
                 }
                 LauncherAction::None
             }
-            ("up", false, false, false, false) => {
+            ("up", false, false, false, false) | ("p", false, true, false, false) | ("k", false, true, false, false) => {
                 let cols = self.gui_columns() as isize;
                 self.gui_move_selection(-cols);
                 LauncherAction::None
             }
-            ("down", false, false, false, false) => {
+            ("down", false, false, false, false) | ("n", false, true, false, false) | ("j", false, true, false, false) => {
                 let cols = self.gui_columns() as isize;
                 self.gui_move_selection(cols);
+                LauncherAction::None
+            }
+            ("up", true, false, false, false) => {
+                self.gui_jump_to_edge(true);
+                LauncherAction::None
+            }
+            ("down", true, false, false, false) => {
+                self.gui_jump_to_edge(false);
                 LauncherAction::None
             }
             ("left", false, false, false, false) => {
@@ -1120,6 +1175,24 @@ impl Launcher {
             }
             let len = filtered_rows.len() as isize;
             *selected = (*selected as isize + delta).clamp(0, len - 1) as usize;
+        }
+    }
+
+    fn gui_jump_to_edge(&mut self, top: bool) {
+        if let LauncherState::GuiMode {
+            filtered_rows,
+            selected,
+            ..
+        } = &mut self.state
+        {
+            if filtered_rows.is_empty() {
+                return;
+            }
+            if top {
+                *selected = 0;
+            } else {
+                *selected = filtered_rows.len() - 1;
+            }
         }
     }
 
