@@ -23,8 +23,8 @@ pub struct Launcher {
     /// Every indexed target, kept in name-sorted order (the "unfiltered" order).
     pub(super) all: Vec<Target>,
     /// The ranked results for the current query (best first), capped at
-    /// `max_results`.
-    pub(super) filtered: Vec<Target>,
+    /// `max_results`. Stores indices into `all`.
+    pub(super) filtered: Vec<usize>,
     /// Current filter query.
     pub(super) query: String,
     /// Position of the highlighted row within `filtered`.
@@ -69,7 +69,7 @@ impl Launcher {
         app_config: AppConfig,
         history: History,
     ) -> Self {
-        let filtered = all.clone();
+        let filtered = (0..all.len()).collect();
         let widget_registry = WidgetRegistry::from_theme(&theme.widgets);
         let button_hotkeys = widget_registry.button_hotkeys();
         Self {
@@ -413,9 +413,8 @@ impl Launcher {
 
     /// Re-run the fuzzy match for the current query and rebuild `filtered`.
     fn refilter(&mut self) {
-        self.filtered = self
-            .search
-            .filter_and_rank(&self.history, &self.all, &self.query);
+        self.search
+            .search(&self.query, &self.all, &self.history, &mut self.filtered);
         if self.selected >= self.filtered.len() {
             self.selected = 0;
         }
@@ -447,7 +446,7 @@ impl Launcher {
     }
 
     fn selected_item(&self) -> Option<&Target> {
-        self.filtered.get(self.selected)
+        self.filtered.get(self.selected).map(|&i| &self.all[i])
     }
 
     /// The target an alias points at, when the current query exactly
@@ -658,17 +657,16 @@ impl Launcher {
         // Update the master list and the rendered rows in place. Inline
         // output never affects ranking, so re-filtering (which resets the
         // scroll position) is unnecessary.
-        for target in self.all.iter_mut().chain(self.filtered.iter_mut()) {
-            let is_match = matches!(
-                target,
-                Target::Script {
-                    path: p,
-                    mode: ScriptMode::Inline,
-                    ..
-                } if p.as_ref() == path
-            );
-            if is_match {
-                target.set_inline_output(output.clone());
+        for target in self.all.iter_mut() {
+            if let Target::Script {
+                inline_output,
+                path: target_path,
+                ..
+            } = target
+            {
+                if path == target_path.as_ref() {
+                    *inline_output = output.clone();
+                }
             }
         }
     }

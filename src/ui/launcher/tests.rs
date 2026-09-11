@@ -27,7 +27,7 @@ fn key(k: &str) -> Keystroke {
 }
 
 fn names(l: &Launcher) -> Vec<String> {
-    l.filtered.iter().map(|t| t.name().to_string()).collect()
+    l.filtered.iter().map(|&i| l.all[i].name().to_string()).collect()
 }
 
 fn cap_config(max_results: usize) -> AppConfig {
@@ -62,7 +62,7 @@ fn metatags_commit_on_execute_not_on_hover() {
     assert_eq!(l.effective_columns(), 1);
 
     // Executing it commits the override...
-    let target = l.filtered[1].clone();
+    let target = l.all[l.filtered[1]].clone();
     l.execute_target_with_args(&target, Vec::new());
     assert_eq!(l.effective_columns(), 3);
     assert_eq!(
@@ -112,7 +112,7 @@ fn inline_output_updates_rows_without_reordering() {
     // the scroll position).
     l.apply_inline_output(&path, Some("subtitle-updated".into()));
     assert_eq!(l.all[1].inline_output(), Some("subtitle-updated"));
-    assert_eq!(l.filtered[1].inline_output(), Some("subtitle-updated"));
+    assert_eq!(l.all[l.filtered[1]].inline_output(), Some("subtitle-updated"));
     assert_eq!(names(&l), vec!["Alpha", "Inline Script", "Zeta"]);
 }
 
