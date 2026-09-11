@@ -59,6 +59,10 @@ ignored = ["Uninstall*", "Installer"]
 # "opt+d" = "Deploy"
 # Registered at startup only (restart after editing); conflicting combos
 # are skipped with a warning.
+
+[custom_keys]
+# Bind combinations to emit custom action events (retv: 10..28) in gui mode.
+# e.g. "kb-custom-1" = "alt+1"
 "#;
 
 /// Launcher-wide behaviour.
@@ -156,6 +160,9 @@ pub struct AppConfig {
     /// Carbon `RegisterEventHotKey` (no Accessibility permission needed);
     /// see ADR 0002.
     pub global_shortcuts: HashMap<String, String>,
+    /// Custom hotkeys for GUI scripts (kb-custom-N -> combo).
+    /// e.g. "kb-custom-1" -> "alt+1". Triggers retv 10..28.
+    pub custom_keys: HashMap<String, String>,
     /// Theme name resolved to `~/.config/aerofi/themes/{name}.toml`.
     /// The special value `"default"` uses the built-in Tokyo Night palette.
     pub theme: String,
@@ -171,6 +178,7 @@ impl Default for AppConfig {
             aliases: HashMap::new(),
             shortcuts: HashMap::new(),
             global_shortcuts: HashMap::new(),
+            custom_keys: HashMap::new(),
             theme: "default".to_string(),
         }
     }

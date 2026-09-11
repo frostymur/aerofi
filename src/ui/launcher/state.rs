@@ -978,6 +978,27 @@ impl Launcher {
         let alt = ks.modifiers.alt;
         let shift = ks.modifiers.shift;
 
+        let mut custom_retv = None;
+        for (kb, combo_str) in &self.app_config.custom_keys {
+            if combo_matches(combo_str, ks) {
+                if let Some(num_str) = kb.strip_prefix("kb-custom-") {
+                    if let Ok(num) = num_str.parse::<i32>() {
+                        if (1..=19).contains(&num) {
+                            custom_retv = Some(num + 9);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        if let Some(retv) = custom_retv {
+            if let Some(cx) = cx {
+                self.gui_dispatch_selection(cx, "custom", Some(retv));
+            }
+            return LauncherAction::None;
+        }
+
         match (ks.key.as_str(), cmd, ctrl, alt, shift) {
             ("escape", false, false, false, false) => {
                 self.gui_leave();
@@ -1004,10 +1025,20 @@ impl Launcher {
                 LauncherAction::None
             }
             ("up", false, false, false, false) => {
-                self.gui_move_selection(-1);
+                let cols = self.gui_columns() as isize;
+                self.gui_move_selection(-cols);
                 LauncherAction::None
             }
             ("down", false, false, false, false) => {
+                let cols = self.gui_columns() as isize;
+                self.gui_move_selection(cols);
+                LauncherAction::None
+            }
+            ("left", false, false, false, false) => {
+                self.gui_move_selection(-1);
+                LauncherAction::None
+            }
+            ("right", false, false, false, false) => {
                 self.gui_move_selection(1);
                 LauncherAction::None
             }
@@ -1123,14 +1154,22 @@ impl Launcher {
         }
     }
 
+    fn gui_columns(&self) -> usize {
+        if let LauncherState::GuiMode { columns, .. } = &self.state {
+            (*columns).unwrap_or(1)
+        } else {
+            1
+        }
+    }
+
     /// User selected a row in GUI mode with standard Enter.
     pub(super) fn gui_select_row(&mut self, cx: &mut Context<Self>) {
-        self.gui_dispatch_selection(cx, "enter", false);
+        self.gui_dispatch_selection(cx, "enter", None);
     }
 
     /// User triggered a contextual action key on the selected row in GUI mode.
     pub(super) fn gui_action_row(&mut self, cx: &mut Context<Self>, key: &str) {
-        self.gui_dispatch_selection(cx, key, true);
+        self.gui_dispatch_selection(cx, key, Some(10));
     }
 
     /// Dispatch either a Select, Action, or Custom input event to the GUI script's stdin.
@@ -1138,7 +1177,7 @@ impl Launcher {
         &mut self,
         cx: &mut Context<Self>,
         key: &str,
-        is_action: bool,
+        action_retv: Option<i32>,
     ) {
         let LauncherState::GuiMode {
             rows,
@@ -1156,10 +1195,8 @@ impl Launcher {
         };
 
         let title = title.clone();
-        let mut retv = if key == "enter" { 1 } else { 10 };
-        if is_action {
-            retv = 10;
-        }
+        let retv = action_retv.unwrap_or(if key == "enter" { 1 } else { 10 });
+        let is_action = action_retv.is_some() || key != "enter";
 
         let event = if let Some(&row_idx) = filtered_rows.get(*selected) {
             let row = &rows[row_idx];
