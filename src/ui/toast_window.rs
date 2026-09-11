@@ -31,17 +31,19 @@ impl ToastWindow {
     }
 
     pub fn set_done(&mut self, text: String, is_error: bool) {
-        let final_title = if is_error {
-            "Script failed".to_string()
-        } else {
-            "Script finished running".to_string()
-        };
+        if let ToastState::Running { title } = &self.state {
+            let final_title = if is_error {
+                format!("{} (Failed)", title)
+            } else {
+                title.clone()
+            };
 
-        self.state = ToastState::Done {
-            title: final_title,
-            text,
-            is_error,
-        };
+            self.state = ToastState::Done {
+                title: final_title,
+                text,
+                is_error,
+            };
+        }
     }
 }
 
