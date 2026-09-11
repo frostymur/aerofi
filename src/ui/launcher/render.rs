@@ -38,7 +38,9 @@ impl Render for Launcher {
         let margin_bottom = t.inputbar.margin.get(2).copied().unwrap_or(8.0);
 
         let target_height = match &self.state {
-            LauncherState::RunningFull { .. } | LauncherState::FullOutput { .. } => t.window.height,
+            LauncherState::RunningFull { .. }
+            | LauncherState::FullOutput { .. }
+            | LauncherState::GuiMode { .. } => t.window.height,
             LauncherState::Search
             | LauncherState::ArgumentInput { .. }
             | LauncherState::Confirming { .. } => {
@@ -64,6 +66,8 @@ impl Render for Launcher {
             self.render_full_output(cx, title)
         } else if let LauncherState::RunningFull { title } = &self.state {
             self.render_full_output_running(title)
+        } else if matches!(&self.state, LauncherState::GuiMode { .. }) {
+            self.render_gui_mode(cx)
         } else {
             let is_vertical = t.mainbox.orientation == "vertical";
             let mut inner_box = div().flex_1().flex().gap(px(t.listview.spacing));
@@ -324,6 +328,467 @@ impl Launcher {
             )
             .child(inner_view)
             .into_any()
+    }
+
+    /// Render the interactive GUI-mode view: input bar with custom prompt,
+    /// optional status message, and a scrollable list of script-provided rows.
+    fn render_gui_mode(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+        let t = &self.theme;
+        let ib = &t.inputbar;
+        let el = &t.element;
+
+        let LauncherState::GuiMode {
+            title,
+            rows,
+            filtered_rows,
+            prompt,
+            message,
+            selected,
+            query,
+            loading,
+            active_indices,
+            preview_blocks,
+            multi_select,
+            toggled_indices,
+            markup_rows,
+            ..
+        } = &self.state
+        else {
+            return div().into_any();
+        };
+
+        let mut container = div().flex_1().flex().flex_col().gap(px(t.listview.spacing));
+
+        // ── Input bar with optional prompt override and loading badge ───
+        let placeholder = prompt.as_deref().unwrap_or(title.as_str());
+        let inner_view = if query.is_empty() {
+            div()
+                .flex_1()
+                .text_color(rgb(Self::color(&ib.placeholder_color)))
+                .child(placeholder.to_string())
+                .into_any()
+        } else {
+            div()
+                .flex_1()
+                .text_color(rgb(Self::color(&ib.text_color)))
+                .child(query.clone())
+                .into_any()
+        };
+
+        let icon_label = ib.icon.as_deref().unwrap_or("❯");
+        let icon_color = ib.icon_color.as_deref().unwrap_or(&ib.text_color);
+        let padding_h = ib.padding.first().copied().unwrap_or(12.0);
+        let padding_v = ib.padding.get(1).copied().unwrap_or(16.0);
+        let margin_bottom = ib.margin.get(2).copied().unwrap_or(8.0);
+
+        let is_image = icon_label.starts_with('/')
+            || icon_label.starts_with('~')
+            || icon_label.starts_with("./")
+            || icon_label.ends_with(".png")
+            || icon_label.ends_with(".jpg")
+            || icon_label.ends_with(".jpeg")
+            || icon_label.ends_with(".webp")
+            || icon_label.ends_with(".tiff");
+
+        let icon_el = if is_image {
+            let resolved = crate::ui::launcher::helpers::expand_tilde_path(icon_label);
+            img(std::path::PathBuf::from(resolved))
+                .w(px(ib.height * 0.4))
+                .h(px(ib.height * 0.4))
+                .into_any()
+        } else {
+            div()
+                .flex()
+                .items_center()
+                .justify_center()
+                .w(px(ib.height - padding_v * 2.0))
+                .h(px(ib.height - padding_v * 2.0))
+                .text_size(px(ib.height * 0.4))
+                .text_color(rgb(Self::color(icon_color)))
+                .child(icon_label.to_string())
+                .into_any()
+        };
+
+        let mut inputbar = div()
+            .flex()
+            .items_center()
+            .gap_2()
+            .w_full()
+            .h(px(ib.height))
+            .px(px(padding_h))
+            .py(px(padding_v))
+            .mb(px(margin_bottom))
+            .bg(rgb(Self::color(&ib.background)))
+            .rounded(px(ib.corner_radius))
+            .child(icon_el)
+            .child(inner_view);
+
+        if *loading {
+            let loading_col = rgb(Self::color(icon_color));
+            inputbar = inputbar.child(
+                div()
+                    .px_2()
+                    .py(px(2.0))
+                    .rounded_sm()
+                    .border_1()
+                    .border_color(loading_col)
+                    .text_color(loading_col)
+                    .text_size(px(t.font.size * 0.75))
+                    .child("Loading…"),
+            );
+        }
+
+        container = container.child(inputbar);
+
+        // ── Optional message banner ─────────────────────────────────
+        if let Some(msg) = message {
+            let msg_el = div()
+                .w_full()
+                .px_2()
+                .py_1()
+                .text_color(rgb(Self::color(
+                    el.description_color.as_deref().unwrap_or(&el.text_color),
+                )))
+                .text_size(px(t.font.size * 0.85))
+                .child(msg.clone());
+            container = container.child(msg_el);
+        }
+
+        // ── Layout (List + Optional Preview) ───────────────────────────
+        let mut list_container = div().flex_1().flex().flex_col();
+
+        if filtered_rows.is_empty() {
+            list_container = list_container.child(
+                div()
+                    .flex_1()
+                    .px_2()
+                    .py_1()
+                    .text_color(rgb(Self::color(&t.listview.empty_text_color)))
+                    .child(t.listview.empty_text.clone()),
+            );
+        } else {
+            let pad_h = el.padding.first().copied().unwrap_or(8.0);
+            let pad_v_el = el.padding.get(1).copied().unwrap_or(12.0);
+            let icon_size = px(el.icon_size);
+            let desc_color = rgb(Self::color(
+                el.description_color.as_deref().unwrap_or(&el.text_color),
+            ));
+
+            let filtered_clone = filtered_rows.clone();
+            let rows_clone = rows.clone();
+            let active_indices_clone = active_indices.clone();
+            let selected_val = *selected;
+            let multi_select_val = *multi_select;
+            let toggled_indices_clone = toggled_indices.clone();
+            let markup_rows_val = *markup_rows;
+
+            let list = uniform_list(
+                "gui_rows",
+                filtered_clone.len(),
+                cx.processor(move |_this, range: std::ops::Range<usize>, _window, _cx| {
+                    let t = &_this.theme;
+                    let el = &t.element;
+                    range
+                        .map(|vis_ix| {
+                            let row_idx = filtered_clone[vis_ix];
+                            let row = &rows_clone[row_idx];
+                            let is_selected = vis_ix == selected_val;
+                            let is_active = row.active || active_indices_clone.contains(&row_idx);
+                            let is_urgent = row.urgent;
+                            let is_disabled = row.disabled;
+                            let is_selectable = !row.nonselectable && !is_disabled;
+                            let is_toggled = toggled_indices_clone.contains(&row_idx);
+
+                            let (row_bg, name_color) = if is_selected {
+                                (
+                                    rgb(Self::color(&el.selected.background)),
+                                    rgb(Self::color(&el.selected.text_color)),
+                                )
+                            } else if is_toggled {
+                                (
+                                    rgb(Self::color(&el.selected.background)).opacity(0.4),
+                                    rgb(Self::color(&el.selected.text_color)),
+                                )
+                            } else if !is_selectable {
+                                (rgba(0x00000000), desc_color)
+                            } else if is_urgent {
+                                (rgba(0xff555518), rgb(Self::color(&el.text_color)))
+                            } else if is_active {
+                                (rgba(0x50fa7b18), rgb(Self::color(&el.text_color)))
+                            } else {
+                                (rgba(0x00000000), rgb(Self::color(&el.text_color)))
+                            };
+
+                            if is_selectable {
+                                let id = format!("gui-row-{vis_ix}");
+                                let mut row_div = div()
+                                    .id(id)
+                                    .flex()
+                                    .items_center()
+                                    .gap_2()
+                                    .w_full()
+                                    .px(px(pad_h))
+                                    .py(px(pad_v_el))
+                                    .rounded(px(el.corner_radius))
+                                    .bg(row_bg)
+                                    .cursor(CursorStyle::PointingHand);
+
+                                if multi_select_val {
+                                    let toggle_icon = if is_toggled { "☑" } else { "☐" };
+                                    row_div = row_div.child(
+                                        div()
+                                            .text_color(if is_toggled { rgb(0x73daca) } else { desc_color })
+                                            .text_size(px(t.font.size))
+                                            .child(toggle_icon),
+                                    );
+                                }
+
+                                if el.show_icons {
+                                    row_div = row_div.child(Self::render_gui_row_icon(icon_size, &row.icon));
+                                }
+
+                                let text_div = div().flex_1().text_color(name_color);
+                                let text_div = if markup_rows_val {
+                                    let (plain, highlights) = crate::core::pango::parse_pango(&row.text);
+                                    let mut st = gpui::StyledText::new(plain);
+                                    if !highlights.is_empty() {
+                                        st = st.with_highlights(highlights);
+                                    }
+                                    text_div.child(st)
+                                } else {
+                                    text_div.child(row.text.clone())
+                                };
+                                row_div = row_div.child(text_div);
+
+                                if is_urgent {
+                                    row_div = row_div.child(
+                                        div()
+                                            .px_2()
+                                            .py(px(2.0))
+                                            .rounded_sm()
+                                            .bg(rgb(0xf7768e))
+                                            .text_color(rgb(0x1a1b26))
+                                            .text_size(px(t.font.size * 0.72))
+                                            .child("URGENT"),
+                                    );
+                                }
+
+                                if is_active {
+                                    row_div = row_div.child(
+                                        div()
+                                            .px_2()
+                                            .py(px(2.0))
+                                            .rounded_sm()
+                                            .bg(rgb(0x73daca))
+                                            .text_color(rgb(0x1a1b26))
+                                            .text_size(px(t.font.size * 0.72))
+                                            .child("ACTIVE"),
+                                    );
+                                }
+
+                                if let Some(info) = &row.info {
+                                    let badge_col = rgb(Self::color(&t.listview.category_badge.color));
+                                    row_div = row_div.child(
+                                        div()
+                                            .px_2()
+                                            .py(px(2.0))
+                                            .rounded_sm()
+                                            .border_1()
+                                            .border_color(badge_col)
+                                            .text_color(badge_col)
+                                            .text_size(px(t.font.size * 0.75))
+                                            .child(info.clone()),
+                                    );
+                                }
+
+                                row_div
+                                    .on_click(
+                                        _cx.listener(move |this, event, _window, cx| {
+                                            if is_primary_click(event) {
+                                                if let LauncherState::GuiMode { selected, .. } =
+                                                    &mut this.state
+                                                {
+                                                    *selected = vis_ix;
+                                                }
+                                                this.gui_select_row(cx);
+                                                cx.notify();
+                                            }
+                                        }),
+                                    )
+                                    .into_any()
+                            } else {
+                                let mut row_div = div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_2()
+                                    .w_full()
+                                    .px(px(pad_h))
+                                    .py(px(pad_v_el))
+                                    .rounded(px(el.corner_radius))
+                                    .bg(row_bg);
+
+                                if is_disabled {
+                                    row_div = row_div.opacity(0.4);
+                                }
+
+                                if multi_select_val {
+                                    let toggle_icon = if is_toggled { "☑" } else { "☐" };
+                                    row_div = row_div.child(
+                                        div()
+                                            .text_color(if is_toggled { rgb(0x73daca) } else { desc_color })
+                                            .text_size(px(t.font.size))
+                                            .child(toggle_icon),
+                                    );
+                                }
+
+                                if el.show_icons {
+                                    row_div = row_div.child(Self::render_gui_row_icon(icon_size, &row.icon));
+                                }
+
+                                let text_div = div().flex_1().text_color(name_color);
+                                let text_div = if markup_rows_val {
+                                    let (plain, highlights) = crate::core::pango::parse_pango(&row.text);
+                                    let mut st = gpui::StyledText::new(plain);
+                                    if !highlights.is_empty() {
+                                        st = st.with_highlights(highlights);
+                                    }
+                                    text_div.child(st)
+                                } else {
+                                    text_div.child(row.text.clone())
+                                };
+                                row_div = row_div.child(text_div);
+
+                                if is_urgent {
+                                    row_div = row_div.child(
+                                        div()
+                                            .px_2()
+                                            .py(px(2.0))
+                                            .rounded_sm()
+                                            .bg(rgb(0xf7768e))
+                                            .text_color(rgb(0x1a1b26))
+                                            .text_size(px(t.font.size * 0.72))
+                                            .child("URGENT"),
+                                    );
+                                }
+
+                                if is_active {
+                                    row_div = row_div.child(
+                                        div()
+                                            .px_2()
+                                            .py(px(2.0))
+                                            .rounded_sm()
+                                            .bg(rgb(0x73daca))
+                                            .text_color(rgb(0x1a1b26))
+                                            .text_size(px(t.font.size * 0.72))
+                                            .child("ACTIVE"),
+                                    );
+                                }
+
+                                if let Some(info) = &row.info {
+                                    let badge_col = rgb(Self::color(&t.listview.category_badge.color));
+                                    row_div = row_div.child(
+                                        div()
+                                            .px_2()
+                                            .py(px(2.0))
+                                            .rounded_sm()
+                                            .border_1()
+                                            .border_color(badge_col)
+                                            .text_color(badge_col)
+                                            .text_size(px(t.font.size * 0.75))
+                                            .child(info.clone()),
+                                    );
+                                }
+
+                                row_div.into_any()
+                            }
+                        })
+                        .collect()
+                }),
+            )
+            .flex_1()
+            .w_full();
+
+            list_container = list_container.child(list);
+        }
+
+        if let Some(blocks) = preview_blocks {
+            let block_count = blocks.len();
+            let preview_panel = uniform_list(
+                "gui_preview_blocks",
+                block_count,
+                cx.processor(
+                    move |this: &mut Launcher, range: std::ops::Range<usize>, _window, _cx| {
+                        if let LauncherState::GuiMode { preview_blocks: Some(b), .. } = &this.state {
+                            range.map(|i| this.render_md_block(&b[i])).collect()
+                        } else {
+                            vec![]
+                        }
+                    },
+                ),
+            )
+            .flex_1()
+            .w_full()
+            .pl_3()
+            .track_scroll(&self.full_output_scroll);
+
+            container = container.child(
+                div()
+                    .flex_1()
+                    .flex()
+                    .flex_row()
+                    .w_full()
+                    .child(list_container.w_1_2())
+                    .child(
+                        div()
+                            .w_1_2()
+                            .h_full()
+                            .border_l_1()
+                            .border_color(rgb(Self::color(&t.window.border_color)))
+                            .child(preview_panel)
+                    )
+            );
+        } else {
+            container = container.child(list_container.w_full());
+        }
+
+        container.into_any()
+    }
+
+    /// Render the icon element for a GUI-mode row.
+    fn render_gui_row_icon(
+        icon_size: gpui::Pixels,
+        icon: &Option<String>,
+    ) -> gpui::AnyElement {
+        if let Some(icon_str) = icon {
+            let is_image = icon_str.starts_with('/')
+                || icon_str.starts_with('~')
+                || icon_str.ends_with(".png")
+                || icon_str.ends_with(".jpg");
+            if is_image {
+                let resolved = expand_tilde_path(icon_str);
+                img(std::path::PathBuf::from(resolved))
+                    .w(icon_size)
+                    .h(icon_size)
+                    .rounded_sm()
+                    .into_any()
+            } else {
+                div()
+                    .w(icon_size)
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(icon_str.clone())
+                    .into_any()
+            }
+        } else {
+            div()
+                .w(icon_size)
+                .flex()
+                .items_center()
+                .justify_center()
+                .child("•".to_string())
+                .into_any()
+        }
     }
 
     /// Render the `LauncherState::Confirming` view when a dangerous action requires confirmation.

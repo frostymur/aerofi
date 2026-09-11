@@ -1,5 +1,6 @@
 //! Data types for the launcher's state machine.
 
+use crate::core::gui_protocol::GuiRow;
 use crate::core::item::Target;
 
 /// Action to take after a keystroke is handled.
@@ -21,6 +22,8 @@ pub enum LauncherAction {
         path: std::sync::Arc<std::path::Path>,
         output: Option<gpui::SharedString>,
     },
+    /// Start a GUI-mode interactive script session.
+    StartGuiSession(Target, Vec<String>),
 }
 
 /// State of the launcher UI.
@@ -45,4 +48,43 @@ pub enum LauncherState {
         target: Target,
         args_values: Vec<String>,
     },
+    /// A GUI-mode script is running interactively: the launcher shows the
+    /// script's rows and relays selections back to the script's stdin.
+    GuiMode {
+        /// Title of the script (from `@raycast.title`).
+        title: String,
+        /// All rows in the current step.
+        rows: Vec<GuiRow>,
+        /// Indices into `rows` after fuzzy filtering.
+        filtered_rows: Vec<usize>,
+        /// Override for the input bar placeholder (from `\0prompt`).
+        prompt: Option<String>,
+        /// Status/info message (from `\0message`).
+        message: Option<String>,
+        /// If true, only listed items are selectable.
+        no_custom: bool,
+        /// Index into `filtered_rows` for the highlighted entry.
+        selected: usize,
+        /// Override grid columns (from `\0columns`).
+        columns: Option<usize>,
+        /// The current filter query typed by the user.
+        query: String,
+        /// Whether background loading is active (from `\0loading`).
+        loading: bool,
+        /// Whether live search is enabled (from `\0live-search`).
+        live_search: bool,
+        /// Specific active row indices (from `\0active`).
+        active_indices: Vec<usize>,
+        /// Arbitrary state string received via `\0data`.
+        data: Option<String>,
+        /// Parsed markdown blocks from `\0preview` or `\0preview-file`.
+        preview_blocks: Option<Vec<crate::core::markdown::MdBlock>>,
+        /// Whether multi-selection is enabled.
+        multi_select: bool,
+        /// The set of row indices that have been toggled for multi-selection.
+        toggled_indices: std::collections::HashSet<usize>,
+        /// Whether inline Pango-like markup is enabled for row text.
+        markup_rows: bool,
+    },
 }
+

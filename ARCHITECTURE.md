@@ -9,24 +9,26 @@ Single-crate (monorepo style), organized by concern:
 ```
 src/
 ├── main.rs              # GPUI initialization, hotkey registration, event loop
-├── common/              # Shared types (no GPUI, no platform FFI)
-│   ├── config.rs        # Config, ThemeColors, WindowConfig
 ├── ui/                  # Everything that renders (depends on GPUI)
 │   ├── window.rs        # Window setup (borderless, focus management)
-│   └── launcher.rs      # Input field, search list, keyboard handlers
-├── core/                # Pure business logic (knows nothing about GPUI)
+│   └── launcher/        # Input field, search list, keyboard handlers, GUI mode rendering
+├── core/                # Data models, config & execution engine (knows nothing about GPUI)
 │   ├── item.rs          # Target (App/Script), ScriptMode, @raycast.* parsing
 │   ├── scanner.rs       # Directory indexing: /Applications* + scripts folder
 │   ├── executor.rs      # Launching targets (open / sh)
-│   └── search.rs        # nucleo-matcher wrapper
+│   ├── gui_protocol.rs  # Rofi-compatible GUI mode protocol parser
+│   ├── gui_session.rs   # GUI mode interactive process session management
+│   ├── search.rs        # nucleo-matcher wrapper
+│   ├── theme.rs         # Theme configuration parser & colors
+│   └── widget.rs        # Widget tree definition and validation
 └── sys/                 # System calls (macOS-only for v0.1, so flat — no per-OS nesting)
     ├── carbon.rs        # Carbon RegisterEventHotKey binding
     └── appkit.rs        # NSWindow/NSApplication FFI (chrome, show/hide)
 ```
 
 **Rationale:** single crate keeps the build simple (one `cargo build`, no
-path-dependency headaches) for v0.1. The layering (common → core → ui →
-sys) enforces separation of concerns *within* the crate.
+path-dependency headaches). The layering (core → ui → sys) enforces separation
+of concerns *within* the crate.
 
 ## Validated performance baseline
 

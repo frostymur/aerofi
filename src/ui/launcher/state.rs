@@ -1,9 +1,14 @@
 //! Launcher state: struct definition and controller logic (keystroke
 //! handling, filtering, execution, configuration reload).
 
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+
 use gpui::{Context, ScrollStrategy, UniformListScrollHandle};
 
 use crate::core::config::AppConfig;
+use crate::core::gui_protocol::GuiCommand;
+use crate::core::gui_session::{self, GuiSession, ReadResult};
 use crate::core::history::History;
 use crate::core::item::{BuiltinAction, ScriptMetatags, ScriptMode, Target};
 use crate::core::search::SearchIndex;
@@ -49,6 +54,12 @@ pub struct Launcher {
     /// Registry of custom widget definitions from `[[widgets]]` in the
     /// theme file. Used by `render_custom_widget` in `custom_widgets.rs`.
     pub(super) widget_registry: WidgetRegistry,
+    /// Hotkey bindings from button widgets: maps combo string (e.g. "cmd+r")
+    /// to the button's action string. Rebuilt on config reload.
+    pub(super) button_hotkeys: HashMap<String, String>,
+    /// Active GUI-mode script session (stdin/stdout pipe to child).
+    /// Wrapped in Arc<Mutex<>> so it can be shared with async tasks.
+    pub(super) gui_session: Option<Arc<Mutex<GuiSession>>>,
 }
 
 impl Launcher {
@@ -60,6 +71,7 @@ impl Launcher {
     ) -> Self {
         let filtered = all.clone();
         let widget_registry = WidgetRegistry::from_theme(&theme.widgets);
+        let button_hotkeys = widget_registry.button_hotkeys();
         Self {
             all,
             filtered,
@@ -75,6 +87,8 @@ impl Launcher {
             full_output_blocks: Vec::new(),
             sticky_metatags: None,
             widget_registry,
+            button_hotkeys,
+            gui_session: None,
         }
     }
 
@@ -88,7 +102,7 @@ impl Launcher {
     }
 
     /// Handle a keystroke. Returns the action that the host (main.rs) should perform.
-    pub fn handle_keystroke(&mut self, ks: &gpui::Keystroke) -> LauncherAction {
+    pub fn handle_keystroke(&mut self, ks: &gpui::Keystroke, cx: Option<&mut Context<Self>>) -> LauncherAction {
         // Full-output pages (spinner and result view) swallow every
         // keystroke; only Escape returns to the search list. Argument
         // prompts and confirmations fall through so their own handlers run.
@@ -100,6 +114,12 @@ impl Launcher {
                 self.back_from_full_output();
             }
             return LauncherAction::None;
+        }
+
+        // GUI-mode interactive script: handle keystrokes within the
+        // script-driven list.
+        if matches!(&self.state, LauncherState::GuiMode { .. }) {
+            return self.handle_gui_mode_keystroke(ks, cx);
         }
 
         // A configured key-combo shortcut (e.g. "cmd+r") runs its target
@@ -124,7 +144,56 @@ impl Launcher {
             }
             return action;
         }
+
+        // Button widget hotkeys (e.g. "cmd+r" mapped to a sidebar button's
+        // action). Only honoured in plain search mode.
+        if matches!(self.state, LauncherState::Search)
+            && let Some((_, action)) = self
+                .button_hotkeys
+                .iter()
+                .find(|(combo, _)| combo_matches(combo, ks))
+        {
+            let action = action.clone();
+            if let Some(cx) = cx {
+                self.handle_widget_button_action(&action, None, cx);
+            }
+            return LauncherAction::None;
+        }
+
         let cmd = ks.modifiers.platform;
+        let ctrl = ks.modifiers.control;
+        let alt = ks.modifiers.alt;
+
+        // Common text editing and navigation hotkeys
+        if matches!(self.state, LauncherState::Search) {
+            match (ks.key.as_str(), cmd, ctrl, alt) {
+                ("u", false, true, false) | ("backspace", true, false, false) => {
+                    self.reset();
+                    return LauncherAction::None;
+                }
+                ("w", false, true, false) | ("backspace", false, false, true) => {
+                    let len = self.query.trim_end().rfind(' ').map(|i| i + 1).unwrap_or(0);
+                    self.query.truncate(len);
+                    self.refilter();
+                    self.selected = 0;
+                    return LauncherAction::None;
+                }
+                ("n", false, true, false) | ("j", false, true, false) => {
+                    let cols = self.effective_columns();
+                    let step = if cols > 1 { cols as isize } else { 1 };
+                    self.move_selection(step);
+                    return LauncherAction::None;
+                }
+                ("p", false, true, false) | ("k", false, true, false) => {
+                    let cols = self.effective_columns();
+                    let step = if cols > 1 { cols as isize } else { 1 };
+                    self.move_selection(-step);
+                    return LauncherAction::None;
+                }
+                _ => {}
+            }
+        }
+
         match (ks.key.as_str(), cmd) {
             ("escape", _) => {
                 if !matches!(self.state, LauncherState::Search) {
@@ -230,6 +299,20 @@ impl Launcher {
                 let cols = self.effective_columns();
                 let step = if cols > 1 { cols as isize } else { 1 };
                 self.move_selection(step);
+                LauncherAction::None
+            }
+            ("up", true) => {
+                if self.filtered.is_empty() {
+                    return LauncherAction::None;
+                }
+                self.selected = 0;
+                LauncherAction::None
+            }
+            ("down", true) => {
+                if self.filtered.is_empty() {
+                    return LauncherAction::None;
+                }
+                self.selected = self.filtered.len() - 1;
                 LauncherAction::None
             }
             ("left", false) if self.effective_columns() > 1 => {
@@ -343,6 +426,12 @@ impl Launcher {
         self.full_output_blocks.clear();
         // The sticky layout override only lasts for the session.
         self.sticky_metatags = None;
+        // Kill any active GUI session.
+        if let Some(session) = self.gui_session.take() {
+            if let Ok(mut s) = session.lock() {
+                s.kill();
+            }
+        }
     }
 
     /// Called when the window is shown.  Refills `filtered` from `all`
@@ -439,6 +528,7 @@ impl Launcher {
                     }
                     ScriptMode::Compact => LauncherAction::ExecuteScript(item.clone(), args),
                     ScriptMode::Inline => LauncherAction::ExecuteScript(item.clone(), args),
+                    ScriptMode::Gui => LauncherAction::StartGuiSession(item.clone(), args),
                 }
             }
             Target::Builtin { .. } | Target::App { .. } => LauncherAction::None,
@@ -479,6 +569,10 @@ impl Launcher {
             }
             LauncherAction::SetInlineOutput { path, output } => {
                 self.apply_inline_output(&path, output);
+                cx.notify();
+            }
+            LauncherAction::StartGuiSession(target, args) => {
+                self.start_gui_session(&target, args, cx);
                 cx.notify();
             }
             LauncherAction::ExecuteScript(target, args) => {
@@ -585,6 +679,7 @@ impl Launcher {
         self.all = targets;
         self.search = SearchIndex::new(&self.app_config.aliases);
         self.widget_registry = WidgetRegistry::from_theme(&theme.widgets);
+        self.button_hotkeys = self.widget_registry.button_hotkeys();
         self.theme = theme;
         self.query.clear();
         self.refilter();
@@ -592,32 +687,45 @@ impl Launcher {
         println!("aerofi: configuration reloaded");
     }
 
-    /// Open the highlighted script in `$EDITOR` (defaulting to `vim`).
+    /// Open the highlighted script in the configured editor.
     /// Applications have no source to edit, so this is a no-op for them.
     fn open_in_editor(&mut self) {
         if let Some(item) = self.selected_item().cloned() {
-            Self::open_target_in_editor(&item);
+            let editor = self.app_config.general.editor.clone();
+            Self::open_target_in_editor(&item, &editor);
         }
     }
 
-    /// Open a specific script target in `$EDITOR` (defaulting to `vim`).
-    pub(super) fn open_target_in_editor(item: &Target) {
+    /// Open a specific script target in the configured editor, launched in a
+    /// new Terminal.app window.
+    pub(super) fn open_target_in_editor(item: &Target, editor: &str) {
         let path = match item {
             Target::Script { path, .. } => path.clone(),
             // Applications and built-in actions have no source to edit.
             Target::App { .. } | Target::Builtin { .. } => return,
         };
         let name = item.name().to_string();
-        let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vim".to_string());
-        // `EDITOR` may be "cmd -arg ..."; split into program + initial args.
-        let mut parts = editor.split_whitespace();
-        let program = parts.next().unwrap_or("vim");
-        match std::process::Command::new(program)
-            .args(parts)
-            .arg(path.as_os_str())
+        let path_str = path.to_string_lossy();
+        // Build the shell command: "cd <dir> && <editor> <file>"
+        let dir = path
+            .parent()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let shell_cmd = if dir.is_empty() {
+            format!("{editor} {path_str}")
+        } else {
+            format!("cd {dir} && {editor} {path_str}")
+        };
+        // Use osascript to open a new Terminal.app window with the command.
+        let script = format!(
+            "tell application \"Terminal\"\n  activate\n  do script \"{}\"\nend tell",
+            shell_cmd.replace('\\', "\\\\").replace('"', "\\\"")
+        );
+        match std::process::Command::new("osascript")
+            .args(["-e", &script])
             .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::inherit())
-            .stderr(std::process::Stdio::inherit())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
             .spawn()
         {
             Ok(_) => {}
@@ -647,7 +755,8 @@ impl Launcher {
         }
         if trimmed.eq_ignore_ascii_case("edit") {
             if let Some(item) = row_item {
-                Self::open_target_in_editor(item);
+                let editor = self.app_config.general.editor.clone();
+                Self::open_target_in_editor(item, &editor);
             }
             return;
         }
@@ -683,7 +792,6 @@ impl Launcher {
             .or_else(|| trimmed.strip_prefix("run:"))
             .or_else(|| trimmed.strip_prefix("script:"))
             .unwrap_or(trimmed);
-
         if let Some(target) = self.all.iter().find(|t| t.name() == target_name).cloned() {
             let action = self.execute_item(&target);
             self.perform_action(action, cx);
@@ -691,5 +799,652 @@ impl Launcher {
         } else {
             eprintln!("aerofi: warning: button target not found: {target_name}");
         }
+    }
+
+    // ── GUI-mode interactive script session ────────────────────────────
+
+    /// Spawn a GUI session for an interactive script and read its initial
+    /// burst of output.  Transitions to `LauncherState::GuiMode`.
+    fn start_gui_session(
+        &mut self,
+        target: &Target,
+        args: Vec<String>,
+        cx: &mut Context<Self>,
+    ) {
+        let Target::Script { path, name, .. } = target else {
+            return;
+        };
+        let title = name.to_string();
+
+        // Commit metatags (same as other modes).
+        self.sticky_metatags = target.metatags().cloned();
+
+        // Record in history.
+        let identifier = target.identifier();
+        self.history.record_launch(identifier);
+
+        let path = path.clone();
+        let mut envs = std::collections::HashMap::new();
+        envs.insert("AEROFI_RETV".to_string(), "0".to_string());
+        
+        match GuiSession::spawn(&path, args, envs) {
+            Ok(session) => {
+                let session = Arc::new(Mutex::new(session));
+                self.gui_session = Some(session.clone());
+
+                // Read initial burst on a background thread, then update UI.
+                let view = cx.entity();
+                let title2 = title.clone();
+                let cx_async = cx.to_async();
+                let (tx, rx) = futures::channel::oneshot::channel();
+                std::thread::spawn(move || {
+                    let burst = {
+                        let session = session.lock().unwrap();
+                        session.read_burst(std::time::Duration::from_secs(5))
+                    };
+                    let _ = tx.send(burst);
+                });
+                cx.spawn(move |_, _: &mut gpui::AsyncApp| async move {
+                    if let Ok(burst) = rx.await {
+                        let _ = cx_async.update(|cx| {
+                            let _ = view.update(cx, |launcher, cx| {
+                                launcher.gui_handle_read_result(burst, &title2);
+                                cx.notify();
+                            });
+                        });
+                    }
+                })
+                .detach();
+
+                // Set a temporary "loading" GUI mode while waiting for the burst.
+                self.state = LauncherState::GuiMode {
+                    title,
+                    rows: Vec::new(),
+                    filtered_rows: Vec::new(),
+                    prompt: None,
+                    message: Some("Loading…".to_string()),
+                    no_custom: false,
+                    selected: 0,
+                    columns: None,
+                    query: String::new(),
+                    loading: true,
+                    live_search: false,
+                    active_indices: Vec::new(),
+                    data: None,
+                    preview_blocks: None,
+                    multi_select: false,
+                    toggled_indices: std::collections::HashSet::new(),
+                    markup_rows: false,
+                };
+            }
+            Err(e) => {
+                eprintln!("aerofi: failed to start GUI session for {title}: {e}");
+            }
+        }
+    }
+
+    /// Handle the read result from a GUI session burst.
+    fn gui_handle_read_result(
+        &mut self,
+        result: ReadResult,
+        title: &str,
+    ) {
+        match result {
+            ReadResult::Burst(burst) => {
+                self.gui_apply_burst(burst, title);
+            }
+            ReadResult::BurstThenExit(burst) => {
+                self.gui_apply_burst(burst, title);
+                // Script exited after this burst — mark session as done.
+                // The UI will stay showing the last rows but selecting will
+                // leave GUI mode.
+                self.gui_session = None;
+            }
+            ReadResult::Exited => {
+                // Script exited with no output — return to search.
+                self.gui_leave();
+            }
+            ReadResult::Error(e) => {
+                eprintln!("aerofi: GUI script error: {e}");
+                self.gui_leave();
+            }
+        }
+    }
+
+    /// Apply a GUI burst (commands + rows) to the current GuiMode state.
+    fn gui_apply_burst(
+        &mut self,
+        burst: crate::core::gui_protocol::GuiBurst,
+        title: &str,
+    ) {
+        let mut prompt = None;
+        let mut message = None;
+        let mut no_custom = false;
+        let mut keep_selection: Option<String> = None;
+        let mut columns = None;
+        let mut loading = false;
+        let mut live_search = false;
+        let mut active_indices = Vec::new();
+        let mut data = None;
+        let mut preview_blocks = None;
+        let mut multi_select = false;
+        let mut toggled_indices = std::collections::HashSet::new();
+        let mut markup_rows = false;
+
+        // Inherit flags if we are updating an existing GuiMode session
+        if let LauncherState::GuiMode {
+            prompt: prev_prompt,
+            no_custom: prev_no_custom,
+            columns: prev_columns,
+            live_search: prev_live_search,
+            active_indices: prev_active_indices,
+            data: prev_data,
+            preview_blocks: prev_preview_blocks,
+            multi_select: prev_multi_select,
+            toggled_indices: prev_toggled_indices,
+            markup_rows: prev_markup_rows,
+            ..
+        } = &self.state
+        {
+            prompt = prev_prompt.clone();
+            no_custom = *prev_no_custom;
+            columns = *prev_columns;
+            live_search = *prev_live_search;
+            active_indices = prev_active_indices.clone();
+            data = prev_data.clone();
+            preview_blocks = prev_preview_blocks.clone();
+            multi_select = *prev_multi_select;
+            toggled_indices = prev_toggled_indices.clone();
+            markup_rows = *prev_markup_rows;
+        }
+
+        for cmd in &burst.commands {
+            match cmd {
+                GuiCommand::Flush => {}
+                GuiCommand::SetPrompt(p) => prompt = Some(p.clone()),
+                GuiCommand::SetMessage(m) => message = Some(m.clone()),
+                GuiCommand::EnableMarkup => {} // future
+                GuiCommand::NoCustom(v) => no_custom = *v,
+                GuiCommand::KeepSelection(s) => keep_selection = Some(s.clone()),
+                GuiCommand::SetColumns(n) => columns = Some(*n),
+                GuiCommand::SetLoading(l) => loading = *l,
+                GuiCommand::LiveSearch(ls) => live_search = *ls,
+                GuiCommand::SetActiveIndices(indices) => active_indices = indices.clone(),
+                GuiCommand::SetData(d) => data = Some(d.clone()),
+                GuiCommand::PreviewText(text) => {
+                    preview_blocks = Some(crate::core::markdown::parse(text));
+                }
+                GuiCommand::PreviewFile(file_path) => {
+                    let resolved = super::helpers::expand_tilde_path(file_path);
+                    if let Ok(text) = std::fs::read_to_string(&resolved) {
+                        preview_blocks = Some(crate::core::markdown::parse(&text));
+                    }
+                }
+                GuiCommand::MultiSelect(b) => multi_select = *b,
+                GuiCommand::MarkupRows(b) => markup_rows = *b,
+            }
+        }
+
+        let row_count = burst.rows.len();
+        let filtered_rows: Vec<usize> = (0..row_count).collect();
+
+        // Find pre-selected row if requested.
+        let selected = keep_selection
+            .and_then(|sel| burst.rows.iter().position(|r| r.text == sel))
+            .unwrap_or(0);
+
+        self.state = LauncherState::GuiMode {
+            title: title.to_string(),
+            rows: burst.rows,
+            filtered_rows,
+            prompt,
+            message,
+            no_custom,
+            selected,
+            columns,
+            query: String::new(),
+            loading,
+            live_search,
+            active_indices,
+            data,
+            preview_blocks,
+            multi_select,
+            toggled_indices,
+            markup_rows,
+        };
+    }
+
+    /// Handle keystrokes while in `LauncherState::GuiMode`.
+    fn handle_gui_mode_keystroke(
+        &mut self,
+        ks: &gpui::Keystroke,
+        cx: Option<&mut Context<Self>>,
+    ) -> LauncherAction {
+        let cmd = ks.modifiers.platform;
+        let ctrl = ks.modifiers.control;
+        let alt = ks.modifiers.alt;
+        let shift = ks.modifiers.shift;
+
+        let mut custom_retv = None;
+        for (kb, combo_str) in &self.app_config.custom_keys {
+            if combo_matches(combo_str, ks) {
+                if let Some(num_str) = kb.strip_prefix("kb-custom-") {
+                    if let Ok(num) = num_str.parse::<i32>() {
+                        if (1..=19).contains(&num) {
+                            custom_retv = Some(num + 9);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        if let Some(retv) = custom_retv {
+            if let Some(cx) = cx {
+                self.gui_dispatch_selection(cx, "custom", Some(retv));
+            }
+            return LauncherAction::None;
+        }
+
+        match (ks.key.as_str(), cmd, ctrl, alt, shift) {
+            ("escape", false, false, false, false) => {
+                self.gui_leave();
+                LauncherAction::None
+            }
+            ("enter" | "return", false, false, false, false) => {
+                if let Some(cx) = cx {
+                    self.gui_select_row(cx);
+                }
+                LauncherAction::None
+            }
+            ("enter" | "return", false, false, false, true) => {
+                // Shift+Enter contextual action
+                if let Some(cx) = cx {
+                    self.gui_action_row(cx, "shift+enter");
+                }
+                LauncherAction::None
+            }
+            ("enter" | "return", false, false, true, false) => {
+                // Alt+Enter contextual action
+                if let Some(cx) = cx {
+                    self.gui_action_row(cx, "alt+enter");
+                }
+                LauncherAction::None
+            }
+            ("up", false, false, false, false) | ("p", false, true, false, false) | ("k", false, true, false, false) => {
+                let cols = self.gui_columns() as isize;
+                self.gui_move_selection(-cols);
+                LauncherAction::None
+            }
+            ("down", false, false, false, false) | ("n", false, true, false, false) | ("j", false, true, false, false) => {
+                let cols = self.gui_columns() as isize;
+                self.gui_move_selection(cols);
+                LauncherAction::None
+            }
+            ("up", true, false, false, false) => {
+                self.gui_jump_to_edge(true);
+                LauncherAction::None
+            }
+            ("down", true, false, false, false) => {
+                self.gui_jump_to_edge(false);
+                LauncherAction::None
+            }
+            ("left", false, false, false, false) => {
+                self.gui_move_selection(-1);
+                LauncherAction::None
+            }
+            ("right", false, false, false, false) => {
+                self.gui_move_selection(1);
+                LauncherAction::None
+            }
+            ("tab", false, false, false, false) => {
+                self.gui_toggle_selection(1);
+                LauncherAction::None
+            }
+            ("tab", false, false, false, true) => {
+                self.gui_toggle_selection(-1);
+                LauncherAction::None
+            }
+            ("backspace", false, false, false, false) => {
+                let mut is_live = false;
+                if let LauncherState::GuiMode {
+                    query, live_search, ..
+                } = &mut self.state
+                {
+                    is_live = *live_search;
+                    if query.pop().is_some() && !is_live {
+                        self.gui_refilter();
+                    }
+                }
+                if is_live {
+                    if let Some(cx) = cx {
+                        self.gui_send_live_search(cx);
+                    }
+                }
+                LauncherAction::None
+            }
+            (key, false, true, false, false) => {
+                // Ctrl + <key> contextual action (e.g. ctrl+e, ctrl+d)
+                if let Some(cx) = cx {
+                    let action_key = format!("ctrl+{key}");
+                    self.gui_action_row(cx, &action_key);
+                }
+                LauncherAction::None
+            }
+            _ => {
+                if !cmd
+                    && !ctrl
+                    && !alt
+                    && ks.key != "tab"
+                    && let Some(c) = ks.key_char.as_deref()
+                    && !c.is_empty()
+                    && !c.chars().any(char::is_control)
+                {
+                    let mut is_live = false;
+                    if let LauncherState::GuiMode {
+                        query, live_search, ..
+                    } = &mut self.state
+                    {
+                        query.push_str(c);
+                        is_live = *live_search;
+                        if !is_live {
+                            self.gui_refilter();
+                        }
+                    }
+                    if is_live {
+                        if let Some(cx) = cx {
+                            self.gui_send_live_search(cx);
+                        }
+                    }
+                }
+                LauncherAction::None
+            }
+        }
+    }
+
+    /// Move the selection cursor within the filtered GUI rows.
+    fn gui_move_selection(&mut self, delta: isize) {
+        if let LauncherState::GuiMode {
+            filtered_rows,
+            selected,
+            ..
+        } = &mut self.state
+        {
+            if filtered_rows.is_empty() {
+                return;
+            }
+            let len = filtered_rows.len() as isize;
+            *selected = (*selected as isize + delta).clamp(0, len - 1) as usize;
+        }
+    }
+
+    fn gui_jump_to_edge(&mut self, top: bool) {
+        if let LauncherState::GuiMode {
+            filtered_rows,
+            selected,
+            ..
+        } = &mut self.state
+        {
+            if filtered_rows.is_empty() {
+                return;
+            }
+            if top {
+                *selected = 0;
+            } else {
+                *selected = filtered_rows.len() - 1;
+            }
+        }
+    }
+
+    /// Toggle selection of the currently focused row if multi-select is enabled.
+    fn gui_toggle_selection(&mut self, delta: isize) {
+        let selected_copy = if let LauncherState::GuiMode {
+            filtered_rows,
+            selected,
+            multi_select,
+            toggled_indices,
+            ..
+        } = &mut self.state
+        {
+            if !*multi_select || filtered_rows.is_empty() {
+                // If not multi_select, tab does nothing but we could just let it move selection?
+                // For now just return.
+                return;
+            }
+            let row_idx = filtered_rows[*selected];
+            if toggled_indices.contains(&row_idx) {
+                toggled_indices.remove(&row_idx);
+            } else {
+                toggled_indices.insert(row_idx);
+            }
+            Some(*selected)
+        } else {
+            None
+        };
+
+        if selected_copy.is_some() {
+            self.gui_move_selection(delta);
+        }
+    }
+
+    fn gui_columns(&self) -> usize {
+        if let LauncherState::GuiMode { columns, .. } = &self.state {
+            (*columns).unwrap_or(1)
+        } else {
+            1
+        }
+    }
+
+    /// User selected a row in GUI mode with standard Enter.
+    pub(super) fn gui_select_row(&mut self, cx: &mut Context<Self>) {
+        self.gui_dispatch_selection(cx, "enter", None);
+    }
+
+    /// User triggered a contextual action key on the selected row in GUI mode.
+    pub(super) fn gui_action_row(&mut self, cx: &mut Context<Self>, key: &str) {
+        self.gui_dispatch_selection(cx, key, Some(10));
+    }
+
+    /// Dispatch either a Select, Action, or Custom input event to the GUI script's stdin.
+    fn gui_dispatch_selection(
+        &mut self,
+        cx: &mut Context<Self>,
+        key: &str,
+        action_retv: Option<i32>,
+    ) {
+        let LauncherState::GuiMode {
+            rows,
+            filtered_rows,
+            selected,
+            title,
+            no_custom,
+            query,
+            data,
+            toggled_indices,
+            ..
+        } = &self.state
+        else {
+            return;
+        };
+
+        let title = title.clone();
+        let retv = action_retv.unwrap_or(if key == "enter" { 1 } else { 10 });
+        let is_action = action_retv.is_some() || key != "enter";
+
+        let event = if let Some(&row_idx) = filtered_rows.get(*selected) {
+            let row = &rows[row_idx];
+            if row.nonselectable || row.disabled {
+                return;
+            }
+            let id = row.id.clone().unwrap_or_default();
+            let text = row.text.clone();
+
+            let mut selected_ids = Vec::new();
+            let mut selected_texts = Vec::new();
+
+            if toggled_indices.is_empty() {
+                selected_ids.push(id.clone());
+                selected_texts.push(text.clone());
+            } else {
+                // Return all toggled rows in order they appear in the *original* rows vector
+                // (or filtered vector? Usually original rows order).
+                for (idx, r) in rows.iter().enumerate() {
+                    if toggled_indices.contains(&idx) {
+                        selected_ids.push(r.id.clone().unwrap_or_default());
+                        selected_texts.push(r.text.clone());
+                    }
+                }
+            }
+
+            if is_action {
+                crate::core::gui_protocol::GuiEvent::Action {
+                    key: key.to_string(),
+                    index: row_idx,
+                    id,
+                    text,
+                    retv,
+                    data: data.clone(),
+                    selected_ids,
+                    selected_texts,
+                }
+            } else {
+                crate::core::gui_protocol::GuiEvent::Select {
+                    key: key.to_string(),
+                    index: row_idx,
+                    id,
+                    text,
+                    retv,
+                    data: data.clone(),
+                    selected_ids,
+                    selected_texts,
+                }
+            }
+        } else if !no_custom && !query.is_empty() {
+            crate::core::gui_protocol::GuiEvent::Custom {
+                key: key.to_string(),
+                text: query.clone(),
+                retv: 2,
+                data: data.clone(),
+            }
+        } else {
+            return;
+        };
+
+        let Some(session) = self.gui_session.clone() else {
+            self.gui_leave();
+            return;
+        };
+
+        // Mark loading state while waiting for the next response
+        if let LauncherState::GuiMode { loading, .. } = &mut self.state {
+            *loading = true;
+        }
+
+        let view = cx.entity();
+        let cx_async = cx.to_async();
+        let (tx, rx) = futures::channel::oneshot::channel();
+        std::thread::spawn(move || {
+            let result = {
+                let mut session = session.lock().unwrap();
+                if session.send_event(&event).is_err() {
+                    ReadResult::Exited
+                } else {
+                    session.read_burst(std::time::Duration::from_secs(5))
+                }
+            };
+            let _ = tx.send(result);
+        });
+        cx.spawn(move |_, _: &mut gpui::AsyncApp| async move {
+            if let Ok(result) = rx.await {
+                let _ = cx_async.update(|cx| {
+                    let _ = view.update(cx, |launcher, cx| {
+                        launcher.gui_handle_read_result(result, &title);
+                        cx.notify();
+                    });
+                });
+            }
+        })
+        .detach();
+    }
+
+    /// Send a live search query update to the script's stdin.
+    fn gui_send_live_search(&mut self, cx: &mut Context<Self>) {
+        let LauncherState::GuiMode {
+            query,
+            title,
+            live_search,
+            ..
+        } = &self.state
+        else {
+            return;
+        };
+
+        if !*live_search {
+            return;
+        }
+
+        let query = query.clone();
+        let title = title.clone();
+        let Some(session) = self.gui_session.clone() else {
+            return;
+        };
+
+        // Mark loading while script recalculates
+        if let LauncherState::GuiMode { loading, .. } = &mut self.state {
+            *loading = true;
+        }
+
+        let view = cx.entity();
+        let cx_async = cx.to_async();
+        let (tx, rx) = futures::channel::oneshot::channel();
+        std::thread::spawn(move || {
+            let result = {
+                let mut session = session.lock().unwrap();
+                if session.send_query_change(&query).is_err() {
+                    ReadResult::Exited
+                } else {
+                    session.read_burst(std::time::Duration::from_secs(5))
+                }
+            };
+            let _ = tx.send(result);
+        });
+        cx.spawn(move |_, _: &mut gpui::AsyncApp| async move {
+            if let Ok(result) = rx.await {
+                let _ = cx_async.update(|cx| {
+                    let _ = view.update(cx, |launcher, cx| {
+                        launcher.gui_handle_read_result(result, &title);
+                        cx.notify();
+                    });
+                });
+            }
+        })
+        .detach();
+    }
+
+    /// Re-filter GUI rows based on the current query.
+    fn gui_refilter(&mut self) {
+        if let LauncherState::GuiMode {
+            rows,
+            filtered_rows,
+            query,
+            selected,
+            ..
+        } = &mut self.state
+        {
+            *filtered_rows = gui_session::filter_gui_rows(rows, query);
+            if *selected >= filtered_rows.len() {
+                *selected = 0;
+            }
+        }
+    }
+
+    /// Leave GUI mode: kill the session and return to the search list.
+    fn gui_leave(&mut self) {
+        if let Some(session) = self.gui_session.take() {
+            if let Ok(mut s) = session.lock() {
+                s.kill();
+            }
+        }
+        self.state = LauncherState::Search;
     }
 }

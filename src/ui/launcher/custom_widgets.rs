@@ -9,7 +9,7 @@ use gpui::{Context, CursorStyle, div, img, prelude::*, px, rgb};
 use crate::core::item::Target;
 use crate::core::theme::{WidgetDef, parse_hex_color};
 
-use super::helpers::{expand_tilde_path, is_primary_click};
+use super::helpers::{expand_tilde_path, format_combo, is_primary_click};
 use super::state::Launcher;
 
 impl Launcher {
@@ -117,6 +117,7 @@ impl Launcher {
                 text,
                 icon,
                 action,
+                hotkey,
                 color,
                 background,
                 hover_background,
@@ -133,6 +134,7 @@ impl Launcher {
                 text.as_deref(),
                 icon.as_deref(),
                 action.as_deref(),
+                hotkey.as_deref(),
                 color.as_deref(),
                 background.as_deref(),
                 hover_background.as_deref(),
@@ -359,6 +361,7 @@ impl Launcher {
         text: Option<&str>,
         icon: Option<&str>,
         action: Option<&str>,
+        hotkey: Option<&str>,
         color: Option<&str>,
         background: Option<&str>,
         hover_background: Option<&str>,
@@ -470,6 +473,19 @@ impl Launcher {
 
         if let Some(txt) = text {
             btn = btn.child(txt.to_string());
+        }
+
+        if let Some(hk) = hotkey {
+            let label = format_combo(hk);
+            let hk_col = col;
+            btn = btn.child(
+                div()
+                    .ml(px(4.0))
+                    .text_size(px(sz - 2.0))
+                    .text_color(rgb(hk_col))
+                    .opacity(0.6)
+                    .child(label),
+            );
         }
 
         if let Some(act) = action {

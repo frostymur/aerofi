@@ -57,9 +57,8 @@ const k_event_param_direct_object: OSType = 0x2d2d_2d2d;
 // typeEventHotKeyID, 'hkid' (CarbonEvents.h)
 const type_event_hot_key_id: OSType = 0x686b_6964;
 
-// Option+Space
-const k_vk_space: u32 = 0x31;
 const option_key: u32 = 1 << 11; // 0x0800
+
 // Carbon modifier bits for user-configured combos.
 const cmd_key: u32 = 1 << 8; // 0x0100
 const shift_key: u32 = 1 << 9; // 0x0200
@@ -254,11 +253,11 @@ fn keycode_for(key: &str) -> Option<u32> {
         .map(|(_, code)| *code)
 }
 
-/// Register the global Option+Space toggle plus the given global target
+/// Register the configured global toggle plus the given global target
 /// shortcuts, and install their event handler. Must be called on the main
 /// thread. A conflicting global combo is skipped with a warning; a failed
 /// toggle registration is an error.
-pub fn install(globals: Vec<GlobalBinding>) -> Result<(), String> {
+pub fn install(toggle_combo: &str, globals: Vec<GlobalBinding>) -> Result<(), String> {
     if HANDLER_REF.load(Ordering::SeqCst).is_null() {
         let event_types = [EventTypeSpec {
             event_class: k_event_class_keyboard,
@@ -287,12 +286,15 @@ pub fn install(globals: Vec<GlobalBinding>) -> Result<(), String> {
         .set(globals.iter().map(|g| g.target.clone()).collect())
         .ok();
 
+    let (toggle_keycode, toggle_modifiers) = parse_combo(toggle_combo)
+        .ok_or_else(|| format!("Invalid toggle hotkey: {toggle_combo}"))?;
+
     let mut refs = Vec::new();
     let mut hotkey_ref: EventHotKeyRef = core::ptr::null_mut();
     let status = unsafe {
         RegisterEventHotKey(
-            k_vk_space,
-            option_key,
+            toggle_keycode,
+            toggle_modifiers,
             EventHotKeyID {
                 signature: HOTKEY_SIGNATURE,
                 id: HOTKEY_ID,
@@ -304,7 +306,7 @@ pub fn install(globals: Vec<GlobalBinding>) -> Result<(), String> {
     };
     if status != noErr {
         return Err(format!(
-            "RegisterEventHotKey failed with OSStatus {status} (is Option+Space already taken?)"
+            "RegisterEventHotKey failed with OSStatus {status} (is {toggle_combo} already taken?)"
         ));
     }
     refs.push(hotkey_ref);

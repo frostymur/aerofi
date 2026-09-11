@@ -20,8 +20,14 @@ const DEFAULT_CONFIG: &str = r#"# aerofi configuration
 theme = "default"
 
 [general]
+# Global hotkey to toggle the launcher visibility.
+# Examples: "opt+space", "cmd+space", "ctrl+shift+p"
+toggle_hotkey = "opt+space"
 # Maximum number of results shown in the launcher list.
 max_results = 20
+# Editor command to open scripts for editing (opens in a new Terminal window).
+# Examples: "vim", "nvim", "code --wait"
+editor = "vim"
 
 [sources]
 # Which target sources the launcher indexes.
@@ -56,19 +62,32 @@ ignored = ["Uninstall*", "Installer"]
 # "opt+d" = "Deploy"
 # Registered at startup only (restart after editing); conflicting combos
 # are skipped with a warning.
+
+[custom_keys]
+# Bind combinations to emit custom action events (retv: 10..28) in gui mode.
+# e.g. "kb-custom-1" = "alt+1"
 "#;
 
 /// Launcher-wide behaviour.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct GeneralConfig {
+    /// Global hotkey used to toggle the launcher (e.g. "opt+space").
+    pub toggle_hotkey: String,
     /// Maximum number of results shown in the launcher list.
     pub max_results: usize,
+    /// Editor command used to open scripts for editing (e.g. "vim", "nvim",
+    /// "code"). Opened in a new Terminal.app window.
+    pub editor: String,
 }
 
 impl Default for GeneralConfig {
     fn default() -> Self {
-        Self { max_results: 20 }
+        Self {
+            toggle_hotkey: "opt+space".to_string(),
+            max_results: 20,
+            editor: "vim".to_string(),
+        }
     }
 }
 
@@ -147,6 +166,9 @@ pub struct AppConfig {
     /// Carbon `RegisterEventHotKey` (no Accessibility permission needed);
     /// see ADR 0002.
     pub global_shortcuts: HashMap<String, String>,
+    /// Custom hotkeys for GUI scripts (kb-custom-N -> combo).
+    /// e.g. "kb-custom-1" -> "alt+1". Triggers retv 10..28.
+    pub custom_keys: HashMap<String, String>,
     /// Theme name resolved to `~/.config/aerofi/themes/{name}.toml`.
     /// The special value `"default"` uses the built-in Tokyo Night palette.
     pub theme: String,
@@ -162,6 +184,7 @@ impl Default for AppConfig {
             aliases: HashMap::new(),
             shortcuts: HashMap::new(),
             global_shortcuts: HashMap::new(),
+            custom_keys: HashMap::new(),
             theme: "default".to_string(),
         }
     }

@@ -2,10 +2,9 @@
 //!
 //! Composition root only: scans the scripts folder, opens the GPUI window,
 //! wires keystrokes and the global hotkey. Everything else lives in
-//! `common/` (types), `core/` (business logic), `ui/` (rendering) and
+//! `core/` (types & business logic), `ui/` (rendering) and
 //! `sys/` (macOS system calls). See ARCHITECTURE.md.
 
-mod common;
 mod core;
 mod sys;
 mod ui;
@@ -103,6 +102,7 @@ fn main() {
         // active and MainThreadMarker is available.
         sys::icons::extract_all(&mut targets);
         let theme = core::theme::load_theme(&app_config.theme);
+        let toggle_hotkey = app_config.general.toggle_hotkey.clone();
         let view =
             ui::window::create_launcher_window(cx, targets.clone(), theme, app_config, history);
 
@@ -127,16 +127,16 @@ fn main() {
                 return;
             }
             view_clone.update(cx, |launcher, cx| {
-                let action = launcher.handle_keystroke(&event.keystroke);
+                let action = launcher.handle_keystroke(&event.keystroke, Some(cx));
                 cx.notify();
                 launcher.perform_action(action, cx);
             });
         })
         .detach();
 
-        // Global hotkeys: Option+Space toggles the launcher; configured
+        // Global hotkeys: toggle_hotkey toggles the launcher; configured
         // `[global_shortcuts]` run their targets directly.
-        if let Err(e) = sys::carbon::install(globals) {
+        if let Err(e) = sys::carbon::install(&toggle_hotkey, globals) {
             eprintln!("aerofi: failed to register global hotkeys: {e}");
         }
 

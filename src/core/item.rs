@@ -8,7 +8,7 @@
 //! Supported Raycast annotations:
 //! - `# @raycast.schemaVersion <version>` -> schema version (e.g. 1)
 //! - `# @raycast.title <name>` -> display name
-//! - `# @raycast.mode <mode>`  -> `silent` | `fullOutput` | `compact` | `inline` | `pipe`
+//! - `# @raycast.mode <mode>`  -> `silent` | `fullOutput` | `compact` | `inline` | `pipe` | `gui`
 //! - `# @raycast.packageName <pkg>` -> script package/group name
 //! - `# @raycast.icon <icon>`  -> emoji or icon path/identifier
 //! - `# @raycast.iconDark <icon>` -> dark mode icon path/identifier
@@ -33,6 +33,7 @@ pub enum ScriptMode {
     Compact,
     Inline,
     Pipe,
+    Gui,
 }
 
 impl ScriptMode {
@@ -44,6 +45,7 @@ impl ScriptMode {
             Self::Compact => "compact",
             Self::Inline => "inline",
             Self::Pipe => "pipe",
+            Self::Gui => "gui",
         }
     }
 
@@ -54,6 +56,7 @@ impl ScriptMode {
             "compact" => Self::Compact,
             "inline" => Self::Inline,
             "pipe" => Self::Pipe,
+            "gui" => Self::Gui,
             _ => Self::FullOutput,
         }
     }
