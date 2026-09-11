@@ -345,6 +345,9 @@ impl Launcher {
             message,
             selected,
             query,
+            loading,
+            active_indices,
+            preview_blocks,
             ..
         } = &self.state
         else {
@@ -353,7 +356,7 @@ impl Launcher {
 
         let mut container = div().flex_1().flex().flex_col().gap(px(t.listview.spacing));
 
-        // ── Input bar with optional prompt override ─────────────────
+        // ── Input bar with optional prompt override and loading badge ───
         let placeholder = prompt.as_deref().unwrap_or(title.as_str());
         let inner_view = if query.is_empty() {
             div()
@@ -375,7 +378,7 @@ impl Launcher {
         let padding_v = ib.padding.get(1).copied().unwrap_or(16.0);
         let margin_bottom = ib.margin.get(2).copied().unwrap_or(8.0);
 
-        let inputbar = div()
+        let mut inputbar = div()
             .flex()
             .items_center()
             .gap_2()
@@ -399,6 +402,21 @@ impl Launcher {
             )
             .child(inner_view);
 
+        if *loading {
+            let loading_col = rgb(Self::color(icon_color));
+            inputbar = inputbar.child(
+                div()
+                    .px_2()
+                    .py(px(2.0))
+                    .rounded_sm()
+                    .border_1()
+                    .border_color(loading_col)
+                    .text_color(loading_col)
+                    .text_size(px(t.font.size * 0.75))
+                    .child("Loading…"),
+            );
+        }
+
         container = container.child(inputbar);
 
         // ── Optional message banner ─────────────────────────────────
@@ -415,9 +433,11 @@ impl Launcher {
             container = container.child(msg_el);
         }
 
-        // ── Row list ────────────────────────────────────────────────
+        // ── Layout (List + Optional Preview) ───────────────────────────
+        let mut list_container = div().flex_1().flex().flex_col();
+
         if filtered_rows.is_empty() {
-            container = container.child(
+            list_container = list_container.child(
                 div()
                     .flex_1()
                     .px_2()
@@ -433,9 +453,9 @@ impl Launcher {
                 el.description_color.as_deref().unwrap_or(&el.text_color),
             ));
 
-            // We clone the necessary data for the closure.
             let filtered_clone = filtered_rows.clone();
             let rows_clone = rows.clone();
+            let active_indices_clone = active_indices.clone();
             let selected_val = *selected;
 
             let list = uniform_list(
@@ -449,21 +469,27 @@ impl Launcher {
                             let row_idx = filtered_clone[vis_ix];
                             let row = &rows_clone[row_idx];
                             let is_selected = vis_ix == selected_val;
+                            let is_active = row.active || active_indices_clone.contains(&row_idx);
+                            let is_urgent = row.urgent;
+                            let is_disabled = row.disabled;
+                            let is_selectable = !row.nonselectable && !is_disabled;
 
                             let (row_bg, name_color) = if is_selected {
                                 (
                                     rgb(Self::color(&el.selected.background)),
                                     rgb(Self::color(&el.selected.text_color)),
                                 )
-                            } else if row.nonselectable {
+                            } else if !is_selectable {
                                 (rgba(0x00000000), desc_color)
+                            } else if is_urgent {
+                                (rgba(0xff555518), rgb(Self::color(&el.text_color)))
+                            } else if is_active {
+                                (rgba(0x50fa7b18), rgb(Self::color(&el.text_color)))
                             } else {
                                 (rgba(0x00000000), rgb(Self::color(&el.text_color)))
                             };
 
-                            // Build the row as a Stateful<Div> when interactive,
-                            // or a plain Div when non-selectable.
-                            if !row.nonselectable {
+                            if is_selectable {
                                 let id = format!("gui-row-{vis_ix}");
                                 let mut row_div = div()
                                     .id(id)
@@ -477,12 +503,10 @@ impl Launcher {
                                     .bg(row_bg)
                                     .cursor(CursorStyle::PointingHand);
 
-                                // Icon
                                 if el.show_icons {
                                     row_div = row_div.child(Self::render_gui_row_icon(icon_size, &row.icon));
                                 }
 
-                                // Name
                                 row_div = row_div.child(
                                     div()
                                         .flex_1()
@@ -490,7 +514,32 @@ impl Launcher {
                                         .child(row.text.clone()),
                                 );
 
-                                // Info badge
+                                if is_urgent {
+                                    row_div = row_div.child(
+                                        div()
+                                            .px_2()
+                                            .py(px(2.0))
+                                            .rounded_sm()
+                                            .bg(rgb(0xf7768e))
+                                            .text_color(rgb(0x1a1b26))
+                                            .text_size(px(t.font.size * 0.72))
+                                            .child("URGENT"),
+                                    );
+                                }
+
+                                if is_active {
+                                    row_div = row_div.child(
+                                        div()
+                                            .px_2()
+                                            .py(px(2.0))
+                                            .rounded_sm()
+                                            .bg(rgb(0x73daca))
+                                            .text_color(rgb(0x1a1b26))
+                                            .text_size(px(t.font.size * 0.72))
+                                            .child("ACTIVE"),
+                                    );
+                                }
+
                                 if let Some(info) = &row.info {
                                     let badge_col = rgb(Self::color(&t.listview.category_badge.color));
                                     row_div = row_div.child(
@@ -506,7 +555,6 @@ impl Launcher {
                                     );
                                 }
 
-                                // Click handler
                                 row_div
                                     .on_click(
                                         _cx.listener(move |this, event, _window, cx| {
@@ -523,7 +571,6 @@ impl Launcher {
                                     )
                                     .into_any()
                             } else {
-                                // Non-selectable row: plain Div, no click handler.
                                 let mut row_div = div()
                                     .flex()
                                     .items_center()
@@ -533,6 +580,10 @@ impl Launcher {
                                     .py(px(pad_v_el))
                                     .rounded(px(el.corner_radius))
                                     .bg(row_bg);
+
+                                if is_disabled {
+                                    row_div = row_div.opacity(0.4);
+                                }
 
                                 if el.show_icons {
                                     row_div = row_div.child(Self::render_gui_row_icon(icon_size, &row.icon));
@@ -544,6 +595,32 @@ impl Launcher {
                                         .text_color(name_color)
                                         .child(row.text.clone()),
                                 );
+
+                                if is_urgent {
+                                    row_div = row_div.child(
+                                        div()
+                                            .px_2()
+                                            .py(px(2.0))
+                                            .rounded_sm()
+                                            .bg(rgb(0xf7768e))
+                                            .text_color(rgb(0x1a1b26))
+                                            .text_size(px(t.font.size * 0.72))
+                                            .child("URGENT"),
+                                    );
+                                }
+
+                                if is_active {
+                                    row_div = row_div.child(
+                                        div()
+                                            .px_2()
+                                            .py(px(2.0))
+                                            .rounded_sm()
+                                            .bg(rgb(0x73daca))
+                                            .text_color(rgb(0x1a1b26))
+                                            .text_size(px(t.font.size * 0.72))
+                                            .child("ACTIVE"),
+                                    );
+                                }
 
                                 if let Some(info) = &row.info {
                                     let badge_col = rgb(Self::color(&t.listview.category_badge.color));
@@ -569,7 +646,47 @@ impl Launcher {
             .flex_1()
             .w_full();
 
-            container = container.child(list);
+            list_container = list_container.child(list);
+        }
+
+        if let Some(blocks) = preview_blocks {
+            let block_count = blocks.len();
+            let preview_panel = uniform_list(
+                "gui_preview_blocks",
+                block_count,
+                cx.processor(
+                    move |this: &mut Launcher, range: std::ops::Range<usize>, _window, _cx| {
+                        if let LauncherState::GuiMode { preview_blocks: Some(b), .. } = &this.state {
+                            range.map(|i| this.render_md_block(&b[i])).collect()
+                        } else {
+                            vec![]
+                        }
+                    },
+                ),
+            )
+            .flex_1()
+            .w_full()
+            .pl_3()
+            .track_scroll(&self.full_output_scroll);
+
+            container = container.child(
+                div()
+                    .flex_1()
+                    .flex()
+                    .flex_row()
+                    .w_full()
+                    .child(list_container.w_1_2())
+                    .child(
+                        div()
+                            .w_1_2()
+                            .h_full()
+                            .border_l_1()
+                            .border_color(rgb(Self::color(&t.window.border_color)))
+                            .child(preview_panel)
+                    )
+            );
+        } else {
+            container = container.child(list_container.w_full());
         }
 
         container.into_any()

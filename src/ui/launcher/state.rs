@@ -777,7 +777,10 @@ impl Launcher {
         self.history.record_launch(identifier);
 
         let path = path.clone();
-        match GuiSession::spawn(&path, args) {
+        let mut envs = std::collections::HashMap::new();
+        envs.insert("AEROFI_RETV".to_string(), "0".to_string());
+        
+        match GuiSession::spawn(&path, args, envs) {
             Ok(session) => {
                 let session = Arc::new(Mutex::new(session));
                 self.gui_session = Some(session.clone());
@@ -817,6 +820,11 @@ impl Launcher {
                     selected: 0,
                     columns: None,
                     query: String::new(),
+                    loading: true,
+                    live_search: false,
+                    active_indices: Vec::new(),
+                    data: None,
+                    preview_blocks: None,
                 };
             }
             Err(e) => {
@@ -864,15 +872,55 @@ impl Launcher {
         let mut no_custom = false;
         let mut keep_selection: Option<String> = None;
         let mut columns = None;
+        let mut loading = false;
+        let mut live_search = false;
+        let mut active_indices = Vec::new();
+        let mut data = None;
+        let mut preview_blocks = None;
+
+        // Inherit flags if we are updating an existing GuiMode session
+        if let LauncherState::GuiMode {
+            prompt: prev_prompt,
+            no_custom: prev_no_custom,
+            columns: prev_columns,
+            live_search: prev_live_search,
+            active_indices: prev_active_indices,
+            data: prev_data,
+            preview_blocks: prev_preview_blocks,
+            ..
+        } = &self.state
+        {
+            prompt = prev_prompt.clone();
+            no_custom = *prev_no_custom;
+            columns = *prev_columns;
+            live_search = *prev_live_search;
+            active_indices = prev_active_indices.clone();
+            data = prev_data.clone();
+            preview_blocks = prev_preview_blocks.clone();
+        }
 
         for cmd in &burst.commands {
             match cmd {
+                GuiCommand::Flush => {}
                 GuiCommand::SetPrompt(p) => prompt = Some(p.clone()),
                 GuiCommand::SetMessage(m) => message = Some(m.clone()),
                 GuiCommand::EnableMarkup => {} // future
                 GuiCommand::NoCustom(v) => no_custom = *v,
                 GuiCommand::KeepSelection(s) => keep_selection = Some(s.clone()),
                 GuiCommand::SetColumns(n) => columns = Some(*n),
+                GuiCommand::SetLoading(l) => loading = *l,
+                GuiCommand::LiveSearch(ls) => live_search = *ls,
+                GuiCommand::SetActiveIndices(indices) => active_indices = indices.clone(),
+                GuiCommand::SetData(d) => data = Some(d.clone()),
+                GuiCommand::PreviewText(text) => {
+                    preview_blocks = Some(crate::core::markdown::parse(text));
+                }
+                GuiCommand::PreviewFile(file_path) => {
+                    let resolved = super::helpers::expand_tilde_path(file_path);
+                    if let Ok(text) = std::fs::read_to_string(&resolved) {
+                        preview_blocks = Some(crate::core::markdown::parse(&text));
+                    }
+                }
             }
         }
 
@@ -894,6 +942,11 @@ impl Launcher {
             selected,
             columns,
             query: String::new(),
+            loading,
+            live_search,
+            active_indices,
+            data,
+            preview_blocks,
         };
     }
 
@@ -904,45 +957,93 @@ impl Launcher {
         cx: Option<&mut Context<Self>>,
     ) -> LauncherAction {
         let cmd = ks.modifiers.platform;
-        match (ks.key.as_str(), cmd) {
-            ("escape", _) => {
+        let ctrl = ks.modifiers.control;
+        let alt = ks.modifiers.alt;
+        let shift = ks.modifiers.shift;
+
+        match (ks.key.as_str(), cmd, ctrl, alt, shift) {
+            ("escape", false, false, false, false) => {
                 self.gui_leave();
                 LauncherAction::None
             }
-            ("enter" | "return", false) => {
+            ("enter" | "return", false, false, false, false) => {
                 if let Some(cx) = cx {
                     self.gui_select_row(cx);
                 }
                 LauncherAction::None
             }
-            ("up", false) => {
+            ("enter" | "return", false, false, false, true) => {
+                // Shift+Enter contextual action
+                if let Some(cx) = cx {
+                    self.gui_action_row(cx, "shift+enter");
+                }
+                LauncherAction::None
+            }
+            ("enter" | "return", false, false, true, false) => {
+                // Alt+Enter contextual action
+                if let Some(cx) = cx {
+                    self.gui_action_row(cx, "alt+enter");
+                }
+                LauncherAction::None
+            }
+            ("up", false, false, false, false) => {
                 self.gui_move_selection(-1);
                 LauncherAction::None
             }
-            ("down", false) => {
+            ("down", false, false, false, false) => {
                 self.gui_move_selection(1);
                 LauncherAction::None
             }
-            ("backspace", false) => {
-                if let LauncherState::GuiMode { query, .. } = &mut self.state {
-                    if query.pop().is_some() {
+            ("backspace", false, false, false, false) => {
+                let mut is_live = false;
+                if let LauncherState::GuiMode {
+                    query, live_search, ..
+                } = &mut self.state
+                {
+                    is_live = *live_search;
+                    if query.pop().is_some() && !is_live {
                         self.gui_refilter();
                     }
+                }
+                if is_live {
+                    if let Some(cx) = cx {
+                        self.gui_send_live_search(cx);
+                    }
+                }
+                LauncherAction::None
+            }
+            (key, false, true, false, false) => {
+                // Ctrl + <key> contextual action (e.g. ctrl+e, ctrl+d)
+                if let Some(cx) = cx {
+                    let action_key = format!("ctrl+{key}");
+                    self.gui_action_row(cx, &action_key);
                 }
                 LauncherAction::None
             }
             _ => {
                 if !cmd
-                    && !ks.modifiers.control
-                    && !ks.modifiers.alt
+                    && !ctrl
+                    && !alt
                     && ks.key != "tab"
                     && let Some(c) = ks.key_char.as_deref()
                     && !c.is_empty()
                     && !c.chars().any(char::is_control)
                 {
-                    if let LauncherState::GuiMode { query, .. } = &mut self.state {
+                    let mut is_live = false;
+                    if let LauncherState::GuiMode {
+                        query, live_search, ..
+                    } = &mut self.state
+                    {
                         query.push_str(c);
-                        self.gui_refilter();
+                        is_live = *live_search;
+                        if !is_live {
+                            self.gui_refilter();
+                        }
+                    }
+                    if is_live {
+                        if let Some(cx) = cx {
+                            self.gui_send_live_search(cx);
+                        }
                     }
                 }
                 LauncherAction::None
@@ -966,45 +1067,151 @@ impl Launcher {
         }
     }
 
-    /// User selected a row in GUI mode — send it to the script's stdin
-    /// and read the next burst.
+    /// User selected a row in GUI mode with standard Enter.
     pub(super) fn gui_select_row(&mut self, cx: &mut Context<Self>) {
+        self.gui_dispatch_selection(cx, "enter", false);
+    }
+
+    /// User triggered a contextual action key on the selected row in GUI mode.
+    pub(super) fn gui_action_row(&mut self, cx: &mut Context<Self>, key: &str) {
+        self.gui_dispatch_selection(cx, key, true);
+    }
+
+    /// Dispatch either a Select, Action, or Custom input event to the GUI script's stdin.
+    fn gui_dispatch_selection(
+        &mut self,
+        cx: &mut Context<Self>,
+        key: &str,
+        is_action: bool,
+    ) {
         let LauncherState::GuiMode {
             rows,
             filtered_rows,
             selected,
             title,
+            no_custom,
+            query,
+            data,
             ..
         } = &self.state
         else {
             return;
         };
 
-        // Get the selected row's text.
-        let Some(&row_idx) = filtered_rows.get(*selected) else {
+        let title = title.clone();
+        let mut retv = if key == "enter" { 1 } else { 10 };
+        if is_action {
+            retv = 10;
+        }
+
+        let event = if let Some(&row_idx) = filtered_rows.get(*selected) {
+            let row = &rows[row_idx];
+            if row.nonselectable || row.disabled {
+                return;
+            }
+            let id = row.id.clone().unwrap_or_default();
+            let text = row.text.clone();
+            if is_action {
+                crate::core::gui_protocol::GuiEvent::Action {
+                    key: key.to_string(),
+                    index: row_idx,
+                    id,
+                    text,
+                    retv,
+                    data: data.clone(),
+                }
+            } else {
+                crate::core::gui_protocol::GuiEvent::Select {
+                    key: key.to_string(),
+                    index: row_idx,
+                    id,
+                    text,
+                    retv,
+                    data: data.clone(),
+                }
+            }
+        } else if !no_custom && !query.is_empty() {
+            crate::core::gui_protocol::GuiEvent::Custom {
+                key: key.to_string(),
+                text: query.clone(),
+                retv: 2,
+                data: data.clone(),
+            }
+        } else {
             return;
         };
-        let row = &rows[row_idx];
-        if row.nonselectable {
-            return;
-        }
-        let selected_text = row.text.clone();
-        let title = title.clone();
 
         let Some(session) = self.gui_session.clone() else {
-            // Session already exited — leave GUI mode.
             self.gui_leave();
             return;
         };
 
-        // Send selection and read next burst on a background thread.
+        // Mark loading state while waiting for the next response
+        if let LauncherState::GuiMode { loading, .. } = &mut self.state {
+            *loading = true;
+        }
+
         let view = cx.entity();
         let cx_async = cx.to_async();
         let (tx, rx) = futures::channel::oneshot::channel();
         std::thread::spawn(move || {
             let result = {
                 let mut session = session.lock().unwrap();
-                if session.send_selection(&selected_text).is_err() {
+                if session.send_event(&event).is_err() {
+                    ReadResult::Exited
+                } else {
+                    session.read_burst(std::time::Duration::from_secs(5))
+                }
+            };
+            let _ = tx.send(result);
+        });
+        cx.spawn(move |_, _: &mut gpui::AsyncApp| async move {
+            if let Ok(result) = rx.await {
+                let _ = cx_async.update(|cx| {
+                    let _ = view.update(cx, |launcher, cx| {
+                        launcher.gui_handle_read_result(result, &title);
+                        cx.notify();
+                    });
+                });
+            }
+        })
+        .detach();
+    }
+
+    /// Send a live search query update to the script's stdin.
+    fn gui_send_live_search(&mut self, cx: &mut Context<Self>) {
+        let LauncherState::GuiMode {
+            query,
+            title,
+            live_search,
+            ..
+        } = &self.state
+        else {
+            return;
+        };
+
+        if !*live_search {
+            return;
+        }
+
+        let query = query.clone();
+        let title = title.clone();
+        let Some(session) = self.gui_session.clone() else {
+            return;
+        };
+
+        // Mark loading while script recalculates
+        if let LauncherState::GuiMode { loading, .. } = &mut self.state {
+            *loading = true;
+        }
+
+        let view = cx.entity();
+        let cx_async = cx.to_async();
+        let (tx, rx) = futures::channel::oneshot::channel();
+        std::thread::spawn(move || {
+            let result = {
+                let mut session = session.lock().unwrap();
+                if session.send_query_change(&query).is_err() {
                     ReadResult::Exited
                 } else {
                     session.read_burst(std::time::Duration::from_secs(5))

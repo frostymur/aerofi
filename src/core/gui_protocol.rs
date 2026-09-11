@@ -25,6 +25,8 @@
 /// A parsed control command from a line starting with `\0`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GuiCommand {
+    /// Explicit frame marker indicating the end of a burst/frame.
+    Flush,
     /// Override the input bar placeholder text.
     SetPrompt(String),
     /// Show a status/info message (above or below the list).
@@ -37,6 +39,18 @@ pub enum GuiCommand {
     KeepSelection(String),
     /// Override the grid column count for this step.
     SetColumns(usize),
+    /// Set the loading indicator state (true = show spinner, false = hide).
+    SetLoading(bool),
+    /// Enable or disable live search (sending \0change events on typing).
+    LiveSearch(bool),
+    /// Highlight or mark specific row indices as active.
+    SetActiveIndices(Vec<usize>),
+    /// Store a data token to be passed back to the script on the next event.
+    SetData(String),
+    /// Display markdown preview text in the right panel.
+    PreviewText(String),
+    /// Load and display markdown from a file in the right panel.
+    PreviewFile(String),
 }
 
 /// A single selectable (or non-selectable) row entry.
@@ -44,6 +58,8 @@ pub enum GuiCommand {
 pub struct GuiRow {
     /// Visible display text (the part before any `\0` field).
     pub text: String,
+    /// Unique identifier for this item (for robust selection identification).
+    pub id: Option<String>,
     /// Emoji or image path for the row icon.
     pub icon: Option<String>,
     /// Small badge shown on the right side of the row.
@@ -52,6 +68,29 @@ pub struct GuiRow {
     pub meta: Option<String>,
     /// If true, the row is decorative and cannot be selected.
     pub nonselectable: bool,
+    /// If true, the row is styled with an urgent accent color.
+    pub urgent: bool,
+    /// If true, the row is styled as currently active (e.g. connected).
+    pub active: bool,
+    /// If true, the row is visually disabled / grayed out.
+    pub disabled: bool,
+}
+
+impl GuiRow {
+    /// Create a new plain GUI row with default attributes.
+    pub fn new(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            id: None,
+            icon: None,
+            info: None,
+            meta: None,
+            nonselectable: false,
+            urgent: false,
+            active: false,
+            disabled: false,
+        }
+    }
 }
 
 /// The result of parsing a single stdout line.
@@ -63,6 +102,93 @@ pub enum GuiLineResult {
     Row(GuiRow),
     /// An empty or whitespace-only line — skip.
     Empty,
+}
+
+/// An event sent to a GUI script's stdin.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GuiEvent {
+    /// Selection of a row
+    Select {
+        key: String,
+        index: usize,
+        id: String,
+        text: String,
+        retv: i32,
+        data: Option<String>,
+    },
+    /// Contextual action on a row
+    Action {
+        key: String,
+        index: usize,
+        id: String,
+        text: String,
+        retv: i32,
+        data: Option<String>,
+    },
+    /// Custom input entered in the prompt
+    Custom {
+        key: String,
+        text: String,
+        retv: i32,
+        data: Option<String>,
+    },
+    /// Input query changed in live search mode
+    Change {
+        query: String,
+    },
+}
+
+impl GuiEvent {
+    /// Format event according to the structured AeroFi GUI event protocol.
+    pub fn to_event_line(&self) -> String {
+        match self {
+            GuiEvent::Select {
+                key,
+                index,
+                id,
+                text,
+                retv,
+                data,
+            } => {
+                let data_str = data.as_ref().map(|d| format!("\x1fdata:{d}")).unwrap_or_default();
+                format!("\0event\x1fselect\x1fkey:{key}\x1findex:{index}\x1fid:{id}\x1ftext:{text}\x1fretv:{retv}{data_str}")
+            }
+            GuiEvent::Action {
+                key,
+                index,
+                id,
+                text,
+                retv,
+                data,
+            } => {
+                let data_str = data.as_ref().map(|d| format!("\x1fdata:{d}")).unwrap_or_default();
+                format!("\0event\x1faction\x1fkey:{key}\x1findex:{index}\x1fid:{id}\x1ftext:{text}\x1fretv:{retv}{data_str}")
+            }
+            GuiEvent::Custom { key, text, retv, data } => {
+                let data_str = data.as_ref().map(|d| format!("\x1fdata:{d}")).unwrap_or_default();
+                format!("\0event\x1fcustom\x1fkey:{key}\x1ftext:{text}\x1fretv:{retv}{data_str}")
+            }
+            GuiEvent::Change { query } => {
+                format!("\0change\x1f{query}")
+            }
+        }
+    }
+
+    /// Format selection as a pipe/unit-separated line for scripts expecting `<text>\x1f<id>\x1f<index>`.
+    pub fn to_pipe_line(&self) -> String {
+        match self {
+            GuiEvent::Select {
+                index, id, text, ..
+            }
+            | GuiEvent::Action {
+                index, id, text, ..
+            } => {
+                format!("{text}\x1f{id}\x1f{index}")
+            }
+            GuiEvent::Custom { text, .. } => text.clone(),
+            GuiEvent::Change { query } => format!("\0change\x1f{query}"),
+        }
+    }
 }
 
 /// A "burst" of output: all commands and rows from one read cycle.
@@ -100,18 +226,37 @@ pub fn parse_gui_line(line: &str) -> GuiLineResult {
 
 /// Try to parse a known control command from text after a leading `\0`.
 fn try_parse_command(rest: &str) -> Option<GuiCommand> {
-    // Split on \x1f (unit separator): "prompt\x1fSelect network"
-    let (key, value) = rest.split_once('\x1f')?;
+    if rest == "flush" {
+        return Some(GuiCommand::Flush);
+    }
+    let (key, value) = if let Some(pair) = rest.split_once('\x1f') {
+        pair
+    } else {
+        (rest, "")
+    };
     let key = key.trim();
     let value = value.trim();
 
     match key {
+        "flush" => Some(GuiCommand::Flush),
         "prompt" => Some(GuiCommand::SetPrompt(value.to_string())),
         "message" => Some(GuiCommand::SetMessage(value.to_string())),
         "markup-rows" if value.eq_ignore_ascii_case("true") => Some(GuiCommand::EnableMarkup),
         "no-custom" => Some(GuiCommand::NoCustom(value.eq_ignore_ascii_case("true"))),
         "keep-selection" => Some(GuiCommand::KeepSelection(value.to_string())),
         "columns" => value.parse::<usize>().ok().map(GuiCommand::SetColumns),
+        "loading" => Some(GuiCommand::SetLoading(value.eq_ignore_ascii_case("true"))),
+        "live-search" => Some(GuiCommand::LiveSearch(value.eq_ignore_ascii_case("true"))),
+        "active" => {
+            let indices = value
+                .split(',')
+                .filter_map(|s| s.trim().parse::<usize>().ok())
+                .collect();
+            Some(GuiCommand::SetActiveIndices(indices))
+        }
+        "data" => Some(GuiCommand::SetData(value.to_string())),
+        "preview" => Some(GuiCommand::PreviewText(value.to_string())),
+        "preview-file" => Some(GuiCommand::PreviewFile(value.to_string())),
         _ => None,
     }
 }
@@ -122,20 +267,28 @@ fn parse_row(line: &str) -> GuiRow {
     let mut parts = line.split('\0');
     let text = parts.next().unwrap_or("").to_string();
 
+    let mut id = None;
     let mut icon = None;
     let mut info = None;
     let mut meta = None;
     let mut nonselectable = false;
+    let mut urgent = false;
+    let mut active = false;
+    let mut disabled = false;
 
     for field in parts {
         if let Some((key, value)) = field.split_once('\x1f') {
             let key = key.trim();
             let value = value.trim();
             match key {
+                "id" => id = Some(value.to_string()),
                 "icon" => icon = Some(value.to_string()),
                 "info" => info = Some(value.to_string()),
                 "meta" => meta = Some(value.to_string()),
                 "nonselectable" if value.eq_ignore_ascii_case("true") => nonselectable = true,
+                "urgent" if value.eq_ignore_ascii_case("true") => urgent = true,
+                "active" if value.eq_ignore_ascii_case("true") => active = true,
+                "disabled" if value.eq_ignore_ascii_case("true") => disabled = true,
                 _ => {} // unknown fields are silently ignored
             }
         }
@@ -143,10 +296,14 @@ fn parse_row(line: &str) -> GuiRow {
 
     GuiRow {
         text,
+        id,
         icon,
         info,
         meta,
         nonselectable,
+        urgent,
+        active,
+        disabled,
     }
 }
 
@@ -249,10 +406,14 @@ mod tests {
             result,
             GuiLineResult::Row(GuiRow {
                 text: "Firefox".to_string(),
+                id: None,
                 icon: None,
                 info: None,
                 meta: None,
                 nonselectable: false,
+                urgent: false,
+                active: false,
+                disabled: false,
             })
         );
     }
@@ -264,10 +425,14 @@ mod tests {
             result,
             GuiLineResult::Row(GuiRow {
                 text: "Home Network".to_string(),
+                id: None,
                 icon: Some("📶".to_string()),
                 info: None,
                 meta: None,
                 nonselectable: false,
+                urgent: false,
+                active: false,
+                disabled: false,
             })
         );
     }
@@ -275,15 +440,19 @@ mod tests {
     #[test]
     fn parses_row_with_all_fields() {
         let result =
-            parse_gui_line("Network A\0icon\x1f📶\0info\x1fWPA2\0meta\x1fsecure network\0nonselectable\x1ftrue");
+            parse_gui_line("Network A\0id\x1fnet_a\0icon\x1f📶\0info\x1fWPA2\0meta\x1fsecure network\0nonselectable\x1ftrue\0urgent\x1ftrue\0active\x1ftrue\0disabled\x1ftrue");
         assert_eq!(
             result,
             GuiLineResult::Row(GuiRow {
                 text: "Network A".to_string(),
+                id: Some("net_a".to_string()),
                 icon: Some("📶".to_string()),
                 info: Some("WPA2".to_string()),
                 meta: Some("secure network".to_string()),
                 nonselectable: true,
+                urgent: true,
+                active: true,
+                disabled: true,
             })
         );
     }
@@ -295,10 +464,14 @@ mod tests {
             result,
             GuiLineResult::Row(GuiRow {
                 text: "Item".to_string(),
+                id: None,
                 icon: None,
                 info: Some("Active".to_string()),
                 meta: None,
                 nonselectable: false,
+                urgent: false,
+                active: false,
+                disabled: false,
             })
         );
     }
@@ -310,10 +483,14 @@ mod tests {
             result,
             GuiLineResult::Row(GuiRow {
                 text: "Item".to_string(),
+                id: None,
                 icon: None,
                 info: None,
                 meta: None,
                 nonselectable: false,
+                urgent: false,
+                active: false,
+                disabled: false,
             })
         );
     }
@@ -333,9 +510,10 @@ mod tests {
             "Item B\0icon\x1f🅱️\0info\x1fnew".to_string(),
             "".to_string(),
             "\0message\x1fHello".to_string(),
+            "\0flush".to_string(),
         ];
         let burst = GuiBurst::from_lines(&lines);
-        assert_eq!(burst.commands.len(), 2);
+        assert_eq!(burst.commands.len(), 3);
         assert_eq!(burst.rows.len(), 2);
         assert_eq!(
             burst.commands[0],
@@ -345,6 +523,7 @@ mod tests {
             burst.commands[1],
             GuiCommand::SetMessage("Hello".to_string())
         );
+        assert_eq!(burst.commands[2], GuiCommand::Flush);
         assert_eq!(burst.rows[0].text, "Item A");
         assert_eq!(burst.rows[1].text, "Item B");
         assert_eq!(burst.rows[1].info, Some("new".to_string()));
@@ -357,11 +536,72 @@ mod tests {
             result,
             GuiLineResult::Row(GuiRow {
                 text: "Test".to_string(),
+                id: None,
                 icon: Some("🔥".to_string()),
                 info: None,
                 meta: None,
                 nonselectable: false,
+                urgent: false,
+                active: false,
+                disabled: false,
             })
         );
+    }
+
+    #[test]
+    fn parses_flush_loading_live_search_and_active() {
+        assert_eq!(parse_gui_line("\0flush"), GuiLineResult::Command(GuiCommand::Flush));
+        assert_eq!(parse_gui_line("\0flush\x1ftrue"), GuiLineResult::Command(GuiCommand::Flush));
+        assert_eq!(parse_gui_line("\0loading\x1ftrue"), GuiLineResult::Command(GuiCommand::SetLoading(true)));
+        assert_eq!(parse_gui_line("\0loading\x1ffalse"), GuiLineResult::Command(GuiCommand::SetLoading(false)));
+        assert_eq!(parse_gui_line("\0live-search\x1ftrue"), GuiLineResult::Command(GuiCommand::LiveSearch(true)));
+        assert_eq!(parse_gui_line("\0active\x1f0,2,5"), GuiLineResult::Command(GuiCommand::SetActiveIndices(vec![0, 2, 5])));
+    }
+
+    #[test]
+    fn formats_gui_events() {
+        let select_ev = GuiEvent::Select {
+            key: "enter".to_string(),
+            index: 2,
+            id: "wifi_home".to_string(),
+            text: "Home Network".to_string(),
+            retv: 1,
+            data: Some("my_state".to_string()),
+        };
+        assert_eq!(
+            select_ev.to_event_line(),
+            "\0event\x1fselect\x1fkey:enter\x1findex:2\x1fid:wifi_home\x1ftext:Home Network\x1fretv:1\x1fdata:my_state"
+        );
+        assert_eq!(select_ev.to_pipe_line(), "Home Network\x1fwifi_home\x1f2");
+
+        let action_ev = GuiEvent::Action {
+            key: "ctrl+d".to_string(),
+            index: 2,
+            id: "wifi_home".to_string(),
+            text: "Home Network".to_string(),
+            retv: 12,
+            data: None,
+        };
+        assert_eq!(
+            action_ev.to_event_line(),
+            "\0event\x1faction\x1fkey:ctrl+d\x1findex:2\x1fid:wifi_home\x1ftext:Home Network\x1fretv:12"
+        );
+
+        let custom_ev = GuiEvent::Custom {
+            key: "enter".to_string(),
+            text: "my_typed_custom_input".to_string(),
+            retv: 2,
+            data: None,
+        };
+        assert_eq!(
+            custom_ev.to_event_line(),
+            "\0event\x1fcustom\x1fkey:enter\x1ftext:my_typed_custom_input\x1fretv:2"
+        );
+        assert_eq!(custom_ev.to_pipe_line(), "my_typed_custom_input");
+
+        let change_ev = GuiEvent::Change {
+            query: "query text".to_string(),
+        };
+        assert_eq!(change_ev.to_event_line(), "\0change\x1fquery text");
     }
 }

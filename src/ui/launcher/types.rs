@@ -69,6 +69,16 @@ pub enum LauncherState {
         columns: Option<usize>,
         /// The current filter query typed by the user.
         query: String,
+        /// Whether background loading is active (from `\0loading`).
+        loading: bool,
+        /// Whether live search is enabled (from `\0live-search`).
+        live_search: bool,
+        /// Specific active row indices (from `\0active`).
+        active_indices: Vec<usize>,
+        /// Arbitrary state string received via `\0data`.
+        data: Option<String>,
+        /// Parsed markdown blocks from `\0preview` or `\0preview-file`.
+        preview_blocks: Option<Vec<crate::core::markdown::MdBlock>>,
     },
 }
 

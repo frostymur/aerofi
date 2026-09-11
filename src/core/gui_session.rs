@@ -31,15 +31,26 @@ enum LineEvent {
     Error(String),
 }
 
+/// Check if a stdout line represents an explicit frame flush command.
+fn is_flush_line(line: &str) -> bool {
+    let trimmed = line.trim_end_matches(['\r', '\n']);
+    trimmed == "\0flush" || trimmed.starts_with("\0flush\x1f")
+}
+
 impl GuiSession {
     /// Spawn a GUI-mode script and return the session handle.
     ///
     /// The script is started with `stdin = piped`, `stdout = piped`,
     /// `stderr = piped` (stderr is discarded for now — a future version
     /// may route it to the error toast).
-    pub fn spawn(path: &Path, args: Vec<String>) -> std::io::Result<Self> {
+    pub fn spawn(
+        path: &Path,
+        args: Vec<String>,
+        envs: std::collections::HashMap<String, String>,
+    ) -> std::io::Result<Self> {
         let mut cmd = crate::core::executor::script_command(path);
         cmd.args(args);
+        cmd.envs(envs);
         cmd.stdin(Stdio::piped());
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::null());
@@ -89,15 +100,23 @@ impl GuiSession {
     /// (no new line within `timeout` after the last received line) or
     /// until EOF.
     ///
-    /// The initial call should use a longer timeout (e.g. 5 s) to give
-    /// the script time to start; subsequent calls (after writing a
-    /// selection) can use a shorter timeout (e.g. 500 ms).
+    /// Read one "burst" of output: all lines until the script blocks,
+    /// emits an explicit `\0flush` marker, or reaches EOF.
+    ///
+    /// When `\0flush` is encountered, the burst completes immediately with
+    /// zero artificial timeout delay.
     pub fn read_burst(&self, timeout: Duration) -> ReadResult {
         let mut lines = Vec::new();
 
         // First line: block for up to `timeout`.
         match self.line_rx.recv_timeout(timeout) {
-            Ok(LineEvent::Line(line)) => lines.push(line),
+            Ok(LineEvent::Line(line)) => {
+                let is_flush = is_flush_line(&line);
+                lines.push(line);
+                if is_flush {
+                    return ReadResult::Burst(GuiBurst::from_lines(&lines));
+                }
+            }
             Ok(LineEvent::Eof) => return ReadResult::Exited,
             Ok(LineEvent::Error(e)) => return ReadResult::Error(e),
             Err(mpsc::RecvTimeoutError::Timeout) => {
@@ -106,12 +125,18 @@ impl GuiSession {
             Err(mpsc::RecvTimeoutError::Disconnected) => return ReadResult::Exited,
         }
 
-        // Subsequent lines: use a short inter-line timeout to detect the
-        // end of the burst.
+        // Subsequent lines: if a flush line is received, return immediately.
+        // Otherwise use a short inter-line timeout to detect the end of the burst.
         let inter_line = Duration::from_millis(50);
         loop {
             match self.line_rx.recv_timeout(inter_line) {
-                Ok(LineEvent::Line(line)) => lines.push(line),
+                Ok(LineEvent::Line(line)) => {
+                    let is_flush = is_flush_line(&line);
+                    lines.push(line);
+                    if is_flush {
+                        break;
+                    }
+                }
                 Ok(LineEvent::Eof) => {
                     // Process the lines we have, then signal exit.
                     let burst = GuiBurst::from_lines(&lines);
@@ -132,8 +157,21 @@ impl GuiSession {
     }
 
     /// Write the selected row's display text to the script's stdin.
+    #[allow(dead_code)]
     pub fn send_selection(&mut self, text: &str) -> std::io::Result<()> {
         writeln!(self.stdin, "{text}")?;
+        self.stdin.flush()
+    }
+
+    /// Write a structured GUI event to the script's stdin.
+    pub fn send_event(&mut self, event: &crate::core::gui_protocol::GuiEvent) -> std::io::Result<()> {
+        writeln!(self.stdin, "{}", event.to_event_line())?;
+        self.stdin.flush()
+    }
+
+    /// Write a live-search query change to the script's stdin.
+    pub fn send_query_change(&mut self, query: &str) -> std::io::Result<()> {
+        writeln!(self.stdin, "\0change\x1f{query}")?;
         self.stdin.flush()
     }
 
@@ -144,11 +182,13 @@ impl GuiSession {
     }
 
     /// Check whether the child process is still running.
+    #[allow(dead_code)]
     pub fn is_alive(&mut self) -> bool {
         matches!(self.child.try_wait(), Ok(None))
     }
 
     /// Wait for the child to exit and return the exit code.
+    #[allow(dead_code)]
     pub fn wait_exit_code(&mut self) -> Option<i32> {
         self.child.wait().ok().and_then(|s| s.code())
     }
@@ -200,49 +240,16 @@ mod tests {
 
     #[test]
     fn filter_gui_rows_empty_query() {
-        let rows = vec![
-            GuiRow {
-                text: "A".into(),
-                icon: None,
-                info: None,
-                meta: None,
-                nonselectable: false,
-            },
-            GuiRow {
-                text: "B".into(),
-                icon: None,
-                info: None,
-                meta: None,
-                nonselectable: false,
-            },
-        ];
+        let rows = vec![GuiRow::new("A"), GuiRow::new("B")];
         assert_eq!(filter_gui_rows(&rows, ""), vec![0, 1]);
     }
 
     #[test]
     fn filter_gui_rows_by_text() {
         let rows = vec![
-            GuiRow {
-                text: "Firefox".into(),
-                icon: None,
-                info: None,
-                meta: None,
-                nonselectable: false,
-            },
-            GuiRow {
-                text: "Chrome".into(),
-                icon: None,
-                info: None,
-                meta: None,
-                nonselectable: false,
-            },
-            GuiRow {
-                text: "Safari".into(),
-                icon: None,
-                info: None,
-                meta: None,
-                nonselectable: false,
-            },
+            GuiRow::new("Firefox"),
+            GuiRow::new("Chrome"),
+            GuiRow::new("Safari"),
         ];
         assert_eq!(filter_gui_rows(&rows, "fire"), vec![0]);
         assert_eq!(filter_gui_rows(&rows, "chr"), vec![1]);
@@ -250,36 +257,27 @@ mod tests {
 
     #[test]
     fn filter_gui_rows_by_meta() {
-        let rows = vec![
-            GuiRow {
-                text: "Item A".into(),
-                icon: None,
-                info: None,
-                meta: Some("secret keyword".into()),
-                nonselectable: false,
-            },
-            GuiRow {
-                text: "Item B".into(),
-                icon: None,
-                info: None,
-                meta: None,
-                nonselectable: false,
-            },
-        ];
+        let mut row_a = GuiRow::new("Item A");
+        row_a.meta = Some("secret keyword".into());
+        let rows = vec![row_a, GuiRow::new("Item B")];
         assert_eq!(filter_gui_rows(&rows, "secret"), vec![0]);
     }
 
     #[test]
     fn filter_gui_rows_case_insensitive() {
-        let rows = vec![GuiRow {
-            text: "Hello World".into(),
-            icon: None,
-            info: None,
-            meta: None,
-            nonselectable: false,
-        }];
+        let rows = vec![GuiRow::new("Hello World")];
         assert_eq!(filter_gui_rows(&rows, "HELLO"), vec![0]);
         assert_eq!(filter_gui_rows(&rows, "hello"), vec![0]);
+    }
+
+    #[test]
+    fn test_flush_line_detection() {
+        assert!(is_flush_line("\0flush"));
+        assert!(is_flush_line("\0flush\n"));
+        assert!(is_flush_line("\0flush\r\n"));
+        assert!(is_flush_line("\0flush\x1ftrue"));
+        assert!(!is_flush_line("flush"));
+        assert!(!is_flush_line("\0prompt\x1fflush"));
     }
 
     #[test]
@@ -300,7 +298,7 @@ mod tests {
             std::fs::set_permissions(&script, perms).unwrap();
         }
 
-        let session = GuiSession::spawn(&script, vec![]).unwrap();
+        let session = GuiSession::spawn(&script, vec![], std::collections::HashMap::new()).unwrap();
         let result = session.read_burst(Duration::from_secs(5));
 
         let burst = match result {
