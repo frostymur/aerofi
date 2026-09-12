@@ -285,7 +285,7 @@ impl Default for WindowConfig {
             background_position: None,
             image_scale: None,
             blur: true,
-            background_opacity: Some(0.75),
+            background_opacity: Some(0.62),
             corner_radius: 16.0,
             border_width: 1.0,
             border_color: "#2a2a2a".to_string(),

@@ -50,7 +50,11 @@ pub fn store_ns_window(window: &Window) {
 /// GPUI then both try to restore it, creating two concurrent event paths
 /// that cause every keystroke to fire twice.  We prevent this by
 /// immediately re-making GPUI's native view the first responder ourselves.
-pub fn set_borderless_style(window: &Window) {
+///
+/// `corner_radius` is applied to the NSWindow's `contentView` layer so
+/// that macOS clips the underlying blur / vibrancy view to the same shape
+/// as the GPUI div, eliminating the visible square-corner artifacts.
+pub fn set_borderless_style(window: &Window, corner_radius: f32) {
     // We need both the NSWindow and the NSView (GPUI's native view).
     let handle = HasWindowHandle::window_handle(window).ok();
     let Some(handle) = handle else { return };
@@ -71,6 +75,27 @@ pub fn set_borderless_style(window: &Window) {
     ns_window.setStyleMask(NSWindowStyleMask::NonactivatingPanel);
     ns_window.setMovable(false);
     ns_window.setMovableByWindowBackground(false);
+
+    // Clip the underlying blur/vibrancy layer to the same rounded rect
+    // as the GPUI div, so no square-corner artefacts are visible.
+    if corner_radius > 0.0 {
+        unsafe {
+            use objc2::msg_send;
+            use objc2::runtime::AnyObject;
+
+            // contentView.layer.cornerRadius = corner_radius
+            let content_view: *mut AnyObject = msg_send![&*ns_window, contentView];
+            if !content_view.is_null() {
+                // Make sure the view is layer-backed.
+                let _: () = msg_send![content_view, setWantsLayer: true];
+                let layer: *mut AnyObject = msg_send![content_view, layer];
+                if !layer.is_null() {
+                    let _: () = msg_send![layer, setCornerRadius: corner_radius as f64];
+                    let _: () = msg_send![layer, setMasksToBounds: true];
+                }
+            }
+        }
+    }
 
     // Immediately restore GPUI's native view as first responder.
     // Without this, setStyleMask leaves firstResponder = nil and both
