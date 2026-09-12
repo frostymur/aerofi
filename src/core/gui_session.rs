@@ -164,7 +164,10 @@ impl GuiSession {
     }
 
     /// Write a structured GUI event to the script's stdin.
-    pub fn send_event(&mut self, event: &crate::core::gui_protocol::GuiEvent) -> std::io::Result<()> {
+    pub fn send_event(
+        &mut self,
+        event: &crate::core::gui_protocol::GuiEvent,
+    ) -> std::io::Result<()> {
         writeln!(self.stdin, "{}", event.to_event_line())?;
         self.stdin.flush()
     }

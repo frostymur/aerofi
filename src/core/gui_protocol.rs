@@ -82,6 +82,7 @@ pub struct GuiRow {
 
 impl GuiRow {
     /// Create a new plain GUI row with default attributes.
+    #[allow(dead_code)]
     pub fn new(text: impl Into<String>) -> Self {
         Self {
             text: text.into(),
@@ -141,9 +142,8 @@ pub enum GuiEvent {
         data: Option<String>,
     },
     /// Input query changed in live search mode
-    Change {
-        query: String,
-    },
+    #[allow(dead_code)]
+    Change { query: String },
 }
 
 impl GuiEvent {
@@ -160,10 +160,15 @@ impl GuiEvent {
                 selected_ids,
                 selected_texts,
             } => {
-                let data_str = data.as_ref().map(|d| format!("\x1fdata:{d}")).unwrap_or_default();
+                let data_str = data
+                    .as_ref()
+                    .map(|d| format!("\x1fdata:{d}"))
+                    .unwrap_or_default();
                 let ids_str = selected_ids.join(",");
                 let texts_str = selected_texts.join(",");
-                format!("\0event\x1fselect\x1fkey:{key}\x1findex:{index}\x1fid:{id}\x1ftext:{text}\x1fretv:{retv}\x1fids:{ids_str}\x1ftexts:{texts_str}{data_str}")
+                format!(
+                    "\0event\x1fselect\x1fkey:{key}\x1findex:{index}\x1fid:{id}\x1ftext:{text}\x1fretv:{retv}\x1fids:{ids_str}\x1ftexts:{texts_str}{data_str}"
+                )
             }
             GuiEvent::Action {
                 key,
@@ -175,13 +180,26 @@ impl GuiEvent {
                 selected_ids,
                 selected_texts,
             } => {
-                let data_str = data.as_ref().map(|d| format!("\x1fdata:{d}")).unwrap_or_default();
+                let data_str = data
+                    .as_ref()
+                    .map(|d| format!("\x1fdata:{d}"))
+                    .unwrap_or_default();
                 let ids_str = selected_ids.join(",");
                 let texts_str = selected_texts.join(",");
-                format!("\0event\x1faction\x1fkey:{key}\x1findex:{index}\x1fid:{id}\x1ftext:{text}\x1fretv:{retv}\x1fids:{ids_str}\x1ftexts:{texts_str}{data_str}")
+                format!(
+                    "\0event\x1faction\x1fkey:{key}\x1findex:{index}\x1fid:{id}\x1ftext:{text}\x1fretv:{retv}\x1fids:{ids_str}\x1ftexts:{texts_str}{data_str}"
+                )
             }
-            GuiEvent::Custom { key, text, retv, data } => {
-                let data_str = data.as_ref().map(|d| format!("\x1fdata:{d}")).unwrap_or_default();
+            GuiEvent::Custom {
+                key,
+                text,
+                retv,
+                data,
+            } => {
+                let data_str = data
+                    .as_ref()
+                    .map(|d| format!("\x1fdata:{d}"))
+                    .unwrap_or_default();
                 format!("\0event\x1fcustom\x1fkey:{key}\x1ftext:{text}\x1fretv:{retv}{data_str}")
             }
             GuiEvent::Change { query } => {
@@ -191,6 +209,7 @@ impl GuiEvent {
     }
 
     /// Format selection as a pipe/unit-separated line for scripts expecting `<text>\x1f<id>\x1f<index>`.
+    #[allow(dead_code)]
     pub fn to_pipe_line(&self) -> String {
         match self {
             GuiEvent::Select {
@@ -228,14 +247,14 @@ pub fn parse_gui_line(line: &str) -> GuiLineResult {
 
     // Control command: the line starts with \0 and the first field is a
     // known command key.
-    if let Some(rest) = trimmed.strip_prefix('\0') {
-        if let Some(cmd) = try_parse_command(rest) {
-            return GuiLineResult::Command(cmd);
-        }
-        // If the \0-prefixed line doesn't match a known command, treat the
-        // whole line (including the leading \0) as a row — the \0 might be
-        // part of field separators for a row with an empty display text.
+    if let Some(rest) = trimmed.strip_prefix('\0')
+        && let Some(cmd) = try_parse_command(rest)
+    {
+        return GuiLineResult::Command(cmd);
     }
+    // If the \0-prefixed line doesn't match a known command, treat the
+    // whole line (including the leading \0) as a row — the \0 might be
+    // part of field separators for a row with an empty display text.
 
     GuiLineResult::Row(parse_row(trimmed))
 }
@@ -349,9 +368,7 @@ mod tests {
         let result = parse_gui_line("\0prompt\x1fSelect WiFi Network");
         assert_eq!(
             result,
-            GuiLineResult::Command(GuiCommand::SetPrompt(
-                "Select WiFi Network".to_string()
-            ))
+            GuiLineResult::Command(GuiCommand::SetPrompt("Select WiFi Network".to_string()))
         );
     }
 
@@ -394,10 +411,7 @@ mod tests {
     #[test]
     fn parses_columns_command() {
         let result = parse_gui_line("\0columns\x1f3");
-        assert_eq!(
-            result,
-            GuiLineResult::Command(GuiCommand::SetColumns(3))
-        );
+        assert_eq!(result, GuiLineResult::Command(GuiCommand::SetColumns(3)));
     }
 
     #[test]
@@ -457,8 +471,9 @@ mod tests {
 
     #[test]
     fn parses_row_with_all_fields() {
-        let result =
-            parse_gui_line("Network A\0id\x1fnet_a\0icon\x1f📶\0info\x1fWPA2\0meta\x1fsecure network\0nonselectable\x1ftrue\0urgent\x1ftrue\0active\x1ftrue\0disabled\x1ftrue");
+        let result = parse_gui_line(
+            "Network A\0id\x1fnet_a\0icon\x1f📶\0info\x1fWPA2\0meta\x1fsecure network\0nonselectable\x1ftrue\0urgent\x1ftrue\0active\x1ftrue\0disabled\x1ftrue",
+        );
         assert_eq!(
             result,
             GuiLineResult::Row(GuiRow {
@@ -568,12 +583,30 @@ mod tests {
 
     #[test]
     fn parses_flush_loading_live_search_and_active() {
-        assert_eq!(parse_gui_line("\0flush"), GuiLineResult::Command(GuiCommand::Flush));
-        assert_eq!(parse_gui_line("\0flush\x1ftrue"), GuiLineResult::Command(GuiCommand::Flush));
-        assert_eq!(parse_gui_line("\0loading\x1ftrue"), GuiLineResult::Command(GuiCommand::SetLoading(true)));
-        assert_eq!(parse_gui_line("\0loading\x1ffalse"), GuiLineResult::Command(GuiCommand::SetLoading(false)));
-        assert_eq!(parse_gui_line("\0live-search\x1ftrue"), GuiLineResult::Command(GuiCommand::LiveSearch(true)));
-        assert_eq!(parse_gui_line("\0active\x1f0,2,5"), GuiLineResult::Command(GuiCommand::SetActiveIndices(vec![0, 2, 5])));
+        assert_eq!(
+            parse_gui_line("\0flush"),
+            GuiLineResult::Command(GuiCommand::Flush)
+        );
+        assert_eq!(
+            parse_gui_line("\0flush\x1ftrue"),
+            GuiLineResult::Command(GuiCommand::Flush)
+        );
+        assert_eq!(
+            parse_gui_line("\0loading\x1ftrue"),
+            GuiLineResult::Command(GuiCommand::SetLoading(true))
+        );
+        assert_eq!(
+            parse_gui_line("\0loading\x1ffalse"),
+            GuiLineResult::Command(GuiCommand::SetLoading(false))
+        );
+        assert_eq!(
+            parse_gui_line("\0live-search\x1ftrue"),
+            GuiLineResult::Command(GuiCommand::LiveSearch(true))
+        );
+        assert_eq!(
+            parse_gui_line("\0active\x1f0,2,5"),
+            GuiLineResult::Command(GuiCommand::SetActiveIndices(vec![0, 2, 5]))
+        );
     }
 
     #[test]

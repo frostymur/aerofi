@@ -1,7 +1,7 @@
-use crate::core::item::{Target, ScriptMode};
-use std::time::Duration;
+use crate::core::item::{ScriptMode, Target};
 use std::io::{BufRead, BufReader};
 use std::process::{Command, Stdio};
+use std::time::Duration;
 
 const BOUNDARY: &str = "__AEROFI_BOUNDARY__";
 
@@ -39,32 +39,35 @@ pub fn start_daemon(
     let mut started: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     for target in all_targets.iter() {
-        if let Target::Script { mode, path, .. } = target {
-            if *mode == ScriptMode::Inline {
-                // Use the file stem as the dedup key (e.g. "test_inline")
-                let stem = path.file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-                    .into_owned();
-                if !started.insert(stem) {
-                    continue; // already running a daemon for this script name
-                }
+        if let Target::Script { mode, path, .. } = target
+            && *mode == ScriptMode::Inline
+        {
+            // Use the file stem as the dedup key (e.g. "test_inline")
+            let stem = path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned();
+            if !started.insert(stem) {
+                continue; // already running a daemon for this script name
+            }
 
-                if let Some(refresh_str) = target.refresh_time() {
-                    if let Some(duration) = parse_refresh_time(refresh_str) {
-                        let path_str = path.to_string_lossy().into_owned();
-                        let view2 = view.clone();
-                        let path2 = path.clone();
-                        let cx_async = cx.to_async();
+            if let Some(refresh_str) = target.refresh_time()
+                && let Some(duration) = parse_refresh_time(refresh_str)
+            {
+                let path_str = path.to_string_lossy().into_owned();
+                let view2 = view.clone();
+                let path2 = path.clone();
+                let cx_async = cx.to_async();
 
-                        // futures::channel::mpsc — sender is Send (works in std::thread),
-                        // receiver implements Stream so the GPUI task truly sleeps until data arrives.
-                        // No busy-spin, no wasted CPU, no residual allocator pressure.
-                        let (tx, mut rx) = futures::channel::mpsc::unbounded::<String>();
+                // futures::channel::mpsc — sender is Send (works in std::thread),
+                // receiver implements Stream so the GPUI task truly sleeps until data arrives.
+                // No busy-spin, no wasted CPU, no residual allocator pressure.
+                let (tx, mut rx) = futures::channel::mpsc::unbounded::<String>();
 
-                        // macOS default thread stack = 8 MB. Two inline scripts = 16 MB wasted.
-                        // Our loop only does BufReader::lines() + channel send — 256 KB is plenty.
-                        let _ = std::thread::Builder::new()
+                // macOS default thread stack = 8 MB. Two inline scripts = 16 MB wasted.
+                // Our loop only does BufReader::lines() + channel send — 256 KB is plenty.
+                let _ = std::thread::Builder::new()
                             .stack_size(256 * 1024)
                             .name(format!("aerofi-inline:{}", path_str))
                             .spawn(move || {
@@ -117,7 +120,7 @@ pub fn start_daemon(
                                             return;
                                         }
                                     }
-                                } else {
+                                } else if buf.len() < 500 {
                                     buf.push(line);
                                 }
                             }
@@ -125,27 +128,26 @@ pub fn start_daemon(
                             let _ = child.kill();
                         });
 
-                        // GPUI receiver: truly sleeps via Stream::next() until a message arrives.
-                        // No polling, no waker spinning — zero CPU between script outputs.
-                        cx.spawn(move |_: &mut gpui::AsyncApp| async move {
-                            use futures::StreamExt;
-                            let cx_async = cx_async;
-                            while let Some(text) = rx.next().await {
-                                let _ = cx_async.update(|cx| {
-                                    view2.update(cx, |launcher, cx| {
-                                        launcher.apply_inline_output(
-                                            &path2,
-                                            Some(gpui::SharedString::from(text)),
-                                        );
-                                        if crate::ui::window::is_visible() {
-                                            cx.notify();
-                                        }
-                                    });
-                                });
-                            }
-                        }).detach();
+                // GPUI receiver: truly sleeps via Stream::next() until a message arrives.
+                // No polling, no waker spinning — zero CPU between script outputs.
+                cx.spawn(move |_: &mut gpui::AsyncApp| async move {
+                    use futures::StreamExt;
+                    let cx_async = cx_async;
+                    while let Some(text) = rx.next().await {
+                        cx_async.update(|cx| {
+                            view2.update(cx, |launcher, cx| {
+                                launcher.apply_inline_output(
+                                    &path2,
+                                    Some(gpui::SharedString::from(text)),
+                                );
+                                if crate::ui::window::is_visible() {
+                                    cx.notify();
+                                }
+                            });
+                        });
                     }
-                }
+                })
+                .detach();
             }
         }
     }

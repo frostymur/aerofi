@@ -446,7 +446,10 @@ impl Default for ListViewConfig {
             scrollbar: false,
             empty_text: "No matches".to_string(),
             empty_text_color: "#888888".to_string(),
-            category_badge: BadgeConfig { show: false, ..BadgeConfig::default() },
+            category_badge: BadgeConfig {
+                show: false,
+                ..BadgeConfig::default()
+            },
             alias_badge,
             require_input: None,
         }
@@ -522,7 +525,11 @@ impl Default for ElementConfig {
             description_color: Some("#888888".to_string()),
             show_icons: true,
             icon_size: 24.0,
-            layout: Some(vec!["icon".to_string(), "name".to_string(), "spacer".to_string()]),
+            layout: Some(vec![
+                "icon".to_string(),
+                "name".to_string(),
+                "spacer".to_string(),
+            ]),
             selected: SelectedState::default(),
             hover: Some(HoverState::default()),
         }
@@ -660,12 +667,16 @@ pub fn load_theme(theme_name: &str) -> ThemeConfig {
     let file_name = format!("{theme_name}.toml");
 
     // Check ~/.config/aerofi/themes/{name}.toml first (standard per config.rs).
-    let dot_config_path = dirs::home_dir()
-        .map(|h| h.join(".config").join("aerofi").join("themes").join(&file_name));
+    let dot_config_path = dirs::home_dir().map(|h| {
+        h.join(".config")
+            .join("aerofi")
+            .join("themes")
+            .join(&file_name)
+    });
 
     // Fallback to dirs::config_dir() (~/Library/Application Support/aerofi/themes/ on macOS).
-    let app_support_path = dirs::config_dir()
-        .map(|c| c.join("aerofi").join("themes").join(&file_name));
+    let app_support_path =
+        dirs::config_dir().map(|c| c.join("aerofi").join("themes").join(&file_name));
 
     let path = match (&dot_config_path, &app_support_path) {
         (Some(p), _) if p.is_file() => p.clone(),
@@ -1084,7 +1095,10 @@ mod tests {
             panic!("expected Box widget");
         }
 
-        if let WidgetDef::Button { action, icon, text, .. } = by_id["btn_reload"] {
+        if let WidgetDef::Button {
+            action, icon, text, ..
+        } = by_id["btn_reload"]
+        {
             assert_eq!(action.as_deref(), Some("reload"));
             assert_eq!(icon.as_deref(), Some("🔄"));
             assert_eq!(text.as_deref(), Some("Reload"));

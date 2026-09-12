@@ -96,7 +96,8 @@ impl SearchIndex {
             let frecency = history.calculate_frecency(&target.identifier());
             self.scored_buf.push((u32::from(fuzzy_score) + frecency, i));
         }
-        self.scored_buf.sort_unstable_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
+        self.scored_buf
+            .sort_unstable_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
         self.scored_buf
             .iter()
             .map(|&(_, i)| targets[i].clone())

@@ -537,19 +537,25 @@ impl Launcher {
                                     let toggle_icon = if is_toggled { "☑" } else { "☐" };
                                     row_div = row_div.child(
                                         div()
-                                            .text_color(if is_toggled { rgb(0x73daca) } else { desc_color })
+                                            .text_color(if is_toggled {
+                                                rgb(0x73daca)
+                                            } else {
+                                                desc_color
+                                            })
                                             .text_size(px(t.font.size))
                                             .child(toggle_icon),
                                     );
                                 }
 
                                 if el.show_icons {
-                                    row_div = row_div.child(Self::render_gui_row_icon(icon_size, &row.icon));
+                                    row_div = row_div
+                                        .child(Self::render_gui_row_icon(icon_size, &row.icon));
                                 }
 
                                 let text_div = div().flex_1().text_color(name_color);
                                 let text_div = if markup_rows_val {
-                                    let (plain, highlights) = crate::core::pango::parse_pango(&row.text);
+                                    let (plain, highlights) =
+                                        crate::core::pango::parse_pango(&row.text);
                                     let mut st = gpui::StyledText::new(plain);
                                     if !highlights.is_empty() {
                                         st = st.with_highlights(highlights);
@@ -587,7 +593,8 @@ impl Launcher {
                                 }
 
                                 if let Some(info) = &row.info {
-                                    let badge_col = rgb(Self::color(&t.listview.category_badge.color));
+                                    let badge_col =
+                                        rgb(Self::color(&t.listview.category_badge.color));
                                     row_div = row_div.child(
                                         div()
                                             .px_2()
@@ -602,19 +609,17 @@ impl Launcher {
                                 }
 
                                 row_div
-                                    .on_click(
-                                        _cx.listener(move |this, event, _window, cx| {
-                                            if is_primary_click(event) {
-                                                if let LauncherState::GuiMode { selected, .. } =
-                                                    &mut this.state
-                                                {
-                                                    *selected = vis_ix;
-                                                }
-                                                this.gui_select_row(cx);
-                                                cx.notify();
+                                    .on_click(_cx.listener(move |this, event, _window, cx| {
+                                        if is_primary_click(event) {
+                                            if let LauncherState::GuiMode { selected, .. } =
+                                                &mut this.state
+                                            {
+                                                *selected = vis_ix;
                                             }
-                                        }),
-                                    )
+                                            this.gui_select_row(cx);
+                                            cx.notify();
+                                        }
+                                    }))
                                     .into_any()
                             } else {
                                 let mut row_div = div()
@@ -635,19 +640,25 @@ impl Launcher {
                                     let toggle_icon = if is_toggled { "☑" } else { "☐" };
                                     row_div = row_div.child(
                                         div()
-                                            .text_color(if is_toggled { rgb(0x73daca) } else { desc_color })
+                                            .text_color(if is_toggled {
+                                                rgb(0x73daca)
+                                            } else {
+                                                desc_color
+                                            })
                                             .text_size(px(t.font.size))
                                             .child(toggle_icon),
                                     );
                                 }
 
                                 if el.show_icons {
-                                    row_div = row_div.child(Self::render_gui_row_icon(icon_size, &row.icon));
+                                    row_div = row_div
+                                        .child(Self::render_gui_row_icon(icon_size, &row.icon));
                                 }
 
                                 let text_div = div().flex_1().text_color(name_color);
                                 let text_div = if markup_rows_val {
-                                    let (plain, highlights) = crate::core::pango::parse_pango(&row.text);
+                                    let (plain, highlights) =
+                                        crate::core::pango::parse_pango(&row.text);
                                     let mut st = gpui::StyledText::new(plain);
                                     if !highlights.is_empty() {
                                         st = st.with_highlights(highlights);
@@ -685,7 +696,8 @@ impl Launcher {
                                 }
 
                                 if let Some(info) = &row.info {
-                                    let badge_col = rgb(Self::color(&t.listview.category_badge.color));
+                                    let badge_col =
+                                        rgb(Self::color(&t.listview.category_badge.color));
                                     row_div = row_div.child(
                                         div()
                                             .px_2()
@@ -718,7 +730,11 @@ impl Launcher {
                 block_count,
                 cx.processor(
                     move |this: &mut Launcher, range: std::ops::Range<usize>, _window, _cx| {
-                        if let LauncherState::GuiMode { preview_blocks: Some(b), .. } = &this.state {
+                        if let LauncherState::GuiMode {
+                            preview_blocks: Some(b),
+                            ..
+                        } = &this.state
+                        {
                             range.map(|i| this.render_md_block(&b[i])).collect()
                         } else {
                             vec![]
@@ -744,8 +760,8 @@ impl Launcher {
                             .h_full()
                             .border_l_1()
                             .border_color(rgb(Self::color(&t.window.border_color)))
-                            .child(preview_panel)
-                    )
+                            .child(preview_panel),
+                    ),
             );
         } else {
             container = container.child(list_container.w_full());
@@ -755,10 +771,7 @@ impl Launcher {
     }
 
     /// Render the icon element for a GUI-mode row.
-    fn render_gui_row_icon(
-        icon_size: gpui::Pixels,
-        icon: &Option<String>,
-    ) -> gpui::AnyElement {
+    fn render_gui_row_icon(icon_size: gpui::Pixels, icon: &Option<String>) -> gpui::AnyElement {
         if let Some(icon_str) = icon {
             let is_image = icon_str.starts_with('/')
                 || icon_str.starts_with('~')
@@ -792,7 +805,11 @@ impl Launcher {
     }
 
     /// Render the `LauncherState::Confirming` view when a dangerous action requires confirmation.
-    pub(super) fn render_confirmation(&self, target: &Target, cx: &mut Context<Self>) -> gpui::AnyElement {
+    pub(super) fn render_confirmation(
+        &self,
+        target: &Target,
+        cx: &mut Context<Self>,
+    ) -> gpui::AnyElement {
         let t = &self.theme;
         let text_color = rgb(Self::color(&t.element.text_color));
         let sel_bg = rgb(Self::color(&t.element.selected.background));
@@ -1125,7 +1142,11 @@ impl Launcher {
 
     /// Render the result list styled from `theme.listview` and `theme.element`.
     /// When `columns > 1`, items are laid out in a grid.
-    pub(super) fn render_listview(&self, cx: &mut Context<Self>, columns: usize) -> impl IntoElement {
+    pub(super) fn render_listview(
+        &self,
+        cx: &mut Context<Self>,
+        columns: usize,
+    ) -> impl IntoElement {
         let t = &self.theme;
 
         if self.filtered.is_empty() {

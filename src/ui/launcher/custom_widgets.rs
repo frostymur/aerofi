@@ -67,10 +67,7 @@ impl Launcher {
                 align.as_deref(),
             ),
             WidgetDef::Icon {
-                icon,
-                size,
-                color,
-                ..
+                icon, size, color, ..
             } => self.render_widget_icon(icon, *size, color.as_deref()),
             WidgetDef::Image {
                 path,
@@ -346,7 +343,9 @@ impl Launcher {
                     }
                     _ => {}
                 }
-            } else if let Some(child_el) = self.render_custom_widget_scoped(child_id, row_context, cx) {
+            } else if let Some(child_el) =
+                self.render_custom_widget_scoped(child_id, row_context, cx)
+            {
                 container = container.child(child_el);
             }
         }

@@ -31,7 +31,11 @@ pub fn execute_script(
     let cx_async = cx.to_async();
 
     let toast_view = if mode == ScriptMode::Compact {
-        Some(crate::ui::toast_window::open_toast_window(cx, theme.clone(), title.clone()))
+        Some(crate::ui::toast_window::open_toast_window(
+            cx,
+            theme.clone(),
+            title.clone(),
+        ))
     } else {
         None
     };
@@ -41,7 +45,7 @@ pub fn execute_script(
     cx.spawn(move |_: &mut AsyncApp| async move {
         let result = executor
             .spawn(async move {
-                let mut cmd = crate::core::executor::script_command(&*path2);
+                let mut cmd = crate::core::executor::script_command(&path2);
                 cmd.args(args);
                 cmd.output()
             })
@@ -129,12 +133,11 @@ pub fn execute_script(
                                 handle_toast(cx, win_handle, toast);
                             }
                         }
-                    } else if mode == ScriptMode::Silent {
-                        if has_output || is_error {
+                    } else if mode == ScriptMode::Silent
+                        && (has_output || is_error) {
                             let (win_handle, toast) = crate::ui::toast_window::open_toast_window(cx, theme.clone(), title.clone());
                             handle_toast(cx, win_handle, toast);
                         }
-                    }
                 }
                 // inline: update the subtitle in the list row.
                 ScriptMode::Inline => {

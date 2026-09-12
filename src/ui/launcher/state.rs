@@ -102,7 +102,11 @@ impl Launcher {
     }
 
     /// Handle a keystroke. Returns the action that the host (main.rs) should perform.
-    pub fn handle_keystroke(&mut self, ks: &gpui::Keystroke, cx: Option<&mut Context<Self>>) -> LauncherAction {
+    pub fn handle_keystroke(
+        &mut self,
+        ks: &gpui::Keystroke,
+        cx: Option<&mut Context<Self>>,
+    ) -> LauncherAction {
         // Full-output pages (spinner and result view) swallow every
         // keystroke; only Escape returns to the search list. Argument
         // prompts and confirmations fall through so their own handlers run.
@@ -432,10 +436,10 @@ impl Launcher {
         // The sticky layout override only lasts for the session.
         self.sticky_metatags = None;
         // Kill any active GUI session.
-        if let Some(session) = self.gui_session.take() {
-            if let Ok(mut s) = session.lock() {
-                s.kill();
-            }
+        if let Some(session) = self.gui_session.take()
+            && let Ok(mut s) = session.lock()
+        {
+            s.kill();
         }
     }
 
@@ -786,9 +790,16 @@ impl Launcher {
         }
         if let Some(cmd) = trimmed.strip_prefix("command:") {
             let cmd = cmd.trim().to_string();
-            std::thread::spawn(move || {
-                let _ = std::process::Command::new("sh").arg("-c").arg(cmd).spawn();
-            });
+            let _ = std::thread::Builder::new()
+                .name("aerofi-cmd".to_string())
+                .stack_size(128 * 1024)
+                .spawn(move || {
+                    if let Ok(mut child) =
+                        std::process::Command::new("sh").arg("-c").arg(cmd).spawn()
+                    {
+                        let _ = child.wait();
+                    }
+                });
             return;
         }
 
@@ -810,12 +821,7 @@ impl Launcher {
 
     /// Spawn a GUI session for an interactive script and read its initial
     /// burst of output.  Transitions to `LauncherState::GuiMode`.
-    fn start_gui_session(
-        &mut self,
-        target: &Target,
-        args: Vec<String>,
-        cx: &mut Context<Self>,
-    ) {
+    fn start_gui_session(&mut self, target: &Target, args: Vec<String>, cx: &mut Context<Self>) {
         let Target::Script { path, name, .. } = target else {
             return;
         };
@@ -831,7 +837,7 @@ impl Launcher {
         let path = path.clone();
         let mut envs = std::collections::HashMap::new();
         envs.insert("AEROFI_RETV".to_string(), "0".to_string());
-        
+
         match GuiSession::spawn(&path, args, envs) {
             Ok(session) => {
                 let session = Arc::new(Mutex::new(session));
@@ -842,17 +848,20 @@ impl Launcher {
                 let title2 = title.clone();
                 let cx_async = cx.to_async();
                 let (tx, rx) = futures::channel::oneshot::channel();
-                std::thread::spawn(move || {
-                    let burst = {
-                        let session = session.lock().unwrap();
-                        session.read_burst(std::time::Duration::from_secs(5))
-                    };
-                    let _ = tx.send(burst);
-                });
+                let _ = std::thread::Builder::new()
+                    .name("aerofi-gui-init".to_string())
+                    .stack_size(256 * 1024)
+                    .spawn(move || {
+                        let burst = {
+                            let session = session.lock().unwrap();
+                            session.read_burst(std::time::Duration::from_secs(5))
+                        };
+                        let _ = tx.send(burst);
+                    });
                 cx.spawn(move |_, _: &mut gpui::AsyncApp| async move {
                     if let Ok(burst) = rx.await {
-                        let _ = cx_async.update(|cx| {
-                            let _ = view.update(cx, |launcher, cx| {
+                        cx_async.update(|cx| {
+                            view.update(cx, |launcher, cx| {
                                 launcher.gui_handle_read_result(burst, &title2);
                                 cx.notify();
                             });
@@ -889,11 +898,7 @@ impl Launcher {
     }
 
     /// Handle the read result from a GUI session burst.
-    fn gui_handle_read_result(
-        &mut self,
-        result: ReadResult,
-        title: &str,
-    ) {
+    fn gui_handle_read_result(&mut self, result: ReadResult, title: &str) {
         match result {
             ReadResult::Burst(burst) => {
                 self.gui_apply_burst(burst, title);
@@ -917,11 +922,7 @@ impl Launcher {
     }
 
     /// Apply a GUI burst (commands + rows) to the current GuiMode state.
-    fn gui_apply_burst(
-        &mut self,
-        burst: crate::core::gui_protocol::GuiBurst,
-        title: &str,
-    ) {
+    fn gui_apply_burst(&mut self, burst: crate::core::gui_protocol::GuiBurst, title: &str) {
         let mut prompt = None;
         let mut message = None;
         let mut no_custom = false;
@@ -1032,15 +1033,13 @@ impl Launcher {
 
         let mut custom_retv = None;
         for (kb, combo_str) in &self.app_config.custom_keys {
-            if combo_matches(combo_str, ks) {
-                if let Some(num_str) = kb.strip_prefix("kb-custom-") {
-                    if let Ok(num) = num_str.parse::<i32>() {
-                        if (1..=19).contains(&num) {
-                            custom_retv = Some(num + 9);
-                            break;
-                        }
-                    }
-                }
+            if combo_matches(combo_str, ks)
+                && let Some(num_str) = kb.strip_prefix("kb-custom-")
+                && let Ok(num) = num_str.parse::<i32>()
+                && (1..=19).contains(&num)
+            {
+                custom_retv = Some(num + 9);
+                break;
             }
         }
 
@@ -1076,12 +1075,16 @@ impl Launcher {
                 }
                 LauncherAction::None
             }
-            ("up", false, false, false, false) | ("p", false, true, false, false) | ("k", false, true, false, false) => {
+            ("up", false, false, false, false)
+            | ("p", false, true, false, false)
+            | ("k", false, true, false, false) => {
                 let cols = self.gui_columns() as isize;
                 self.gui_move_selection(-cols);
                 LauncherAction::None
             }
-            ("down", false, false, false, false) | ("n", false, true, false, false) | ("j", false, true, false, false) => {
+            ("down", false, false, false, false)
+            | ("n", false, true, false, false)
+            | ("j", false, true, false, false) => {
                 let cols = self.gui_columns() as isize;
                 self.gui_move_selection(cols);
                 LauncherAction::None
@@ -1121,10 +1124,8 @@ impl Launcher {
                         self.gui_refilter();
                     }
                 }
-                if is_live {
-                    if let Some(cx) = cx {
-                        self.gui_send_live_search(cx);
-                    }
+                if is_live && let Some(cx) = cx {
+                    self.gui_send_live_search(cx);
                 }
                 LauncherAction::None
             }
@@ -1156,10 +1157,8 @@ impl Launcher {
                             self.gui_refilter();
                         }
                     }
-                    if is_live {
-                        if let Some(cx) = cx {
-                            self.gui_send_live_search(cx);
-                        }
+                    if is_live && let Some(cx) = cx {
+                        self.gui_send_live_search(cx);
                     }
                 }
                 LauncherAction::None
@@ -1348,21 +1347,24 @@ impl Launcher {
         let view = cx.entity();
         let cx_async = cx.to_async();
         let (tx, rx) = futures::channel::oneshot::channel();
-        std::thread::spawn(move || {
-            let result = {
-                let mut session = session.lock().unwrap();
-                if session.send_event(&event).is_err() {
-                    ReadResult::Exited
-                } else {
-                    session.read_burst(std::time::Duration::from_secs(5))
-                }
-            };
-            let _ = tx.send(result);
-        });
+        let _ = std::thread::Builder::new()
+            .name("aerofi-gui-event".to_string())
+            .stack_size(256 * 1024)
+            .spawn(move || {
+                let result = {
+                    let mut session = session.lock().unwrap();
+                    if session.send_event(&event).is_err() {
+                        ReadResult::Exited
+                    } else {
+                        session.read_burst(std::time::Duration::from_secs(5))
+                    }
+                };
+                let _ = tx.send(result);
+            });
         cx.spawn(move |_, _: &mut gpui::AsyncApp| async move {
             if let Ok(result) = rx.await {
-                let _ = cx_async.update(|cx| {
-                    let _ = view.update(cx, |launcher, cx| {
+                cx_async.update(|cx| {
+                    view.update(cx, |launcher, cx| {
                         launcher.gui_handle_read_result(result, &title);
                         cx.notify();
                     });
@@ -1402,21 +1404,24 @@ impl Launcher {
         let view = cx.entity();
         let cx_async = cx.to_async();
         let (tx, rx) = futures::channel::oneshot::channel();
-        std::thread::spawn(move || {
-            let result = {
-                let mut session = session.lock().unwrap();
-                if session.send_query_change(&query).is_err() {
-                    ReadResult::Exited
-                } else {
-                    session.read_burst(std::time::Duration::from_secs(5))
-                }
-            };
-            let _ = tx.send(result);
-        });
+        let _ = std::thread::Builder::new()
+            .name("aerofi-gui-search".to_string())
+            .stack_size(256 * 1024)
+            .spawn(move || {
+                let result = {
+                    let mut session = session.lock().unwrap();
+                    if session.send_query_change(&query).is_err() {
+                        ReadResult::Exited
+                    } else {
+                        session.read_burst(std::time::Duration::from_secs(5))
+                    }
+                };
+                let _ = tx.send(result);
+            });
         cx.spawn(move |_, _: &mut gpui::AsyncApp| async move {
             if let Ok(result) = rx.await {
-                let _ = cx_async.update(|cx| {
-                    let _ = view.update(cx, |launcher, cx| {
+                cx_async.update(|cx| {
+                    view.update(cx, |launcher, cx| {
                         launcher.gui_handle_read_result(result, &title);
                         cx.notify();
                     });
@@ -1445,10 +1450,10 @@ impl Launcher {
 
     /// Leave GUI mode: kill the session and return to the search list.
     fn gui_leave(&mut self) {
-        if let Some(session) = self.gui_session.take() {
-            if let Ok(mut s) = session.lock() {
-                s.kill();
-            }
+        if let Some(session) = self.gui_session.take()
+            && let Ok(mut s) = session.lock()
+        {
+            s.kill();
         }
         self.state = LauncherState::Search;
     }

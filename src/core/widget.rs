@@ -252,9 +252,8 @@ mod tests {
 
     #[test]
     fn box_with_builtin_children_passes_validation() {
-        let reg = WidgetRegistry::from_theme(&[
-            box_widget("main_pane", vec!["InputBar", "ListView"]),
-        ]);
+        let reg =
+            WidgetRegistry::from_theme(&[box_widget("main_pane", vec!["InputBar", "ListView"])]);
         assert!(reg.validate().is_ok());
     }
 }

@@ -13,17 +13,16 @@ use crate::core::item::{ScriptMode, Target};
 /// the executable bit).
 pub fn script_command(path: &Path) -> Command {
     let content = std::fs::read_to_string(path).ok();
-    if let Some(content) = content {
-        if let Some(first) = content.lines().next() {
-            if let Some(shebang) = first.strip_prefix("#!") {
-                let parts: Vec<&str> = shebang.split_whitespace().collect();
-                if !parts.is_empty() {
-                    let mut cmd = Command::new(parts[0]);
-                    cmd.args(&parts[1..]);
-                    cmd.arg(path);
-                    return cmd;
-                }
-            }
+    if let Some(content) = content
+        && let Some(first) = content.lines().next()
+        && let Some(shebang) = first.strip_prefix("#!")
+    {
+        let parts: Vec<&str> = shebang.split_whitespace().collect();
+        if !parts.is_empty() {
+            let mut cmd = Command::new(parts[0]);
+            cmd.args(&parts[1..]);
+            cmd.arg(path);
+            return cmd;
         }
     }
     use std::os::unix::fs::PermissionsExt;
@@ -49,7 +48,7 @@ pub fn script_command(path: &Path) -> Command {
 pub fn execute(target: &Target) {
     match target {
         Target::App { path, .. } => {
-            if let Err(e) = Command::new("open").arg(&**path).spawn() {
+            if let Err(e) = Command::new("open").arg(&**path).status() {
                 eprintln!("aerofi: failed to run {}: {e}", target.name());
             }
         }
@@ -65,6 +64,7 @@ pub fn execute(target: &Target) {
             let thread_name = name.clone();
             let spawn_result = std::thread::Builder::new()
                 .name(format!("aerofi-pipe:{name}"))
+                .stack_size(256 * 1024)
                 .spawn(move || {
                     let output = script_command(&path).output();
                     let text = match output {
@@ -89,11 +89,18 @@ pub fn execute(target: &Target) {
                 eprintln!("aerofi: failed to spawn pipe thread for {name}: {e}");
             }
         }
-        Target::Script { path, .. } => {
-            if let Err(e) = script_command(path).spawn() {
-                eprintln!("aerofi: failed to run {}: {e}", target.name());
+        Target::Script { path, .. } => match script_command(path).spawn() {
+            Ok(mut child) => {
+                let name = target.name().to_string();
+                let _ = std::thread::Builder::new()
+                    .name(format!("aerofi-reap:{name}"))
+                    .stack_size(128 * 1024)
+                    .spawn(move || {
+                        let _ = child.wait();
+                    });
             }
-        }
+            Err(e) => eprintln!("aerofi: failed to run {}: {e}", target.name()),
+        },
         // Built-in actions are handled by the UI, never executed here.
         Target::Builtin { .. } => {}
     }
