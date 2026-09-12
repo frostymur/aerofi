@@ -24,7 +24,7 @@ pub struct Launcher {
     pub(super) all: Vec<Target>,
     /// The ranked results for the current query (best first), capped at
     /// `max_results`.
-    pub(super) filtered: Vec<Target>,
+    pub(super) filtered: Vec<usize>,
     /// Current filter query.
     pub(super) query: String,
     /// Position of the highlighted row within `filtered`.
@@ -69,7 +69,7 @@ impl Launcher {
         app_config: AppConfig,
         history: History,
     ) -> Self {
-        let filtered = all.clone();
+        let filtered = (0..all.len()).collect();
         let widget_registry = WidgetRegistry::from_theme(&theme.widgets);
         let button_hotkeys = widget_registry.button_hotkeys();
         Self {
@@ -417,9 +417,8 @@ impl Launcher {
 
     /// Re-run the fuzzy match for the current query and rebuild `filtered`.
     fn refilter(&mut self) {
-        self.filtered = self
-            .search
-            .filter_and_rank(&self.history, &self.all, &self.query);
+        self.search
+            .filter_and_rank(&self.history, &self.all, &self.query, &mut self.filtered);
         if self.selected >= self.filtered.len() {
             self.selected = 0;
         }
@@ -450,8 +449,8 @@ impl Launcher {
         self.refilter();
     }
 
-    fn selected_item(&self) -> Option<&Target> {
-        self.filtered.get(self.selected)
+    pub fn selected_item(&self) -> Option<&Target> {
+        self.filtered.get(self.selected).map(|&i| &self.all[i])
     }
 
     /// The target an alias points at, when the current query exactly
@@ -662,7 +661,7 @@ impl Launcher {
         // Update the master list and the rendered rows in place. Inline
         // output never affects ranking, so re-filtering (which resets the
         // scroll position) is unnecessary.
-        for target in self.all.iter_mut().chain(self.filtered.iter_mut()) {
+        for target in self.all.iter_mut() {
             let is_match = matches!(
                 target,
                 Target::Script {

@@ -63,11 +63,13 @@ impl SearchIndex {
         history: &History,
         targets: &[Target],
         query: &str,
-    ) -> Vec<Target> {
+        out_filtered: &mut Vec<usize>,
+    ) {
         // Reuse all scratch buffers to avoid heap allocations every keystroke.
         self.needle_buf.clear();
         self.hay_buf.clear();
         self.scored_buf.clear();
+        out_filtered.clear();
         let needle = Utf32Str::new(query, &mut self.needle_buf);
         for (i, target) in targets.iter().enumerate() {
             let name = target.name();
@@ -98,10 +100,7 @@ impl SearchIndex {
         }
         self.scored_buf
             .sort_unstable_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
-        self.scored_buf
-            .iter()
-            .map(|&(_, i)| targets[i].clone())
-            .collect()
+        out_filtered.extend(self.scored_buf.iter().map(|&(_, i)| i));
     }
 }
 
@@ -140,6 +139,18 @@ mod tests {
         History::test_new(PathBuf::new(), Vec::new())
     }
 
+    fn search_helper(
+        idx: &mut SearchIndex,
+        history: &History,
+        targets: &[Target],
+        query: &str,
+    ) -> Vec<Target> {
+        let mut results = Vec::new();
+        idx.filter_and_rank(history, targets, query, &mut results);
+        results.into_iter().map(|i| targets[i].clone()).collect()
+    }
+
+
     /// A launch recorded "just now" (100 frecency points).
     fn fresh_record(identifier: &str) -> ExecutionRecord {
         ExecutionRecord {
@@ -157,11 +168,11 @@ mod tests {
         let history = empty_history();
         let targets = [target("Git Status"), target("Grep")];
         assert_eq!(
-            names(&idx.filter_and_rank(&history, &targets, "gr")),
+            names(&search_helper(&mut idx, &history, &targets, "gr")),
             vec!["Grep"]
         );
         assert_eq!(
-            names(&idx.filter_and_rank(&history, &targets, "")),
+            names(&search_helper(&mut idx, &history, &targets, "")),
             vec!["Git Status", "Grep"]
         );
     }
@@ -172,14 +183,14 @@ mod tests {
         let history = empty_history();
         let targets = [target("Uninstaller")];
         assert_eq!(
-            names(&idx.filter_and_rank(&history, &targets, "rm")),
+            names(&search_helper(&mut idx, &history, &targets, "rm")),
             vec!["Uninstaller"]
         );
         assert_eq!(
-            names(&idx.filter_and_rank(&history, &targets, "inst")),
+            names(&search_helper(&mut idx, &history, &targets, "inst")),
             vec!["Uninstaller"]
         );
-        assert!(idx.filter_and_rank(&history, &targets, "zzz").is_empty());
+        assert!(search_helper(&mut idx, &history, &targets, "zzz").is_empty());
     }
 
     #[test]
@@ -188,11 +199,11 @@ mod tests {
         let history = empty_history();
         let targets = [target("TextEdit")];
         assert_eq!(
-            names(&idx.filter_and_rank(&history, &targets, "edit")),
+            names(&search_helper(&mut idx, &history, &targets, "edit")),
             vec!["TextEdit"]
         );
         assert_eq!(
-            names(&idx.filter_and_rank(&history, &targets, "note")),
+            names(&search_helper(&mut idx, &history, &targets, "note")),
             vec!["TextEdit"]
         );
     }
@@ -203,7 +214,7 @@ mod tests {
         let history = empty_history();
         let targets = [target("Unpack"), target("Grep")];
         assert_eq!(
-            names(&idx.filter_and_rank(&history, &targets, "extract"))[0],
+            names(&search_helper(&mut idx, &history, &targets, "extract"))[0],
             "Unpack"
         );
     }
@@ -213,7 +224,7 @@ mod tests {
         let mut idx = SearchIndex::new(&aliases(&[("zz", "Ghost App")]));
         let history = empty_history();
         let targets = [target("Grep")];
-        assert!(idx.filter_and_rank(&history, &targets, "zz").is_empty());
+        assert!(search_helper(&mut idx, &history, &targets, "zz").is_empty());
     }
 
     #[test]
@@ -226,9 +237,9 @@ mod tests {
             target("Charlie"),
             target("Delta"),
         ];
-        let results = idx.filter_and_rank(&history, &targets, "");
+        let results = search_helper(&mut idx, &history, &targets, "");
         assert_eq!(results.len(), 4);
-        let results = idx.filter_and_rank(&history, &targets, "a");
+        let results = search_helper(&mut idx, &history, &targets, "a");
         assert_eq!(results.len(), 4);
     }
 
@@ -238,7 +249,7 @@ mod tests {
         let history = History::test_new(PathBuf::new(), vec![fresh_record("B")]);
         let targets = [target("A"), target("B"), target("C")];
         // B has a recent launch; A and C (frecency 0) keep their order.
-        let results = idx.filter_and_rank(&history, &targets, "");
+        let results = search_helper(&mut idx, &history, &targets, "");
         assert_eq!(names(&results), vec!["B", "A", "C"]);
     }
 
@@ -250,7 +261,7 @@ mod tests {
         let records = (0..5).map(|_| fresh_record("Zebra")).collect();
         let history = History::test_new(PathBuf::new(), records);
         let targets = [target("Zed"), target("Zebra")];
-        let results = idx.filter_and_rank(&history, &targets, "z");
+        let results = search_helper(&mut idx, &history, &targets, "z");
         assert_eq!(results[0].name(), "Zebra");
     }
 
@@ -284,7 +295,7 @@ mod tests {
         let queries = ["a", "g", "s", "c", "app", "name", "99", "1", "", "foo"];
         for i in 0..100000 {
             let q = queries[i % queries.len()];
-            let _results = idx.filter_and_rank(&history, &targets, q);
+            let _results = search_helper(&mut idx, &history, &targets, q);
         }
 
         let final_rss = get_rss();
