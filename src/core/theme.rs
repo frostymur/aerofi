@@ -285,7 +285,7 @@ impl Default for WindowConfig {
             background_position: None,
             image_scale: None,
             blur: true,
-            background_opacity: Some(0.62),
+            background_opacity: Some(0.50),
             corner_radius: 16.0,
             border_width: 1.0,
             border_color: "#2a2a2a".to_string(),
@@ -537,6 +537,60 @@ impl Default for ElementConfig {
 }
 
 // ---------------------------------------------------------------------------
+// Status Colors
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct StatusColorsConfig {
+    pub urgent_background: String,
+    pub urgent_text: String,
+    pub urgent_row_background: String,
+    pub active_background: String,
+    pub active_text: String,
+    pub active_row_background: String,
+    pub accent: String,
+    pub muted: String,
+}
+
+impl Default for StatusColorsConfig {
+    fn default() -> Self {
+        Self {
+            urgent_background: "#f7768e".to_string(),
+            urgent_text: "#1a1b26".to_string(),
+            urgent_row_background: "#ff555518".to_string(),
+            active_background: "#73daca".to_string(),
+            active_text: "#1a1b26".to_string(),
+            active_row_background: "#50fa7b18".to_string(),
+            accent: "#7aa2f7".to_string(),
+            muted: "#565f89".to_string(),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Toast
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct ToastConfig {
+    pub running_dot: String,
+    pub success_dot: String,
+    pub error_dot: String,
+}
+
+impl Default for ToastConfig {
+    fn default() -> Self {
+        Self {
+            running_dot: "#aaaaaa".to_string(),
+            success_dot: "#9ece6a".to_string(),
+            error_dot: "#f7768e".to_string(),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Root theme config
 // ---------------------------------------------------------------------------
 
@@ -554,6 +608,10 @@ pub struct ThemeConfig {
     pub inputbar: InputBarConfig,
     pub listview: ListViewConfig,
     pub element: ElementConfig,
+    #[serde(default)]
+    pub status_colors: StatusColorsConfig,
+    #[serde(default)]
+    pub toast: ToastConfig,
     /// Custom widget definitions. Supports both table syntax (`[widgets.<id>]`)
     /// and array-of-tables syntax (`[[widgets]]`).
     #[serde(default, deserialize_with = "deserialize_widgets")]
@@ -576,6 +634,8 @@ impl Default for ThemeConfig {
             inputbar: InputBarConfig::default(),
             listview: ListViewConfig::default(),
             element: ElementConfig::default(),
+            status_colors: StatusColorsConfig::default(),
+            toast: ToastConfig::default(),
             widgets: Vec::new(),
             colors: HashMap::new(),
         }
@@ -622,6 +682,21 @@ impl ThemeConfig {
             resolve(&mut hover.text_color, colors);
             resolve_opt(&mut hover.description_color, colors);
         }
+
+        // Status colors
+        resolve(&mut self.status_colors.urgent_background, colors);
+        resolve(&mut self.status_colors.urgent_text, colors);
+        resolve(&mut self.status_colors.urgent_row_background, colors);
+        resolve(&mut self.status_colors.active_background, colors);
+        resolve(&mut self.status_colors.active_text, colors);
+        resolve(&mut self.status_colors.active_row_background, colors);
+        resolve(&mut self.status_colors.accent, colors);
+        resolve(&mut self.status_colors.muted, colors);
+
+        // Toast
+        resolve(&mut self.toast.running_dot, colors);
+        resolve(&mut self.toast.success_dot, colors);
+        resolve(&mut self.toast.error_dot, colors);
 
         // Custom widgets
         for w in &mut self.widgets {

@@ -512,9 +512,9 @@ impl Launcher {
                             } else if !is_selectable {
                                 (rgba(0x00000000), desc_color)
                             } else if is_urgent {
-                                (rgba(0xff555518), rgb(Self::color(&el.text_color)))
+                                (rgba(Self::color(&t.status_colors.urgent_row_background)), rgb(Self::color(&el.text_color)))
                             } else if is_active {
-                                (rgba(0x50fa7b18), rgb(Self::color(&el.text_color)))
+                                (rgba(Self::color(&t.status_colors.active_row_background)), rgb(Self::color(&el.text_color)))
                             } else {
                                 (rgba(0x00000000), rgb(Self::color(&el.text_color)))
                             };
@@ -538,7 +538,7 @@ impl Launcher {
                                     row_div = row_div.child(
                                         div()
                                             .text_color(if is_toggled {
-                                                rgb(0x73daca)
+                                                rgb(Self::color(&t.status_colors.active_background))
                                             } else {
                                                 desc_color
                                             })
@@ -572,8 +572,8 @@ impl Launcher {
                                             .px_2()
                                             .py(px(2.0))
                                             .rounded_sm()
-                                            .bg(rgb(0xf7768e))
-                                            .text_color(rgb(0x1a1b26))
+                                            .bg(rgb(Self::color(&t.status_colors.urgent_background)))
+                                            .text_color(rgb(Self::color(&t.status_colors.urgent_text)))
                                             .text_size(px(t.font.size * 0.72))
                                             .child("URGENT"),
                                     );
@@ -585,8 +585,8 @@ impl Launcher {
                                             .px_2()
                                             .py(px(2.0))
                                             .rounded_sm()
-                                            .bg(rgb(0x73daca))
-                                            .text_color(rgb(0x1a1b26))
+                                            .bg(rgb(Self::color(&t.status_colors.active_background)))
+                                            .text_color(rgb(Self::color(&t.status_colors.active_text)))
                                             .text_size(px(t.font.size * 0.72))
                                             .child("ACTIVE"),
                                     );
@@ -641,7 +641,7 @@ impl Launcher {
                                     row_div = row_div.child(
                                         div()
                                             .text_color(if is_toggled {
-                                                rgb(0x73daca)
+                                                rgb(Self::color(&t.status_colors.active_background))
                                             } else {
                                                 desc_color
                                             })
@@ -675,8 +675,8 @@ impl Launcher {
                                             .px_2()
                                             .py(px(2.0))
                                             .rounded_sm()
-                                            .bg(rgb(0xf7768e))
-                                            .text_color(rgb(0x1a1b26))
+                                            .bg(rgb(Self::color(&t.status_colors.urgent_background)))
+                                            .text_color(rgb(Self::color(&t.status_colors.urgent_text)))
                                             .text_size(px(t.font.size * 0.72))
                                             .child("URGENT"),
                                     );
@@ -688,8 +688,8 @@ impl Launcher {
                                             .px_2()
                                             .py(px(2.0))
                                             .rounded_sm()
-                                            .bg(rgb(0x73daca))
-                                            .text_color(rgb(0x1a1b26))
+                                            .bg(rgb(Self::color(&t.status_colors.active_background)))
+                                            .text_color(rgb(Self::color(&t.status_colors.active_text)))
                                             .text_size(px(t.font.size * 0.72))
                                             .child("ACTIVE"),
                                     );
@@ -919,7 +919,7 @@ impl Launcher {
                     .gap_3()
                     .child(
                         div()
-                            .text_color(rgb(0x7aa2f7)) // some accent color or back button style
+                            .text_color(rgb(Self::color(&t.status_colors.accent))) // some accent color or back button style
                             .text_sm()
                             .cursor(CursorStyle::PointingHand)
                             .id("full-output-back")
@@ -938,7 +938,7 @@ impl Launcher {
                             .child(title.to_string()),
                     ),
             )
-            .child(div().text_xs().text_color(rgb(0x565f89)).child("↵ Rerun"));
+            .child(div().text_xs().text_color(rgb(Self::color(&t.status_colors.muted))).child("↵ Rerun"));
 
         let block_count = self.full_output_blocks.len();
         let body = if block_count == 0 {
@@ -1078,6 +1078,7 @@ impl Launcher {
     /// size, colour) is inherited from the parent element's `text_style`.
     fn styled_md_text(&self, md: &crate::core::markdown::MdText) -> gpui::StyledText {
         use crate::core::markdown::InlineKind;
+        let t = &self.theme;
 
         let mut highlights: Vec<(std::ops::Range<usize>, gpui::HighlightStyle)> = Vec::new();
         let mut code_ranges: Vec<(std::ops::Range<usize>, gpui::SharedString)> = Vec::new();
@@ -1096,12 +1097,12 @@ impl Launcher {
                     ..Default::default()
                 },
                 InlineKind::Link => gpui::HighlightStyle {
-                    color: Some(Self::hsla_hex(0x7aa2f7)),
+                    color: Some(Self::hsla_hex(Self::color(&t.status_colors.accent))),
                     underline: Some(gpui::UnderlineStyle::default()),
                     ..Default::default()
                 },
                 InlineKind::Code => gpui::HighlightStyle {
-                    background_color: Some(Self::hsla_hex(0x3b4252).opacity(0.35)),
+                    background_color: Some(Self::hsla_hex(Self::color(&t.status_colors.muted)).opacity(0.35)),
                     ..Default::default()
                 },
             };

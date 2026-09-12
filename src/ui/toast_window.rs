@@ -88,7 +88,7 @@ impl Render for ToastWindow {
                             .w(px(10.0))
                             .h(px(10.0))
                             .rounded_full()
-                            .bg(rgb(0xaaaaaa)), // neutral dot for running
+                            .bg(rgb(crate::core::theme::parse_hex_color(&self.theme.toast.running_dot).unwrap_or(0xaaaaaa))),
                     )
                     .child(
                         div()
@@ -115,7 +115,11 @@ impl Render for ToastWindow {
                 text,
                 is_error,
             } => {
-                let dot_color: u32 = if *is_error { 0xf7768e } else { 0x9ece6a };
+                let dot_color: u32 = if *is_error {
+                    crate::core::theme::parse_hex_color(&self.theme.toast.error_dot).unwrap_or(0xf7768e)
+                } else {
+                    crate::core::theme::parse_hex_color(&self.theme.toast.success_dot).unwrap_or(0x9ece6a)
+                };
                 root = root
                     .child(
                         div()
