@@ -277,18 +277,18 @@ pub struct WindowConfig {
 impl Default for WindowConfig {
     fn default() -> Self {
         Self {
-            width: 800.0,
-            height: 500.0,
+            width: 760.0,
+            height: 480.0,
             padding: 16.0,
-            background: "#1a1b26".to_string(),
+            background: "#0d0d0d".to_string(),
             background_image: None,
             background_position: None,
             image_scale: None,
-            blur: false,
-            background_opacity: None,
-            corner_radius: 12.0,
+            blur: true,
+            background_opacity: Some(0.62),
+            corner_radius: 16.0,
             border_width: 1.0,
-            border_color: "#414868".to_string(),
+            border_color: "#2a2a2a".to_string(),
         }
     }
 }
@@ -361,16 +361,16 @@ pub struct InputBarConfig {
 impl Default for InputBarConfig {
     fn default() -> Self {
         Self {
-            height: 48.0,
+            height: 44.0,
             padding: vec![12.0, 16.0],
             margin: vec![0.0, 0.0, 8.0, 0.0],
-            background: "#24283b".to_string(),
-            text_color: "#c0caf5".to_string(),
-            placeholder: "Type to filter…".to_string(),
-            placeholder_color: "#565f89".to_string(),
+            background: "transparent".to_string(),
+            text_color: "#ffffff".to_string(),
+            placeholder: "Search...".to_string(),
+            placeholder_color: "#888888".to_string(),
             corner_radius: 8.0,
             icon: Some("❯".to_string()),
-            icon_color: Some("#7aa2f7".to_string()),
+            icon_color: Some("#888888".to_string()),
         }
     }
 }
@@ -442,11 +442,11 @@ impl Default for ListViewConfig {
         };
         Self {
             columns: 1,
-            spacing: 6.0,
+            spacing: 4.0,
             scrollbar: false,
             empty_text: "No matches".to_string(),
-            empty_text_color: "#565f89".to_string(),
-            category_badge: BadgeConfig::default(),
+            empty_text_color: "#888888".to_string(),
+            category_badge: BadgeConfig { show: false, ..BadgeConfig::default() },
             alias_badge,
             require_input: None,
         }
@@ -468,9 +468,9 @@ pub struct SelectedState {
 impl Default for SelectedState {
     fn default() -> Self {
         Self {
-            background: "#414868".to_string(),
-            text_color: "#c0caf5".to_string(),
-            description_color: Some("#a9b1d6".to_string()),
+            background: "#ffffff20".to_string(),
+            text_color: "#ffffff".to_string(),
+            description_color: Some("#bbbbbb".to_string()),
         }
     }
 }
@@ -486,9 +486,9 @@ pub struct HoverState {
 impl Default for HoverState {
     fn default() -> Self {
         Self {
-            background: "#33374a".to_string(),
-            text_color: "#c0caf5".to_string(),
-            description_color: Some("#a9b1d6".to_string()),
+            background: "#ffffff10".to_string(),
+            text_color: "#ffffff".to_string(),
+            description_color: Some("#bbbbbb".to_string()),
         }
     }
 }
@@ -515,14 +515,14 @@ pub struct ElementConfig {
 impl Default for ElementConfig {
     fn default() -> Self {
         Self {
-            padding: vec![8.0, 12.0],
+            padding: vec![6.0, 10.0],
             corner_radius: 8.0,
             background: "transparent".to_string(),
-            text_color: "#c0caf5".to_string(),
-            description_color: Some("#565f89".to_string()),
+            text_color: "#ffffff".to_string(),
+            description_color: Some("#888888".to_string()),
             show_icons: true,
             icon_size: 24.0,
-            layout: None,
+            layout: Some(vec!["icon".to_string(), "name".to_string(), "spacer".to_string()]),
             selected: SelectedState::default(),
             hover: Some(HoverState::default()),
         }
@@ -560,7 +560,7 @@ pub struct ThemeConfig {
 impl Default for ThemeConfig {
     fn default() -> Self {
         Self {
-            name: "Tokyo Night".to_string(),
+            name: "Dark Transparent".to_string(),
             author: Some("AeroFi".to_string()),
             font: FontConfig::default(),
             window: WindowConfig::default(),
@@ -736,13 +736,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_theme_has_tokyo_night_palette() {
+    fn default_theme_has_dark_transparent_palette() {
         let t = ThemeConfig::default();
-        assert_eq!(t.name, "Tokyo Night");
-        assert_eq!(t.window.background, "#1a1b26");
-        assert_eq!(t.inputbar.background, "#24283b");
-        assert_eq!(t.inputbar.text_color, "#c0caf5");
-        assert_eq!(t.element.selected.background, "#414868");
+        assert_eq!(t.name, "Dark Transparent");
+        assert_eq!(t.window.background, "#0d0d0d");
+        assert_eq!(t.inputbar.background, "transparent");
+        assert_eq!(t.inputbar.text_color, "#ffffff");
+        assert_eq!(t.element.selected.background, "#ffffff20");
     }
 
     #[test]
@@ -791,13 +791,13 @@ mod tests {
     #[test]
     fn load_theme_default_returns_builtin() {
         let t = load_theme("default");
-        assert_eq!(t.name, "Tokyo Night");
+        assert_eq!(t.name, "Dark Transparent");
     }
 
     #[test]
     fn load_theme_missing_file_returns_builtin() {
         let t = load_theme("nonexistent_theme_12345");
-        assert_eq!(t.name, "Tokyo Night");
+        assert_eq!(t.name, "Dark Transparent");
     }
 
     #[test]

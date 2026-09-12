@@ -146,7 +146,7 @@ pub fn create_launcher_window(
             },
             |window, cx| {
                 appkit::store_ns_window(window);
-                appkit::set_borderless_style(window);
+                appkit::set_borderless_style(window, theme.window.corner_radius);
                 cx.new(|_| Launcher::new(targets, theme, app_config, history))
             },
         )
