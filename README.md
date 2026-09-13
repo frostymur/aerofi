@@ -28,6 +28,7 @@
 
 <div align="center">
   <img src="examples/images/demo.gif" alt="aerofi demo" width="820" />
+  <p><em>Recorded demo showing instant search, theming with custom theme_switcher script, and native file search plugin:</em></p>
 </div>
 
 ---
