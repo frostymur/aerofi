@@ -40,11 +40,18 @@ jobs:
           cp target/${{ matrix.target }}/release/aerofi dist/
           cd dist
           tar -czf aerofi-mac-${{ matrix.arch }}.tar.gz aerofi
+          zip -q aerofi-mac-${{ matrix.arch }}.zip aerofi
+          shasum -a 256 aerofi-mac-${{ matrix.arch }}.tar.gz > aerofi-mac-${{ matrix.arch }}.tar.gz.sha256
+          shasum -a 256 aerofi-mac-${{ matrix.arch }}.zip > aerofi-mac-${{ matrix.arch }}.zip.sha256
 
       - name: Upload to Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/aerofi-mac-${{ matrix.arch }}.tar.gz
+          files: |
+            dist/aerofi-mac-${{ matrix.arch }}.tar.gz
+            dist/aerofi-mac-${{ matrix.arch }}.zip
+            dist/aerofi-mac-${{ matrix.arch }}.tar.gz.sha256
+            dist/aerofi-mac-${{ matrix.arch }}.zip.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
