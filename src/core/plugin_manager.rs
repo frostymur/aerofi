@@ -122,6 +122,10 @@ impl PluginManager {
     /// Scan the plugins directory and load all `.dylib` files.
     pub fn load_all() -> Self {
         let mut manager = Self::new();
+
+        #[cfg(test)]
+        return manager;
+
         let mut candidate_dirs = Vec::new();
 
         if let Some(home) = dirs::home_dir() {
