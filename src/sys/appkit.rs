@@ -165,11 +165,7 @@ pub fn center_window() {
     }
 
     unsafe {
-        dispatch_async_f(
-            &raw const _dispatch_main_q,
-            ptr,
-            do_center,
-        );
+        dispatch_async_f(&raw const _dispatch_main_q, ptr, do_center);
     }
 }
 
