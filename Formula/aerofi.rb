@@ -13,6 +13,12 @@ class Aerofi < Formula
     system "cargo", "install", *std_cargo_args
   end
 
+  service do
+    run opt_bin/"aerofi"
+    keep_alive true
+    process_type :interactive
+  end
+
   test do
     assert_path_exists bin/"aerofi"
   end
