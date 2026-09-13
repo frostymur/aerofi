@@ -396,27 +396,13 @@ impl Target {
             };
             let comment = rest.trim_start();
 
-            // `@aerofi.*` annotations (aerofi-specific metatags).
-            if let Some(annotation) = comment.strip_prefix("@aerofi.") {
-                if let Some((field, value)) = annotation.split_once(|c: char| c.is_whitespace()) {
-                    let value = value.trim();
-                    match field.trim() {
-                        "show_search" if metatags.show_search.is_none() => {
-                            metatags.show_search = Some(value != "false");
-                        }
-                        "columns" if metatags.columns.is_none() => {
-                            if let Ok(n) = value.parse::<usize>() {
-                                metatags.columns = Some(n);
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-                continue;
-            }
+            // Support both `@aerofi.` and `@raycast.` annotation prefixes interchangeably.
+            let annotation_opt = comment
+                .strip_prefix("@aerofi.")
+                .map(|a| (a, true))
+                .or_else(|| comment.strip_prefix("@raycast.").map(|a| (a, false)));
 
-            // `@raycast.*` annotations (Raycast-compatible metadata).
-            if let Some(annotation) = comment.strip_prefix("@raycast.") {
+            if let Some((annotation, is_aerofi)) = annotation_opt {
                 let Some((field, value)) = annotation.split_once(|c: char| c.is_whitespace())
                 else {
                     continue;
@@ -426,46 +412,56 @@ impl Target {
                     continue;
                 }
                 match field.trim() {
-                    "schemaVersion" if metadata.schema_version.is_none() => {
+                    // aerofi-specific metatags
+                    "show_search" if is_aerofi || metatags.show_search.is_none() => {
+                        metatags.show_search = Some(value != "false");
+                    }
+                    "columns" if is_aerofi || metatags.columns.is_none() => {
+                        if let Ok(n) = value.parse::<usize>() {
+                            metatags.columns = Some(n);
+                        }
+                    }
+                    // Metadata annotations (supported via @aerofi.* and @raycast.*)
+                    "schemaVersion" if is_aerofi || metadata.schema_version.is_none() => {
                         metadata.schema_version = value.parse::<u32>().ok();
                     }
-                    "title" if metadata.title.is_none() => {
+                    "title" if is_aerofi || metadata.title.is_none() => {
                         metadata.title = Some(SharedString::from(value.to_string()));
                     }
-                    "mode" if metadata.mode.is_none() => {
+                    "mode" if is_aerofi || metadata.mode.is_none() => {
                         metadata.mode = Some(ScriptMode::parse(value));
                     }
-                    "packageName" if metadata.package_name.is_none() => {
+                    "packageName" if is_aerofi || metadata.package_name.is_none() => {
                         metadata.package_name = Some(SharedString::from(value.to_string()));
                     }
-                    "icon" if metadata.icon.is_none() => {
+                    "icon" if is_aerofi || metadata.icon.is_none() => {
                         metadata.icon = Some(SharedString::from(value.to_string()));
                     }
-                    "iconDark" if metadata.icon_dark.is_none() => {
+                    "iconDark" if is_aerofi || metadata.icon_dark.is_none() => {
                         metadata.icon_dark = Some(SharedString::from(value.to_string()));
                     }
-                    "refreshTime" if metadata.refresh_time.is_none() => {
+                    "refreshTime" if is_aerofi || metadata.refresh_time.is_none() => {
                         metadata.refresh_time = Some(SharedString::from(value.to_string()));
                     }
-                    "needsConfirmation" if metadata.needs_confirmation.is_none() => {
+                    "needsConfirmation" if is_aerofi || metadata.needs_confirmation.is_none() => {
                         metadata.needs_confirmation = Some(value.eq_ignore_ascii_case("true"));
                     }
-                    "argument1" if metadata.argument1.is_none() => {
+                    "argument1" if is_aerofi || metadata.argument1.is_none() => {
                         metadata.argument1 = Some(ScriptArgument::parse(value));
                     }
-                    "argument2" if metadata.argument2.is_none() => {
+                    "argument2" if is_aerofi || metadata.argument2.is_none() => {
                         metadata.argument2 = Some(ScriptArgument::parse(value));
                     }
-                    "argument3" if metadata.argument3.is_none() => {
+                    "argument3" if is_aerofi || metadata.argument3.is_none() => {
                         metadata.argument3 = Some(ScriptArgument::parse(value));
                     }
-                    "description" if metadata.description.is_none() => {
+                    "description" if is_aerofi || metadata.description.is_none() => {
                         metadata.description = Some(SharedString::from(value.to_string()));
                     }
-                    "author" if metadata.author.is_none() => {
+                    "author" if is_aerofi || metadata.author.is_none() => {
                         metadata.author = Some(SharedString::from(value.to_string()));
                     }
-                    "authorURL" if metadata.author_url.is_none() => {
+                    "authorURL" if is_aerofi || metadata.author_url.is_none() => {
                         metadata.author_url = Some(SharedString::from(value.to_string()));
                     }
                     _ => {}
@@ -604,6 +600,104 @@ echo "Running script..."
         assert_eq!(metatags.columns, Some(3));
 
         let _ = std::fs::remove_file(&file_path);
+    }
+
+    #[test]
+    fn parses_all_aerofi_tags() {
+        let temp_dir = std::env::temp_dir();
+        let file_path = temp_dir.join(format!("test_aerofi_tags_{}.sh", std::process::id()));
+
+        std::fs::write(
+            &file_path,
+            r#"#!/usr/bin/env bash
+# @aerofi.schemaVersion 1
+# @aerofi.title Theme Switcher
+# @aerofi.mode gui
+# @aerofi.packageName aerofi Utilities
+# @aerofi.icon 🎨
+# @aerofi.iconDark 🎭
+# @aerofi.refreshTime 10m
+# @aerofi.needsConfirmation false
+# @aerofi.argument1 {"type": "text", "placeholder": "Theme name"}
+# @aerofi.description Interactive theme previewer and switcher
+# @aerofi.author Timur Iskakov
+# @aerofi.authorURL https://github.com/frostymur
+# @aerofi.show_search true
+# @aerofi.columns 2
+
+echo "Theme switcher..."
+"#,
+        )
+        .unwrap();
+
+        let target =
+            Target::script_from_file(&file_path).expect("Failed to parse script with @aerofi tags");
+        let Target::Script {
+            name,
+            mode,
+            icon,
+            metadata,
+            metatags,
+            ..
+        } = target
+        else {
+            panic!("Expected Target::Script");
+        };
+
+        assert_eq!(name.as_ref(), "Theme Switcher");
+        assert_eq!(mode, ScriptMode::Gui);
+        assert_eq!(icon.as_deref(), Some("🎨"));
+
+        assert_eq!(metadata.schema_version, Some(1));
+        assert_eq!(metadata.title.as_deref(), Some("Theme Switcher"));
+        assert_eq!(metadata.mode, Some(ScriptMode::Gui));
+        assert_eq!(metadata.package_name.as_deref(), Some("aerofi Utilities"));
+        assert_eq!(metadata.icon.as_deref(), Some("🎨"));
+        assert_eq!(metadata.icon_dark.as_deref(), Some("🎭"));
+        assert_eq!(metadata.refresh_time.as_deref(), Some("10m"));
+        assert_eq!(metadata.needs_confirmation, Some(false));
+
+        let arg1 = metadata.argument1.as_ref().expect("arg1 missing");
+        assert_eq!(arg1.arg_type.as_deref(), Some("text"));
+        assert_eq!(arg1.placeholder.as_deref(), Some("Theme name"));
+
+        assert_eq!(
+            metadata.description.as_deref(),
+            Some("Interactive theme previewer and switcher")
+        );
+        assert_eq!(metadata.author.as_deref(), Some("Timur Iskakov"));
+        assert_eq!(
+            metadata.author_url.as_deref(),
+            Some("https://github.com/frostymur")
+        );
+
+        assert_eq!(metatags.show_search, Some(true));
+        assert_eq!(metatags.columns, Some(2));
+
+        let _ = std::fs::remove_file(&file_path);
+    }
+
+    #[test]
+    fn theme_switcher_example_script_parses_cleanly() {
+        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let script_path = manifest_dir.join("examples/scripts/theme_switcher.sh");
+        let target =
+            Target::script_from_file(&script_path).expect("theme_switcher.sh should parse");
+        let Target::Script {
+            name,
+            mode,
+            icon,
+            metadata,
+            ..
+        } = target
+        else {
+            panic!("Expected Target::Script");
+        };
+
+        assert_eq!(name.as_ref(), "Theme Switcher");
+        assert_eq!(mode, ScriptMode::Gui);
+        assert_eq!(icon.as_deref(), Some("🎨"));
+        assert_eq!(metadata.package_name.as_deref(), Some("aerofi"));
     }
 
     #[test]

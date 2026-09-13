@@ -2,6 +2,23 @@
 
 This directory contains ready-to-use and customizable scripts for aerofi.
 
+## 🎨 Theme Switcher (`theme_switcher.sh` / `theme_switcher.py`)
+
+An interactive theme previewer and switcher for aerofi using the bidirectional `gui` protocol and native `@aerofi.*` metadata tags.
+
+### ✨ Highlights
+- **Live Color Swatches**: Renders visual palette previews using Pango markup with auto-resolved `$accent` and `$bg` colors.
+- **Active Theme Indicator**: Shows a `✓ Active` badge next to your currently selected theme.
+- **Automatic Theme Discovery**: Scans `~/.config/aerofi/themes/` and built-in palettes.
+- **Instant Activation**: Selecting a theme updates `~/.config/aerofi/config.toml` and sends a desktop notification.
+
+```bash
+cp examples/scripts/theme_switcher.sh examples/scripts/theme_switcher.py ~/.config/aerofi/scripts/
+chmod +x ~/.config/aerofi/scripts/theme_switcher.*
+```
+
+---
+
 ## 📋 Clipboard History Manager (`clipboard.sh` / `clipboard.py`)
 
 A glamorous, fully functional clipboard history manager for aerofi powered by the [`clipy`](https://crates.io/crates/clipy) minimal clipboard history CLI and aerofi's interactive `gui` mode.
