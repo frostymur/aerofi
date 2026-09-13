@@ -145,6 +145,11 @@ unsafe extern "C" fn query(query_ptr: *const c_char) -> PluginResults {
 
 /// Search for files using Spotlight `mdfind` first, with fallbacks to `fd` and `find`.
 fn search_files(query: &str) -> Vec<String> {
+    // 0. Fast exit for extremely short queries to prevent massive output
+    if query.trim().len() < 2 {
+        return Vec::new();
+    }
+
     // 1. Try Spotlight `mdfind`
     if let Ok(out) = Command::new("mdfind").arg("-name").arg(query).output()
         && out.status.success()
@@ -154,6 +159,7 @@ fn search_files(query: &str) -> Vec<String> {
             .lines()
             .map(|l| l.trim().to_string())
             .filter(|l| !l.is_empty())
+            .take(25)
             .collect();
         if !lines.is_empty() {
             return lines;

@@ -62,6 +62,8 @@ pub struct Launcher {
     pub(super) gui_session: Option<Arc<Mutex<GuiSession>>>,
     /// Manager for dynamic `.dylib` plugins.
     pub(super) plugin_manager: crate::core::plugin_manager::PluginManager,
+    /// Active plugin search task.
+    pub(super) plugin_search_task: Option<gpui::Task<()>>,
     /// Number of base items (apps/scripts/builtins). Plugin items are appended after this.
     pub(super) base_count: usize,
     /// Set to `true` after a config/theme reload so the next `render()` call
@@ -98,6 +100,7 @@ impl Launcher {
             button_hotkeys,
             gui_session: None,
             plugin_manager: crate::core::plugin_manager::PluginManager::load_all(),
+            plugin_search_task: None,
             base_count,
             needs_center: false,
         }
@@ -199,7 +202,7 @@ impl Launcher {
                 ("w", false, true, false) | ("backspace", false, false, true) => {
                     let len = self.query.trim_end().rfind(' ').map(|i| i + 1).unwrap_or(0);
                     self.query.truncate(len);
-                    self.refilter();
+                    self.refilter(None);
                     self.selected = 0;
                     return LauncherAction::None;
                 }
@@ -380,7 +383,7 @@ impl Launcher {
                     && !c.chars().any(char::is_control)
                 {
                     self.query.push_str(c);
-                    self.refilter();
+                    self.refilter(None);
                     self.selected = 0;
                     // A configured alias: typing it exactly runs its target
                     // immediately (no Enter needed).
@@ -404,13 +407,13 @@ impl Launcher {
     /// Clear the query and reselect the top (first) entry.
     fn reset(&mut self) {
         self.query.clear();
-        self.refilter();
+        self.refilter(None);
         self.selected = 0;
     }
 
     fn backspace(&mut self) {
         if self.query.pop().is_some() {
-            self.refilter();
+            self.refilter(None);
             self.selected = 0;
         }
     }
@@ -432,66 +435,152 @@ impl Launcher {
     }
 
     /// Re-run the fuzzy match for the current query and rebuild `filtered`.
-    fn refilter(&mut self) {
+    fn refilter(&mut self, cx: Option<&mut Context<Self>>) {
         // Clear any previous plugin items
         self.all.truncate(self.base_count);
 
         if let Some((plugin, remainder)) = self.plugin_manager.match_prefix(&self.query) {
-            let results = plugin.query(remainder);
+            let remainder = remainder.to_string();
+            
+            if let Some(cx) = cx {
+                let plugin = plugin.clone();
+                let view = cx.entity();
+                let cx_async = cx.to_async();
+                let (tx, rx) = futures::channel::oneshot::channel();
+                let plugin_clone = plugin.clone();
+                let remainder_str = remainder.to_string();
+                
+                std::thread::Builder::new()
+                    .name("aerofi-plugin-search".into())
+                    .spawn(move || {
+                        let results = plugin_clone.query(&remainder_str);
+                        
+                        let items = if results.count == 0 || results.items.is_null() {
+                            &[]
+                        } else {
+                            unsafe { std::slice::from_raw_parts(results.items, results.count) }
+                        };
+                        
+                        let mut parsed = Vec::with_capacity(results.count);
+                        for item in items {
+                            let name = if item.title.is_null() {
+                                gpui::SharedString::from("")
+                            } else {
+                                let c_str = unsafe { std::ffi::CStr::from_ptr(item.title) };
+                                gpui::SharedString::from(c_str.to_string_lossy().into_owned())
+                            };
+            
+                            let subtitle = if item.subtitle.is_null() {
+                                None
+                            } else {
+                                let c_str = unsafe { std::ffi::CStr::from_ptr(item.subtitle) };
+                                Some(gpui::SharedString::from(
+                                    c_str.to_string_lossy().into_owned(),
+                                ))
+                            };
+            
+                            let icon = if item.icon.is_null() {
+                                None
+                            } else {
+                                let c_str = unsafe { std::ffi::CStr::from_ptr(item.icon) };
+                                Some(gpui::SharedString::from(
+                                    c_str.to_string_lossy().into_owned(),
+                                ))
+                            };
+            
+                            let plugin_id = if item.id.is_null() {
+                                gpui::SharedString::from("")
+                            } else {
+                                let c_str = unsafe { std::ffi::CStr::from_ptr(item.id) };
+                                gpui::SharedString::from(c_str.to_string_lossy().into_owned())
+                            };
+                            
+                            parsed.push(Target::PluginItem {
+                                name,
+                                subtitle,
+                                icon,
+                                plugin_id,
+                                plugin_name: gpui::SharedString::from(plugin.name.clone()),
+                            });
+                        }
+                        
+                        plugin.free_results(results);
+                        let _ = tx.send(parsed);
+                    }).unwrap();
 
-            // Convert C ABI results to Rust Targets
-            let items = if results.count == 0 || results.items.is_null() {
-                &[]
+                self.plugin_search_task = Some(cx.spawn(|_, _: &mut gpui::AsyncApp| async move {
+                    if let Ok(parsed_items) = rx.await {
+                        let _ = cx_async.update(|cx| {
+                        view.update(cx, |this, cx| {
+                            this.all.truncate(this.base_count);
+                            this.all.extend(parsed_items);
+                            this.filtered = (this.base_count..this.all.len()).collect();
+                            if this.selected >= this.filtered.len() {
+                                this.selected = 0;
+                            }
+                            this.list.scroll_to_item(0, ScrollStrategy::Top);
+                            cx.notify();
+                        });
+                    });
+                    }
+                }));
             } else {
-                unsafe { std::slice::from_raw_parts(results.items, results.count) }
-            };
+                let results = plugin.query(&remainder);
 
-            for item in items {
-                let name = if item.title.is_null() {
-                    gpui::SharedString::from("")
+                // Convert C ABI results to Rust Targets
+                let items = if results.count == 0 || results.items.is_null() {
+                    &[]
                 } else {
-                    let c_str = unsafe { std::ffi::CStr::from_ptr(item.title) };
-                    gpui::SharedString::from(c_str.to_string_lossy().into_owned())
+                    unsafe { std::slice::from_raw_parts(results.items, results.count) }
                 };
 
-                let subtitle = if item.subtitle.is_null() {
-                    None
-                } else {
-                    let c_str = unsafe { std::ffi::CStr::from_ptr(item.subtitle) };
-                    Some(gpui::SharedString::from(
-                        c_str.to_string_lossy().into_owned(),
-                    ))
-                };
+                for item in items {
+                    let name = if item.title.is_null() {
+                        gpui::SharedString::from("")
+                    } else {
+                        let c_str = unsafe { std::ffi::CStr::from_ptr(item.title) };
+                        gpui::SharedString::from(c_str.to_string_lossy().into_owned())
+                    };
 
-                let icon = if item.icon.is_null() {
-                    None
-                } else {
-                    let c_str = unsafe { std::ffi::CStr::from_ptr(item.icon) };
-                    Some(gpui::SharedString::from(
-                        c_str.to_string_lossy().into_owned(),
-                    ))
-                };
+                    let subtitle = if item.subtitle.is_null() {
+                        None
+                    } else {
+                        let c_str = unsafe { std::ffi::CStr::from_ptr(item.subtitle) };
+                        Some(gpui::SharedString::from(
+                            c_str.to_string_lossy().into_owned(),
+                        ))
+                    };
 
-                let plugin_id = if item.id.is_null() {
-                    gpui::SharedString::from("")
-                } else {
-                    let c_str = unsafe { std::ffi::CStr::from_ptr(item.id) };
-                    gpui::SharedString::from(c_str.to_string_lossy().into_owned())
-                };
+                    let icon = if item.icon.is_null() {
+                        None
+                    } else {
+                        let c_str = unsafe { std::ffi::CStr::from_ptr(item.icon) };
+                        Some(gpui::SharedString::from(
+                            c_str.to_string_lossy().into_owned(),
+                        ))
+                    };
 
-                self.all.push(Target::PluginItem {
-                    name,
-                    subtitle,
-                    icon,
-                    plugin_id,
-                    plugin_name: gpui::SharedString::from(plugin.name.clone()),
-                });
+                    let plugin_id = if item.id.is_null() {
+                        gpui::SharedString::from("")
+                    } else {
+                        let c_str = unsafe { std::ffi::CStr::from_ptr(item.id) };
+                        gpui::SharedString::from(c_str.to_string_lossy().into_owned())
+                    };
+
+                    self.all.push(Target::PluginItem {
+                        name,
+                        subtitle,
+                        icon,
+                        plugin_id,
+                        plugin_name: gpui::SharedString::from(plugin.name.clone()),
+                    });
+                }
+
+                plugin.free_results(results);
+
+                // For plugins, we don't fuzzy sort. We show exactly what the plugin returned in order.
+                self.filtered = (self.base_count..self.all.len()).collect();
             }
-
-            plugin.free_results(results);
-
-            // For plugins, we don't fuzzy sort. We show exactly what the plugin returned in order.
-            self.filtered = (self.base_count..self.all.len()).collect();
         } else {
             self.search.search(
                 &self.query,
@@ -528,7 +617,7 @@ impl Launcher {
     /// so the next render creates fresh `img()` elements that GPUI will
     /// decode on demand.
     pub fn on_show(&mut self) {
-        self.refilter();
+        self.refilter(None);
     }
 
     pub fn selected_item(&self) -> Option<&Target> {
@@ -818,7 +907,7 @@ impl Launcher {
         // window.resize() applies the new theme dimensions.
         self.needs_center = true;
         self.query.clear();
-        self.refilter();
+        self.refilter(None);
         self.selected = 0;
         println!(
             "aerofi: configuration reloaded (theme: {})",

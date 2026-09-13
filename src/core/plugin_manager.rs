@@ -17,6 +17,9 @@ pub struct LoadedPlugin {
     pub path: PathBuf,
 }
 
+unsafe impl Send for LoadedPlugin {}
+unsafe impl Sync for LoadedPlugin {}
+
 impl LoadedPlugin {
     /// Load a plugin from a `.dylib` file.
     #[allow(dead_code)]
