@@ -46,11 +46,21 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Setup local tap for formula
+        run: |
+          brew tap-new frostymur/aerofi --no-git
+          TAP_DIR="$(brew --repo frostymur/aerofi)/Formula"
+          mkdir -p "$TAP_DIR"
+          cp Formula/aerofi.rb "$TAP_DIR/aerofi.rb"
+
       - name: Check formula style
-        run: brew style Formula/aerofi.rb
+        run: brew style frostymur/aerofi/aerofi
+
+      - name: Audit formula
+        run: brew audit frostymur/aerofi/aerofi --strict --online || true
 
       - name: Install formula from source
-        run: brew install --build-from-source Formula/aerofi.rb
+        run: brew install --build-from-source frostymur/aerofi/aerofi
 
       - name: Test installed formula
-        run: brew test Formula/aerofi.rb
+        run: brew test frostymur/aerofi/aerofi
