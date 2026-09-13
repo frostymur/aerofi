@@ -797,6 +797,36 @@ pub fn load_theme(theme_name: &str) -> ThemeConfig {
 /// Parse a CSS-style hex colour (`"#1a1b26"`, `"7aa2f7"`, `"#fff"`) into
 /// a 24-bit RGB value suitable for GPUI's `rgb()`.  Returns `None` on
 /// malformed input.
+
+pub fn parse_hex_color_alpha(hex: &str) -> Option<u32> {
+    if hex == "transparent" {
+        return Some(0x00000000);
+    }
+    let hex = hex.trim().trim_start_matches('#');
+    match hex.len() {
+        3 => {
+            let r = u8::from_str_radix(&hex[0..1], 16).ok()? * 0x11;
+            let g = u8::from_str_radix(&hex[1..2], 16).ok()? * 0x11;
+            let b = u8::from_str_radix(&hex[2..3], 16).ok()? * 0x11;
+            Some(((r as u32) << 24) | ((g as u32) << 16) | ((b as u32) << 8) | 0xFF)
+        }
+        6 => {
+            let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
+            let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
+            let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
+            Some(((r as u32) << 24) | ((g as u32) << 16) | ((b as u32) << 8) | 0xFF)
+        }
+        8 => {
+            let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
+            let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
+            let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
+            let a = u8::from_str_radix(&hex[6..8], 16).ok()?;
+            Some(((r as u32) << 24) | ((g as u32) << 16) | ((b as u32) << 8) | (a as u32))
+        }
+        _ => None,
+    }
+}
+
 pub fn parse_hex_color(hex: &str) -> Option<u32> {
     let hex = hex.trim().trim_start_matches('#');
     let (r, g, b) = match hex.len() {

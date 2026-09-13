@@ -1,9 +1,9 @@
 use gpui::{
     App, Bounds, Context, Entity, Render, WindowBounds, WindowKind, WindowOptions, div, prelude::*,
-    px, rgb,
+    px, rgb, rgba,
 };
 
-use crate::core::theme::{ThemeConfig, parse_hex_color};
+use crate::core::theme::{ThemeConfig, parse_hex_color, parse_hex_color_alpha};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ToastState {
@@ -51,15 +51,15 @@ impl Render for ToastWindow {
     fn render(&mut self, _window: &mut gpui::Window, _cx: &mut Context<Self>) -> impl IntoElement {
         let t = &self.theme;
         let pad = t.element.padding.first().copied().unwrap_or(8.0);
-        let window_bg = rgb(parse_hex_color(&t.window.background).unwrap_or(0));
-        let text_color = rgb(parse_hex_color(&t.element.text_color).unwrap_or(0));
-        let desc_color = rgb(parse_hex_color(
+        let window_bg = rgba(parse_hex_color_alpha(&t.window.background).unwrap_or(0x000000FF));
+        let text_color = rgba(parse_hex_color_alpha(&t.element.text_color).unwrap_or(0x000000FF));
+        let desc_color = rgba(parse_hex_color_alpha(
             t.element
                 .description_color
                 .as_deref()
                 .unwrap_or(&t.element.text_color),
         )
-        .unwrap_or(0));
+        .unwrap_or(0x000000FF));
 
         let mut root = div()
             .size_full()
@@ -74,10 +74,10 @@ impl Render for ToastWindow {
             .overflow_hidden();
 
         if t.window.border_width > 0.0 {
-            let border_color = parse_hex_color(&t.window.border_color).unwrap_or(0);
+            let border_color = parse_hex_color_alpha(&t.window.border_color).unwrap_or(0x000000FF);
             root = root
                 .border(px(t.window.border_width))
-                .border_color(rgb(border_color));
+                .border_color(rgba(border_color));
         }
 
         match &self.state {
@@ -88,7 +88,7 @@ impl Render for ToastWindow {
                             .w(px(10.0))
                             .h(px(10.0))
                             .rounded_full()
-                            .bg(rgb(crate::core::theme::parse_hex_color(&self.theme.toast.running_dot).unwrap_or(0xaaaaaa))),
+                            .bg(rgba(crate::core::theme::parse_hex_color_alpha(&self.theme.toast.running_dot).unwrap_or(0xaaaaaaFF))),
                     )
                     .child(
                         div()
@@ -116,9 +116,9 @@ impl Render for ToastWindow {
                 is_error,
             } => {
                 let dot_color: u32 = if *is_error {
-                    crate::core::theme::parse_hex_color(&self.theme.toast.error_dot).unwrap_or(0xf7768e)
+                    crate::core::theme::parse_hex_color_alpha(&self.theme.toast.error_dot).unwrap_or(0xf7768eFF)
                 } else {
-                    crate::core::theme::parse_hex_color(&self.theme.toast.success_dot).unwrap_or(0x9ece6a)
+                    crate::core::theme::parse_hex_color_alpha(&self.theme.toast.success_dot).unwrap_or(0x9ece6aFF)
                 };
                 root = root
                     .child(
@@ -126,7 +126,7 @@ impl Render for ToastWindow {
                             .w(px(10.0))
                             .h(px(10.0))
                             .rounded_full()
-                            .bg(rgb(dot_color)),
+                            .bg(rgba(dot_color)),
                     )
                     .child(
                         div()

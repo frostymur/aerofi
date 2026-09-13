@@ -4,10 +4,10 @@
 //! recurse via `render_custom_widget`. Unknown ids are silently skipped
 //! (a warning was already emitted during registry construction).
 
-use gpui::{Context, CursorStyle, div, img, prelude::*, px, rgb};
+use gpui::{Context, CursorStyle, div, img, prelude::*, px, rgb, rgba};
 
 use crate::core::item::Target;
-use crate::core::theme::{WidgetDef, parse_hex_color};
+use crate::core::theme::{WidgetDef, parse_hex_color, parse_hex_color_alpha};
 
 use super::helpers::{expand_tilde_path, format_combo, is_primary_click};
 use super::state::Launcher;
@@ -161,7 +161,7 @@ impl Launcher {
         let display = text.unwrap_or("");
         let col = color
             .and_then(parse_hex_color)
-            .unwrap_or_else(|| parse_hex_color(&t.element.text_color).unwrap_or(0));
+            .unwrap_or_else(|| parse_hex_color_alpha(&t.element.text_color).unwrap_or(0x000000FF));
         let size = font_size.unwrap_or(t.font.size);
 
         let mut el = div().text_color(rgb(col)).text_size(px(size));
@@ -213,7 +213,7 @@ impl Launcher {
         } else {
             let col = color
                 .and_then(parse_hex_color)
-                .unwrap_or_else(|| parse_hex_color(&t.element.text_color).unwrap_or(0));
+                .unwrap_or_else(|| parse_hex_color_alpha(&t.element.text_color).unwrap_or(0x000000FF));
 
             div()
                 .text_color(rgb(col))
@@ -262,7 +262,7 @@ impl Launcher {
         let t = &self.theme;
         let col = color
             .and_then(parse_hex_color)
-            .unwrap_or_else(|| parse_hex_color(&t.window.border_color).unwrap_or(0x414868));
+            .unwrap_or_else(|| parse_hex_color_alpha(&t.window.border_color).unwrap_or(0x414868FF));
         let th = thickness.unwrap_or(1.0);
         let m = margin.unwrap_or(4.0);
 
@@ -405,7 +405,7 @@ impl Launcher {
 
         let col = color
             .and_then(parse_hex_color)
-            .unwrap_or_else(|| parse_hex_color(&t.element.text_color).unwrap_or(0xffffff));
+            .unwrap_or_else(|| parse_hex_color_alpha(&t.element.text_color).unwrap_or(0xffffffFF));
         btn = btn.text_color(rgb(col));
 
         let hbg_opt = hover_background.and_then(parse_hex_color);
