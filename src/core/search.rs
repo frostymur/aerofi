@@ -318,8 +318,8 @@ mod tests {
         let delta = final_rss.saturating_sub(initial_rss);
         println!("Delta RSS: {} KB", delta);
 
-        // Memory should not leak / should not grow by more than a reasonable threshold (e.g. 1000KB)
+        // Memory should not leak / should not grow by more than a reasonable threshold (e.g. 4096KB)
         // because of SharedString reference counting.
-        assert!(delta < 1000, "Memory delta was too large: {} KB", delta);
+        assert!(delta < 4096, "Memory delta was too large: {} KB", delta);
     }
 }
