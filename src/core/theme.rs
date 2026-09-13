@@ -1061,8 +1061,21 @@ action = "copy"
 
     #[test]
     fn load_theme_loads_from_dot_config_or_app_support() {
-        let t = load_theme("horizon");
-        assert_eq!(t.name, "Horizon");
+        let Some(home) = dirs::home_dir() else {
+            return;
+        };
+        let theme_dir = home.join(".config").join("aerofi").join("themes");
+        let _ = std::fs::create_dir_all(&theme_dir);
+        let test_theme_path = theme_dir.join("test_custom.toml");
+        let content = r#"
+name = "Test Custom"
+[mainbox]
+orientation = "horizontal"
+"#;
+        let _ = std::fs::write(&test_theme_path, content);
+        let t = load_theme("test_custom");
+        let _ = std::fs::remove_file(&test_theme_path);
+        assert_eq!(t.name, "Test Custom");
         assert_eq!(t.mainbox.orientation, "horizontal");
     }
 
