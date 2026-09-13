@@ -27,7 +27,7 @@
 ---
 
 <div align="center">
-<video src="examples/images/demo.mp4" autoplay loop muted playsinline width="820"></video>
+<video src="https://github.com/user-attachments/assets/5b45a96a-a9df-49fa-84af-f32730426196" autoplay loop muted playsinline width="820"></video>
   <p><em>Recorded demo showing instant search, theming with custom theme_switcher script, and native file search plugin:</em></p>
 </div>
 
