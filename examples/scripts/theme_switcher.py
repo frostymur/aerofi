@@ -178,27 +178,24 @@ def discover_themes(config_dir: Path) -> list[dict]:
 
 
 def render_pango_row(theme: dict, is_active: bool) -> str:
-    accent = theme.get("accent", "#7aa2f7")
-    text_color = theme.get("text", "#c0caf5")
     name = theme.get("name", theme["slug"])
     slug = theme["slug"]
 
-    # Visual color swatch preview
-    swatch = f'<span foreground="{accent}">■</span> <span foreground="{theme.get("bg", "#222222")}">■</span>'
-    title_span = f'<span foreground="{text_color}" weight="bold">{name}</span>'
-    slug_span = f'<span foreground="#666666">({slug})</span>'
+    title_span = f'<span weight="bold">{name}</span>'
+    slug_span = f'<span foreground="#565f89">({slug})</span>'
 
     if is_active:
-        status = '<span foreground="#9ece6a" weight="bold">✓ Active</span>'
+        status = f'<span foreground="#9ece6a" weight="bold">✓ Active</span>'
     else:
-        status = f'<span foreground="#888888">by {theme.get("author", "aerofi")}</span>'
+        status = f'<span foreground="#565f89">by {theme.get("author", "aerofi")}</span>'
 
-    row_text = f"{swatch}  {title_span} {slug_span}"
+    row_text = f"{title_span} {slug_span}"
     info_field = f"\0info\x1f{status}"
     meta_field = f"\0meta\x1f{name} {slug} {theme.get('author', '')} {'active current' if is_active else ''}"
     icon_field = "\0icon\x1femoji:🎨"
 
-    return f"{row_text}{icon_field}{info_field}{meta_field}"
+    active_field = f"\0active\x1f{'true' if is_active else 'false'}"
+    return f"{row_text}{icon_field}{info_field}{active_field}{meta_field}"
 
 
 def notify_user(title: str, msg: str):
@@ -220,8 +217,8 @@ def main():
 
     # Emit GUI initial frame
     sys.stdout.write("\0prompt\x1fSearch & select aerofi theme…\n")
-    sys.stdout.write("\0markup-rows\x1ftrue\n")
-    sys.stdout.write("\0message\x1fPress Enter to activate theme • Press Cmd+R in aerofi to reload\n")
+    sys.stdout.write("\0markup-rows\x1ftrue\n")  # enable Pango markup in row text + info fields
+    sys.stdout.write("\0message\x1fPress Enter to activate theme • Instant live reload\n")
 
     for i, t in enumerate(themes):
         is_active = (t["slug"] == current_theme)
@@ -241,15 +238,15 @@ def main():
         if not line:
             continue
 
-        # Format: \0event\x1fselect\x1fkey=enter\x1findex=0\x1f...
+        # Format: \0event\x1fselect\x1fkey:enter\x1findex:0\x1f...
         # or plain text if stdin receives return
         if "select" in line or line.startswith("\0event"):
             # Extract index
             index = None
             for part in line.split("\x1f"):
-                if part.startswith("index="):
+                if part.startswith("index:") or part.startswith("index="):
                     try:
-                        index = int(part.split("=", 1)[1])
+                        index = int(part.split(":", 1)[1] if ":" in part else part.split("=", 1)[1])
                     except ValueError:
                         pass
 
@@ -263,9 +260,12 @@ def main():
             selected_slug = selected["slug"]
             selected_name = selected["name"]
             if set_current_theme(config_file, selected_slug):
+                sys.stdout.write("\0reload\x1ftrue\n")
+                sys.stdout.write("\0flush\n")
+                sys.stdout.flush()
                 notify_user(
                     "aerofi Theme Switcher",
-                    f"Theme changed to '{selected_name}'. Reload with Cmd+R."
+                    f"Theme changed to '{selected_name}'."
                 )
             break
 

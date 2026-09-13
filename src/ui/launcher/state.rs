@@ -1059,6 +1059,16 @@ impl Launcher {
                 }
                 GuiCommand::MultiSelect(b) => multi_select = *b,
                 GuiCommand::MarkupRows(b) => markup_rows = *b,
+                GuiCommand::Reload => {
+                    // Leave GUI mode before reloading so the user sees the
+                    // regular search list immediately after the script exits.
+                    // We must return early to avoid the `self.state = GuiMode`
+                    // assignment at the bottom of this function overwriting the
+                    // `Search` state that gui_leave() sets.
+                    self.gui_leave();
+                    self.reload();
+                    return;
+                }
             }
         }
 

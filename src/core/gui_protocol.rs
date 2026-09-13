@@ -55,6 +55,8 @@ pub enum GuiCommand {
     MultiSelect(bool),
     /// Enable Pango-style inline markup rendering for rows.
     MarkupRows(bool),
+    /// Reload aerofi configuration immediately.
+    Reload,
 }
 
 /// A single selectable (or non-selectable) row entry.
@@ -294,6 +296,7 @@ fn try_parse_command(rest: &str) -> Option<GuiCommand> {
         "preview-file" => Some(GuiCommand::PreviewFile(value.to_string())),
         "multi-select" => Some(GuiCommand::MultiSelect(value.eq_ignore_ascii_case("true"))),
         "markup-rows" => Some(GuiCommand::MarkupRows(value.eq_ignore_ascii_case("true"))),
+        "reload" => Some(GuiCommand::Reload),
         _ => None,
     }
 }
@@ -658,5 +661,14 @@ mod tests {
             query: "query text".to_string(),
         };
         assert_eq!(change_ev.to_event_line(), "\0change\x1fquery text");
+
+        assert_eq!(
+            parse_gui_line("\0reload\x1ftrue"),
+            GuiLineResult::Command(GuiCommand::Reload)
+        );
+        assert_eq!(
+            parse_gui_line("\0reload"),
+            GuiLineResult::Command(GuiCommand::Reload)
+        );
     }
 }

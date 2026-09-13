@@ -55,14 +55,12 @@ pub fn scan_scripts(config: &AppConfig) -> Vec<Target> {
 /// set (scripts run via `sh <script>`, so no extension is strictly
 /// required).
 fn is_shell_script(path: &Path, metadata: &std::fs::Metadata) -> bool {
-    let has_shell_extension = matches!(
-        path.extension().and_then(|e| e.to_str()),
-        Some("sh" | "bash" | "zsh")
-    );
-    if has_shell_extension {
-        return true;
+    let extension = path.extension().and_then(|e| e.to_str());
+    match extension {
+        Some("sh" | "bash" | "zsh") => true,
+        None => metadata.permissions().mode() & 0o111 != 0,
+        _ => false, // explicitly reject all other extensions (e.g., .py)
     }
-    metadata.permissions().mode() & 0o111 != 0
 }
 
 /// Scan the standard application directories (`/Applications`,
