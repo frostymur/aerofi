@@ -187,14 +187,9 @@ def format_pango_entry(content):
             proto, domain, path = m.groups()
             dom_esc = html.escape(domain)
             path_snippet = html.escape(path[:50] + ("…" if len(path) > 50 else ""))
-    if is_url:
-        icon = "🔗"
-        if dom:
-            dom_esc = html.escape(dom)
-            path_snippet = html.escape(first_line_clean[len(dom):][:40])
             pango = f"<b>{dom_esc}</b>{path_snippet}"
         else:
-            pango = f"{first_line_esc[:70]}"
+            pango = f"<b>URL</b> {first_line_esc[:70]}"
         type_hint = "URL"
         return icon, pango, type_hint
 
