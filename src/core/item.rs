@@ -38,6 +38,7 @@ pub enum ScriptMode {
 
 impl ScriptMode {
     /// Canonical string form, as it appears in the annotation.
+    #[allow(dead_code)]
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Silent => "silent",
