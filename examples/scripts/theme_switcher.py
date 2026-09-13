@@ -181,15 +181,15 @@ def render_pango_row(theme: dict, is_active: bool) -> str:
     name = theme.get("name", theme["slug"])
     slug = theme["slug"]
 
-    title_span = f'<span weight="bold">{name}</span>'
-    slug_span = f'<span foreground="#565f89">({slug})</span>'
+    title_span = f'<b>{name}</b>'
+    slug_span = f' ({slug})'
 
     if is_active:
-        status = f'<span foreground="#9ece6a" weight="bold">✓ Active</span>'
+        status = "<b>✓ Active</b>"
     else:
-        status = f'<span foreground="#565f89">by {theme.get("author", "aerofi")}</span>'
+        status = f"by {theme.get('author', 'aerofi')}"
 
-    row_text = f"{title_span} {slug_span}"
+    row_text = f"{title_span}{slug_span}"
     info_field = f"\0info\x1f{status}"
     meta_field = f"\0meta\x1f{name} {slug} {theme.get('author', '')} {'active current' if is_active else ''}"
     icon_field = "\0icon\x1femoji:🎨"

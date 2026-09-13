@@ -187,33 +187,28 @@ def format_pango_entry(content):
             proto, domain, path = m.groups()
             dom_esc = html.escape(domain)
             path_snippet = html.escape(path[:50] + ("…" if len(path) > 50 else ""))
-            pango = (
-                f"<span color='#8be9fd' weight='bold'>URL</span>  "
-                f"<span color='#50fa7b' weight='bold'>{dom_esc}</span>"
-                f"<span color='#6272a4'>{path_snippet}</span>"
-            )
+    if is_url:
+        icon = "🔗"
+        if dom:
+            dom_esc = html.escape(dom)
+            path_snippet = html.escape(first_line_clean[len(dom):][:40])
+            pango = f"<b>{dom_esc}</b>{path_snippet}"
         else:
-            pango = f"<span color='#8be9fd' weight='bold'>URL</span>  <span color='#f8f8f2'>{first_line_esc[:70]}</span>"
+            pango = f"{first_line_esc[:70]}"
         type_hint = "URL"
         return icon, pango, type_hint
 
     # 2. Hex Color Detection (#RGB, #RGBA, #RRGGBB, #RRGGBBAA)
     if re.match(r"^#(?:[0-9a-fA-F]{3,4}){1,2}$", raw):
         icon = "🎨"
-        pango = (
-            f"<span color='{raw}' weight='bold'>■ {raw}</span>  "
-            f"<span color='#bd93f9' weight='bold'>COLOR</span>"
-        )
+        pango = f"<b>■ {raw}</b>"
         type_hint = "Color"
         return icon, pango, type_hint
 
     # 3. Email Detection
     if re.match(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$", raw):
         icon = "✉️"
-        pango = (
-            f"<span color='#ffb86c' weight='bold'>EMAIL</span>  "
-            f"<span color='#f8f8f2'>{first_line_esc}</span>"
-        )
+        pango = f"<b>{first_line_esc}</b>"
         type_hint = "Email"
         return icon, pango, type_hint
 
@@ -230,10 +225,7 @@ def format_pango_entry(content):
                 count_str = "JSON"
             compact = json.dumps(parsed, separators=(", ", ":"))
             compact_esc = html.escape(compact[:65] + ("…" if len(compact) > 65 else ""))
-            pango = (
-                f"<span color='#ff79c6' weight='bold'>JSON</span>  "
-                f"<span color='#f1fa8c'>{compact_esc}</span>"
-            )
+            pango = f"{compact_esc}"
             type_hint = f"JSON • {count_str}"
             return icon, pango, type_hint
         except Exception:
@@ -256,16 +248,9 @@ def format_pango_entry(content):
         if line_count > 1:
             second_clean = lines[1].strip()
             second_esc = html.escape(second_clean[:35] + ("…" if len(second_clean) > 35 else ""))
-            pango = (
-                f"<span color='#bb9af7' weight='bold'>CODE</span>  "
-                f"<span color='#7dcfff'>{first_esc}</span> "
-                f"<span color='#6272a4' style='italic'>↵ {second_esc}</span>"
-            )
+            pango = f"<b>{first_esc}</b> <i>↵ {second_esc}</i>"
         else:
-            pango = (
-                f"<span color='#bb9af7' weight='bold'>CMD</span>  "
-                f"<span color='#7dcfff'>{first_esc}</span>"
-            )
+            pango = f"<b>{first_esc}</b>"
         type_hint = f"{line_count} lines" if line_count > 1 else "code"
         return icon, pango, type_hint
 
@@ -275,17 +260,14 @@ def format_pango_entry(content):
         first_esc = html.escape(first_line_clean[:60])
         second_clean = lines[1].strip()
         second_esc = html.escape(second_clean[:35] + ("…" if len(second_clean) > 35 else ""))
-        pango = (
-            f"<span color='#f8f8f2' weight='bold'>{first_esc}</span> "
-            f"<span color='#6272a4' style='italic'>↵ {second_esc}</span>"
-        )
+        pango = f"<b>{first_esc}</b> <i>↵ {second_esc}</i>"
         type_hint = f"{line_count} lines"
         return icon, pango, type_hint
 
     # 7. Single Line Text
     icon = "📝"
     snippet_esc = html.escape(first_line_clean[:75] + ("…" if len(first_line_clean) > 75 else ""))
-    pango = f"<span color='#f8f8f2'>{snippet_esc}</span>"
+    pango = f"{snippet_esc}"
     type_hint = f"{char_count} chars" if char_count > 40 else "text"
     return icon, pango, type_hint
 
@@ -350,7 +332,7 @@ def emit_gui_frame(clipy_bin, entries, message_override=None):
             print(f"{pango}\0id\x1fcurrent\0icon\x1f{icon}\0info\x1fCurrent Clipboard\0meta\x1f{meta}")
         else:
             print(
-                "<span color='#6272a4' style='italic'>Clipboard history is empty. Copy text to see it here!</span>"
+                "<i>Clipboard history is empty. Copy text to see it here!</i>"
                 "\0nonselectable\x1ftrue\0icon\x1f📋"
             )
         print("\0flush")
@@ -418,12 +400,12 @@ def main():
         print("\0markup-rows\x1ftrue")
         print("\0message\x1fPress Enter on 'cargo install clipy' to copy the install command")
         print(
-            "<span color='#ff5555' weight='bold'>clipy CLI is not installed</span>"
+            "<b>clipy CLI is not installed</b>"
             "\0nonselectable\x1ftrue\0icon\x1f⚠️\0info\x1fMissing Dependency"
         )
         print(
-            "<span color='#50fa7b' weight='bold'>cargo install clipy</span>  "
-            "<span color='#6272a4'>Copy command to install minimal clipboard daemon</span>"
+            "<b>cargo install clipy</b>  "
+            "<i>Copy command to install minimal clipboard daemon</i>"
             "\0id\x1finstall_cmd\0icon\x1f💡\0info\x1fPress Enter to copy"
         )
         cur = pbpaste_content().strip()
