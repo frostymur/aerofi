@@ -72,9 +72,9 @@ impl History {
 
     /// Append a launch of `target_identifier` with the current timestamp
     /// and persist the history to disk. Keep at most 2000 records.
-    pub fn record_launch(&mut self, target_identifier: SharedString) {
+    pub fn record_launch(&mut self, target_identifier: &str) {
         self.records.push(ExecutionRecord {
-            target_identifier,
+            target_identifier: SharedString::from(target_identifier.to_string()),
             timestamp: now_secs(),
         });
         if self.records.len() > 2000 {
@@ -95,6 +95,18 @@ impl History {
             .filter(|r| r.target_identifier == target_identifier)
             .map(|r| recency_points(now.saturating_sub(r.timestamp)))
             .sum()
+    }
+
+    /// Calculate the frecency points for all recorded targets in a single pass.
+    /// Returns a map of target identifier to its total frecency score.
+    pub fn calculate_frecency_map(&self) -> std::collections::HashMap<&str, u32> {
+        let now = now_secs();
+        let mut map = std::collections::HashMap::new();
+        for r in &self.records {
+            let pts = recency_points(now.saturating_sub(r.timestamp));
+            *map.entry(r.target_identifier.as_ref()).or_insert(0) += pts;
+        }
+        map
     }
 
     /// Persist the current records to `path` (best effort: failures are

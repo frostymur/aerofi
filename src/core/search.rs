@@ -71,6 +71,7 @@ impl SearchIndex {
         self.scored_buf.clear();
         out_filtered.clear();
         let needle = Utf32Str::new(query, &mut self.needle_buf);
+        let frecency_map = history.calculate_frecency_map();
         for (i, target) in targets.iter().enumerate() {
             let name = target.name();
             let aliases = self.aliases_by_target.get(name);
@@ -95,7 +96,7 @@ impl SearchIndex {
             let Some(fuzzy_score) = fuzzy else {
                 continue;
             };
-            let frecency = history.calculate_frecency(&target.identifier());
+            let frecency = frecency_map.get(target.identifier()).copied().unwrap_or(0);
             self.scored_buf.push((u32::from(fuzzy_score) + frecency, i));
         }
         self.scored_buf
