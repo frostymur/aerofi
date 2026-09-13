@@ -212,7 +212,7 @@ mod tests {
             now_secs()
         ));
         let mut history = History::test_new(path.clone(), Vec::new());
-        history.record_launch("/tmp/script.sh".into());
+        history.record_launch("/tmp/script.sh");
         assert_eq!(history.records.len(), 1);
 
         let reloaded = History::from_path(path.clone());
