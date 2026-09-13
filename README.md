@@ -26,35 +26,9 @@
 
 ---
 
-## 📽️ Demo
-
-<!-- DEMO_GIF_PLACEHOLDER_START -->
 <div align="center">
-  <img src="assets/demo.gif" alt="aerofi demo placeholder" width="820" onerror="this.style.display='none'" />
-  <p><em>Recorded demo showing instant search, theming, interactive clipboard manager, and native plugins:</em></p>
+  <img src="examples/images/demo.gif" alt="aerofi demo" width="820" />
 </div>
-<!-- DEMO_GIF_PLACEHOLDER_END -->
-
-<details>
-<summary>🎬 <b>Click to view Demo GIF Storyboard (What to show in the recording)</b></summary>
-
-When recording the showcase GIF for aerofi, follow this ~12-second sequence:
-
-1. **Scene 1 (0:00 - 0:03) — Instant Hotkey Launch & Fuzzy Search**:
-   - Press `Option+Space`: aerofi pops up instantly (<2ms) with frosted glass blur over a sleek desktop/editor background.
-   - Type `term` or `saf`: demonstrate zero-allocation sub-millisecond fuzzy filtering with instant item selection.
-2. **Scene 2 (0:03 - 0:06) — Live Theming (Tokyo Night ⇄ Gruvbox)**:
-   - Highlight the crisp Tokyo Night theme (deep indigo, neon blue/cyan accents).
-   - Switch to or preview the warm Gruvbox Dark theme (retro-groove charcoal with terracotta orange and warm gold highlights).
-3. **Scene 3 (0:06 - 0:09) — Interactive GUI Script (Clipboard History)**:
-   - Launch `Clipboard History` (`clipboard.sh`).
-   - Showcase rich Pango markup: color swatch previews (`■ #HEX`), URL domain badges, JSON item counts, and multiline code snippets.
-   - Press `Tab` to multi-select items, and `Ctrl+D` to delete an item in real time.
-4. **Scene 4 (0:09 - 0:12) — Dynamic C ABI Plugin (`.dylib`)**:
-   - Type `g rust async`: instant web search generation.
-   - Type `f invoice`: instant Spotlight file search using the native compiled `.dylib` plugin without spawning CLI shells.
-
-</details>
 
 ---
 
