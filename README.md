@@ -91,9 +91,10 @@ You can port rofi scripts to aerofi with minimal changes.
 ## Installation
 
 ### Homebrew (Recommended)
+Install aerofi and start it as a native macOS background service:
 ```bash
-brew tap frostymur/aerofi
-brew install aerofi
+brew install frostymur/aerofi/aerofi
+brew services start frostymur/aerofi/aerofi
 ```
 
 ### Cargo
@@ -101,36 +102,13 @@ brew install aerofi
 cargo install aerofi
 ```
 
-### Or Build from Source
+### Build from Source
 ```bash
 git clone https://github.com/frostymur/aerofi
 cd aerofi
 cargo build --release
 ./target/release/aerofi
 ```
-
-## Quick Start
-
-### 1. Start aerofi
-```bash
-aerofi  # or set it to launch on login via System Preferences
-```
-
-### 2. Create Your First Script
-```bash
-mkdir -p ~/.config/aerofi/scripts
-cat > ~/.config/aerofi/scripts/hello.sh << 'EOF'
-#!/bin/bash
-# @aerofi.title Hello World
-# @aerofi.mode compact
-
-echo "Hello from aerofi! 👋"
-EOF
-chmod +x ~/.config/aerofi/scripts/hello.sh
-```
-
-### 3. Try It
-Press **Option+Space** (default hotkey), type "hello", press Enter.
 
 ---
 
