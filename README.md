@@ -126,7 +126,7 @@ color = "$accent"
 weight = "bold"
 ```
 
-### 🎨 Bundled Themes
+### 🎨 Bundled Themes & Modular Architecture
 
 aerofi comes bundled with curated modern themes in `~/.config/aerofi/themes/`:
 
@@ -136,7 +136,9 @@ aerofi comes bundled with curated modern themes in `~/.config/aerofi/themes/`:
 | **Gruvbox Dark** | Warm vintage retro-groove palette with high contrast and earthy tones. |
 | **Dark Transparent** | Minimalist semi-translucent dark monochrome design. |
 
-> 📖 Read the [Customization Guide](docs/customization.md) and explore [`examples/theme.toml`](examples/theme.toml) for complete references.
+Themes support modular splitting via `imports = ["colors/...", "layouts/..."]` to effortlessly mix-and-match color palettes and window layouts.
+
+> 📖 Read the [Customization Guide](docs/customization.md) and explore [`examples/themes/`](examples/themes/) for complete references.
 
 ---
 

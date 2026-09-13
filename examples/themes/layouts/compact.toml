@@ -1,0 +1,72 @@
+# ==============================================================================
+# Compact List Layout (Mixin)
+# ==============================================================================
+# Location: ~/.config/aerofi/themes/layouts/compact.toml
+# Import via: imports = ["layouts/compact.toml"]
+# ==============================================================================
+
+[font]
+family = "SF Pro Text"
+size = 14.0
+fallback = ["SF Pro", "Helvetica Neue", "Arial"]
+
+[window]
+width = 640.0
+height = 420.0
+padding = 14.0
+background = "$bg"
+blur = true
+background_opacity = 0.94
+corner_radius = 14.0
+border_width = 1.0
+border_color = "$border"
+
+[mainbox]
+orientation = "vertical"
+children = ["InputBar", "ListView"]
+
+[inputbar]
+height = 42.0
+padding = [8.0, 12.0]
+margin = [0.0, 0.0, 8.0, 0.0]
+background = "$surface"
+text_color = "$text"
+placeholder = "Search apps, scripts, or commands…"
+placeholder_color = "$subtle"
+corner_radius = 8.0
+icon = "❯"
+icon_color = "$accent"
+
+[listview]
+columns = 1
+spacing = 3.0
+scrollbar = false
+empty_text = "No matching results"
+empty_text_color = "$subtle"
+
+[listview.category_badge]
+enabled = true
+color = "$subtle"
+
+[listview.alias_badge]
+enabled = true
+color = "$accent"
+
+[element]
+padding = [6.0, 10.0]
+corner_radius = 6.0
+background = "transparent"
+text_color = "$text"
+description_color = "$subtle"
+show_icons = true
+icon_size = 20.0
+
+[element.selected]
+background = "$surface2"
+text_color = "$text"
+description_color = "$accent"
+
+[element.hover]
+background = "$surface"
+text_color = "$text"
+description_color = "$subtle"

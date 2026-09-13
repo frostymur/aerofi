@@ -1545,4 +1545,52 @@ orientation = "horizontal"
 
         assert_eq!(base, expected);
     }
+
+    #[test]
+    fn modular_mixins_parse_cleanly() {
+        let colors_tn = include_str!("../../examples/themes/colors/tokyo-night.toml");
+        let _: toml::Table =
+            toml::from_str(colors_tn).expect("colors/tokyo-night.toml should parse as TOML table");
+
+        let colors_gruv = include_str!("../../examples/themes/colors/gruvbox.toml");
+        let _: toml::Table =
+            toml::from_str(colors_gruv).expect("colors/gruvbox.toml should parse as TOML table");
+
+        let layout_compact = include_str!("../../examples/themes/layouts/compact.toml");
+        let _: toml::Table = toml::from_str(layout_compact)
+            .expect("layouts/compact.toml should parse as TOML table");
+
+        let layout_grid = include_str!("../../examples/themes/layouts/grid.toml");
+        let _: toml::Table =
+            toml::from_str(layout_grid).expect("layouts/grid.toml should parse as TOML table");
+    }
+
+    #[test]
+    fn test_merge_modular_example() {
+        let colors: toml::Table = toml::from_str(include_str!(
+            "../../examples/themes/colors/tokyo-night.toml"
+        ))
+        .unwrap();
+        let layout: toml::Table =
+            toml::from_str(include_str!("../../examples/themes/layouts/compact.toml")).unwrap();
+        let root: toml::Table = toml::from_str(include_str!(
+            "../../examples/themes/tokyo-night-modular.toml"
+        ))
+        .unwrap();
+
+        let mut merged = toml::Table::new();
+        super::merge_toml(&mut merged, colors);
+        super::merge_toml(&mut merged, layout);
+        super::merge_toml(&mut merged, root);
+
+        let mut theme: ThemeConfig = toml::Value::Table(merged)
+            .try_into()
+            .expect("merged modular theme should deserialize");
+        theme.resolve_colors();
+        assert_eq!(theme.name, "Tokyo Night Modular");
+        assert_eq!(theme.window.width, 660.0);
+        assert_eq!(theme.window.height, 440.0);
+        assert_eq!(theme.window.background, "#1a1b26f0");
+        assert_eq!(theme.status_colors.accent, "#7aa2f7");
+    }
 }

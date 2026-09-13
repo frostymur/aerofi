@@ -20,6 +20,23 @@ A warm, vintage retro-groove theme designed for optimal contrast and eye comfort
 - **Accents**: Warm Gold (`#fabd2f`), Terracotta Orange (`#fe8019`), Forest Green (`#b8bb26`)
 - **Text**: Warm off-white (`#ebdbb2`)
 
+### 3. 🏁 Tokyo Night Grid (`tokyo-night-grid.toml`)
+A compact 4-column icon tile grid layout styled with the Tokyo Night palette.
+
+- **Layout**: 4-column compact grid with large 32px application icons
+- **Window**: Compact 560x380 footprint
+
+---
+
+### 4. 🧩 Modular Themes & Mixins
+aerofi supports splitting themes into reusable, mix-and-match files using the top-level `imports = [...]` array:
+
+- **`colors/tokyo-night.toml`**: Standalone Tokyo Night palette and status color definitions.
+- **`colors/gruvbox.toml`**: Standalone Gruvbox Dark palette and status color definitions.
+- **`layouts/compact.toml`**: Reusable compact list layout geometry and styling.
+- **`layouts/grid.toml`**: Reusable 4-column tile grid layout geometry.
+- **`tokyo-night-modular.toml`**: Example composing `colors/tokyo-night.toml` and `layouts/compact.toml` in just a few lines!
+
 ---
 
 ## 🚀 Installation & Usage
@@ -28,7 +45,7 @@ A warm, vintage retro-groove theme designed for optimal contrast and eye comfort
 
 ```bash
 mkdir -p ~/.config/aerofi/themes
-cp examples/themes/*.toml ~/.config/aerofi/themes/
+cp -r examples/themes/* ~/.config/aerofi/themes/
 ```
 
 ### 2. Activate a Theme in `~/.config/aerofi/config.toml`
@@ -45,6 +62,11 @@ theme = "tokyo-night"
 theme = "gruvbox"
 ```
 
+#### To use Tokyo Night Modular:
+```toml
+theme = "tokyo-night-modular"
+```
+
 #### To use the built-in default theme:
 ```toml
 theme = "default"
@@ -52,6 +74,39 @@ theme = "default"
 
 ### 3. Apply Changes
 Restart aerofi or trigger **Reload Configuration** (`Cmd+R` or search in launcher).
+
+---
+
+## 🧩 Modular Themes & File Splitting (`imports = [...]`)
+
+You can cleanly separate colors, window dimensions, and widget hierarchies into separate files.
+
+### How `imports` works:
+1. **Paths**: Paths in `imports = ["..."]` are resolved relative to `~/.config/aerofi/themes/`.
+2. **Deep Merging**: Tables (such as `[window]`, `[font]`, `[inputbar]`, `[colors]`) are recursively merged.
+3. **Exclusive Override for Arrays**: Non-table values (including arrays like `children` in `[mainbox]` and `layout` in `[element]`) are completely replaced by the importing theme rather than appended. What you write in the final file is exactly what appears on screen.
+4. **Order of Precedence**: Imported files are processed in order, with the importing file having the highest priority.
+5. **Cycle Detection**: Circular imports are automatically detected and safely skipped.
+
+### Example: Composing a Modular Theme
+
+`~/.config/aerofi/themes/my-custom-theme.toml`:
+```toml
+name = "My Custom Theme"
+
+# Import reusable color palette and layout mixins
+imports = [
+    "colors/tokyo-night.toml",
+    "layouts/compact.toml",
+]
+
+# Override or tweak only what you need:
+[window]
+width = 680.0
+
+[colors]
+accent = "#bb9af7" # Change accent to Tokyo Night violet
+```
 
 ---
 
@@ -105,6 +160,7 @@ active_background = "$green"
 active_text = "#1a1b26"
 accent = "$accent"
 muted = "$subtle"
+```
 
 ---
 
