@@ -103,6 +103,10 @@ pub fn execute(target: &Target) {
         },
         // Built-in actions are handled by the UI, never executed here.
         Target::Builtin { .. } => {}
+        Target::PluginItem { .. } => {
+            // Plugins are executed by the PluginManager via LauncherAction::ActivatePlugin,
+            // so we do nothing here.
+        }
     }
 }
 

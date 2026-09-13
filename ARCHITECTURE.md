@@ -78,7 +78,10 @@ We do **not** build a React/TypeScript extension runtime, and we do not attempt 
 
 - Windows/Linux support.
 - A settings GUI panel — config stays a hand-edited `config.toml` for v1.
-- Any plugin/extension runtime.
+- Any heavy JavaScript/React plugin extension runtime (we support native C ABI plugins instead, see below).
 - AeroSpace/yabai-native quick actions — genuinely valuable, but not part of the core daemon; when it happens, it should be scripts shelling out to the `aerospace` CLI, not a special-cased integration.
 
+## Native Plugins (C ABI)
+
+Aerofi supports a dynamic plugin system via C ABI (`.dylib`). Plugins are isolated, compiled shared libraries loaded at runtime. This allows developers to extend Aerofi with complex features (file search, window management) using Rust, C, Swift, or Zig without recompiling the core launcher, while preserving the strict zero-overhead performance requirements. The plugin's `activate` function is strictly non-blocking and must execute any heavy workloads in a background thread to maintain the 120 FPS UI loop.
 

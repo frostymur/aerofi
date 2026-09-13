@@ -14,3 +14,4 @@ pub mod scheduler;
 pub mod search;
 pub mod theme;
 pub mod widget;
+pub mod plugin_manager;
