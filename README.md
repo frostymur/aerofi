@@ -1,8 +1,8 @@
 <div align="center">
 
-# aerofi
+# aerofi — Fast macOS Launcher & Raycast Alternative
 
-**A blazing fast, keyboard-driven application launcher and extensible script runner for macOS, built with GPUI and Rust.**
+**A blazing fast, keyboard-driven application launcher and extensible script runner for macOS, built with GPUI and Rust. A lightweight Spotlight, Raycast, and Alfred alternative.**
 
 [![Release](https://img.shields.io/github/v/release/frostymur/aerofi?style=flat-square&color=7aa2f7&label=version)](https://github.com/frostymur/aerofi/releases)
 [![CI](https://img.shields.io/github/actions/workflow/status/frostymur/aerofi/ci.yml?branch=main&style=flat-square&label=ci)](https://github.com/frostymur/aerofi/actions)
@@ -34,7 +34,8 @@
 
 ## Why aerofi?
 
-Lightweight, open-source macOS launcher compatible with Raycast scripts.
+**aerofi** is a lightweight, open-source macOS application launcher and extensible productivity tool designed as a fast Spotlight and Raycast alternative. Built in Rust with GPU acceleration (GPUI), it brings lightning-fast application launching, script execution, and full Raycast script command compatibility to macOS.
+
 Compare to alternatives:
 
 | Feature | aerofi | Raycast | Alfred |
