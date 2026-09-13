@@ -70,10 +70,6 @@ To apply changes without restarting aerofi:
 theme = "tokyo-night"
 
 [general]
-# Global hotkey to toggle aerofi visibility.
-# Uses Carbon FFI (no macOS Accessibility permission required).
-toggle_hotkey = "opt+space"
-
 # Maximum number of search results displayed simultaneously.
 max_results = 20
 ```
