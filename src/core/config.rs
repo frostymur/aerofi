@@ -381,7 +381,7 @@ mod tests {
         assert!(config.sources.scripts);
         assert_eq!(config.scripts.dirs.len(), 2);
         assert_eq!(config.apps.ignore_names.len(), 5);
-        assert!(config.apps.ignore_dirs.is_empty());
+        assert_eq!(config.apps.ignore_dirs.len(), 1);
         assert!(config.apps.extra_dirs.is_empty());
         assert!(config.apps.extra_apps.is_empty());
         assert_eq!(config.aliases.len(), 4);
