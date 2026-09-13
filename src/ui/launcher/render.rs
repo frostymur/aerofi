@@ -146,7 +146,7 @@ impl Render for Launcher {
             // Apply alpha to the root background colour.
             let hex = parse_hex_color_alpha(&t.window.background).unwrap_or(0x000000FF);
             let alpha = (opacity * 255.0) as u32;
-            root = root.bg(rgba((hex << 8) | alpha));
+            root = root.bg(rgba((hex & 0xFFFFFF00) | alpha));
         }
 
         let content = div()
