@@ -27,7 +27,7 @@
 ---
 
 <div align="center">
-  <img src="examples/images/demo.gif" alt="aerofi demo" width="820" />
+  <video src="examples/images/demo.mov" autoplay loop muted playsinline width="820"></video>
   <p><em>Recorded demo showing instant search, theming with custom theme_switcher script, and native file search plugin:</em></p>
 </div>
 
