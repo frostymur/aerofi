@@ -2,11 +2,11 @@
 //! view-building helpers (inputbar, listview, grid, full-output, markdown).
 
 use gpui::{
-    Context, CursorStyle, Render, Window, div, img, prelude::*, px, rgb, rgba, size, uniform_list,
+    Context, CursorStyle, Render, Window, div, img, prelude::*, px, rgba, size, uniform_list,
 };
 
 use crate::core::item::Target;
-use crate::core::theme::{BuiltinWidget, Widget, parse_hex_color};
+use crate::core::theme::{BuiltinWidget, Widget, parse_hex_color_alpha};
 
 use super::helpers::{apply_md_style, expand_tilde_path, format_combo, is_primary_click};
 use super::state::Launcher;
@@ -130,8 +130,8 @@ impl Render for Launcher {
             .size_full()
             .flex()
             .flex_col()
-            .bg(rgb(Self::color(&t.window.background)))
-            .text_color(rgb(Self::color(&t.element.text_color)))
+            .bg(rgba(Self::color(&t.window.background)))
+            .text_color(rgba(Self::color(&t.element.text_color)))
             .text_size(px(t.font.size))
             .rounded(px(t.window.corner_radius))
             .overflow_hidden();
@@ -139,14 +139,14 @@ impl Render for Launcher {
         if t.window.border_width > 0.0 {
             root = root
                 .border(px(t.window.border_width))
-                .border_color(rgb(Self::color(&t.window.border_color)));
+                .border_color(rgba(Self::color(&t.window.border_color)));
         }
 
         if opacity < 1.0 {
             // Apply alpha to the root background colour.
-            let hex = parse_hex_color(&t.window.background).unwrap_or(0);
+            let hex = parse_hex_color_alpha(&t.window.background).unwrap_or(0x000000FF);
             let alpha = (opacity * 255.0) as u32;
-            root = root.bg(rgba((hex << 8) | alpha));
+            root = root.bg(rgba((hex & 0xFFFFFF00) | alpha));
         }
 
         let content = div()
@@ -216,7 +216,7 @@ impl Launcher {
     /// Convenience: resolve a theme hex colour string to a `u32` for
     /// GPUI's `rgb()`, falling back to black on bad input.
     fn color(hex: &str) -> u32 {
-        parse_hex_color(hex).unwrap_or(0)
+        parse_hex_color_alpha(hex).unwrap_or(0x000000FF)
     }
 
     /// Render the input bar styled from `theme.inputbar`.
@@ -233,21 +233,21 @@ impl Launcher {
         {
             let mut row = div().flex().flex_row().items_center().gap_2().child(
                 div()
-                    .text_color(rgb(Self::color(&t.element.text_color)))
+                    .text_color(rgba(Self::color(&t.element.text_color)))
                     .child(target.name().to_string()),
             );
 
             for (i, arg) in args.iter().enumerate() {
                 let is_focused = i == *focused_index;
                 let bg_color = if is_focused {
-                    rgb(Self::color(&t.element.selected.background))
+                    rgba(Self::color(&t.element.selected.background))
                 } else {
                     rgba(0x00000000)
                 };
                 let border_color = if is_focused {
-                    rgb(Self::color(&t.element.selected.background))
+                    rgba(Self::color(&t.element.selected.background))
                 } else {
-                    rgb(Self::color(&ib.placeholder_color))
+                    rgba(Self::color(&ib.placeholder_color))
                 };
                 let text_val = &values[i];
                 let display_text = if text_val.is_empty() {
@@ -256,9 +256,9 @@ impl Launcher {
                     text_val
                 };
                 let t_color = if text_val.is_empty() {
-                    rgb(Self::color(&ib.placeholder_color))
+                    rgba(Self::color(&ib.placeholder_color))
                 } else {
-                    rgb(Self::color(&ib.text_color))
+                    rgba(Self::color(&ib.text_color))
                 };
                 row = row.child(
                     div()
@@ -285,13 +285,13 @@ impl Launcher {
             if self.query.is_empty() {
                 div()
                     .flex_1()
-                    .text_color(rgb(Self::color(&ib.placeholder_color)))
+                    .text_color(rgba(Self::color(&ib.placeholder_color)))
                     .child(ib.placeholder.clone())
                     .into_any()
             } else {
                 div()
                     .flex_1()
-                    .text_color(rgb(Self::color(&ib.text_color)))
+                    .text_color(rgba(Self::color(&ib.text_color)))
                     .child(self.query.clone())
                     .into_any()
             }
@@ -313,7 +313,7 @@ impl Launcher {
             .px(px(padding_h))
             .py(px(padding_v))
             .mb(px(margin_bottom))
-            .bg(rgb(Self::color(&ib.background)))
+            .bg(rgba(Self::color(&ib.background)))
             .rounded(px(ib.corner_radius))
             .child(
                 div()
@@ -323,7 +323,7 @@ impl Launcher {
                     .w(px(ib.height - padding_v * 2.0))
                     .h(px(ib.height - padding_v * 2.0))
                     .text_size(px(ib.height * 0.4))
-                    .text_color(rgb(Self::color(icon_color)))
+                    .text_color(rgba(Self::color(icon_color)))
                     .child(icon_label.to_string()),
             )
             .child(inner_view)
@@ -364,13 +364,13 @@ impl Launcher {
         let inner_view = if query.is_empty() {
             div()
                 .flex_1()
-                .text_color(rgb(Self::color(&ib.placeholder_color)))
+                .text_color(rgba(Self::color(&ib.placeholder_color)))
                 .child(placeholder.to_string())
                 .into_any()
         } else {
             div()
                 .flex_1()
-                .text_color(rgb(Self::color(&ib.text_color)))
+                .text_color(rgba(Self::color(&ib.text_color)))
                 .child(query.clone())
                 .into_any()
         };
@@ -404,7 +404,7 @@ impl Launcher {
                 .w(px(ib.height - padding_v * 2.0))
                 .h(px(ib.height - padding_v * 2.0))
                 .text_size(px(ib.height * 0.4))
-                .text_color(rgb(Self::color(icon_color)))
+                .text_color(rgba(Self::color(icon_color)))
                 .child(icon_label.to_string())
                 .into_any()
         };
@@ -418,13 +418,13 @@ impl Launcher {
             .px(px(padding_h))
             .py(px(padding_v))
             .mb(px(margin_bottom))
-            .bg(rgb(Self::color(&ib.background)))
+            .bg(rgba(Self::color(&ib.background)))
             .rounded(px(ib.corner_radius))
             .child(icon_el)
             .child(inner_view);
 
         if *loading {
-            let loading_col = rgb(Self::color(icon_color));
+            let loading_col = rgba(Self::color(icon_color));
             inputbar = inputbar.child(
                 div()
                     .px_2()
@@ -446,7 +446,7 @@ impl Launcher {
                 .w_full()
                 .px_2()
                 .py_1()
-                .text_color(rgb(Self::color(
+                .text_color(rgba(Self::color(
                     el.description_color.as_deref().unwrap_or(&el.text_color),
                 )))
                 .text_size(px(t.font.size * 0.85))
@@ -463,14 +463,14 @@ impl Launcher {
                     .flex_1()
                     .px_2()
                     .py_1()
-                    .text_color(rgb(Self::color(&t.listview.empty_text_color)))
+                    .text_color(rgba(Self::color(&t.listview.empty_text_color)))
                     .child(t.listview.empty_text.clone()),
             );
         } else {
             let pad_h = el.padding.first().copied().unwrap_or(8.0);
             let pad_v_el = el.padding.get(1).copied().unwrap_or(12.0);
             let icon_size = px(el.icon_size);
-            let desc_color = rgb(Self::color(
+            let desc_color = rgba(Self::color(
                 el.description_color.as_deref().unwrap_or(&el.text_color),
             ));
 
@@ -501,22 +501,22 @@ impl Launcher {
 
                             let (row_bg, name_color) = if is_selected {
                                 (
-                                    rgb(Self::color(&el.selected.background)),
-                                    rgb(Self::color(&el.selected.text_color)),
+                                    rgba(Self::color(&el.selected.background)),
+                                    rgba(Self::color(&el.selected.text_color)),
                                 )
                             } else if is_toggled {
                                 (
-                                    rgb(Self::color(&el.selected.background)).opacity(0.4),
-                                    rgb(Self::color(&el.selected.text_color)),
+                                    rgba(Self::color(&el.selected.background)).opacity(0.4),
+                                    rgba(Self::color(&el.selected.text_color)),
                                 )
                             } else if !is_selectable {
                                 (rgba(0x00000000), desc_color)
                             } else if is_urgent {
-                                (rgba(0xff555518), rgb(Self::color(&el.text_color)))
+                                (rgba(Self::color(&t.status_colors.urgent_row_background)), rgba(Self::color(&el.text_color)))
                             } else if is_active {
-                                (rgba(0x50fa7b18), rgb(Self::color(&el.text_color)))
+                                (rgba(Self::color(&t.status_colors.active_row_background)), rgba(Self::color(&el.text_color)))
                             } else {
-                                (rgba(0x00000000), rgb(Self::color(&el.text_color)))
+                                (rgba(0x00000000), rgba(Self::color(&el.text_color)))
                             };
 
                             if is_selectable {
@@ -537,19 +537,25 @@ impl Launcher {
                                     let toggle_icon = if is_toggled { "☑" } else { "☐" };
                                     row_div = row_div.child(
                                         div()
-                                            .text_color(if is_toggled { rgb(0x73daca) } else { desc_color })
+                                            .text_color(if is_toggled {
+                                                rgba(Self::color(&t.status_colors.active_background))
+                                            } else {
+                                                desc_color
+                                            })
                                             .text_size(px(t.font.size))
                                             .child(toggle_icon),
                                     );
                                 }
 
                                 if el.show_icons {
-                                    row_div = row_div.child(Self::render_gui_row_icon(icon_size, &row.icon));
+                                    row_div = row_div
+                                        .child(Self::render_gui_row_icon(icon_size, &row.icon));
                                 }
 
                                 let text_div = div().flex_1().text_color(name_color);
                                 let text_div = if markup_rows_val {
-                                    let (plain, highlights) = crate::core::pango::parse_pango(&row.text);
+                                    let (plain, highlights) =
+                                        crate::core::pango::parse_pango(&row.text);
                                     let mut st = gpui::StyledText::new(plain);
                                     if !highlights.is_empty() {
                                         st = st.with_highlights(highlights);
@@ -566,8 +572,8 @@ impl Launcher {
                                             .px_2()
                                             .py(px(2.0))
                                             .rounded_sm()
-                                            .bg(rgb(0xf7768e))
-                                            .text_color(rgb(0x1a1b26))
+                                            .bg(rgba(Self::color(&t.status_colors.urgent_background)))
+                                            .text_color(rgba(Self::color(&t.status_colors.urgent_text)))
                                             .text_size(px(t.font.size * 0.72))
                                             .child("URGENT"),
                                     );
@@ -579,15 +585,16 @@ impl Launcher {
                                             .px_2()
                                             .py(px(2.0))
                                             .rounded_sm()
-                                            .bg(rgb(0x73daca))
-                                            .text_color(rgb(0x1a1b26))
+                                            .bg(rgba(Self::color(&t.status_colors.active_background)))
+                                            .text_color(rgba(Self::color(&t.status_colors.active_text)))
                                             .text_size(px(t.font.size * 0.72))
                                             .child("ACTIVE"),
                                     );
                                 }
 
                                 if let Some(info) = &row.info {
-                                    let badge_col = rgb(Self::color(&t.listview.category_badge.color));
+                                    let badge_col =
+                                        rgba(Self::color(&t.listview.category_badge.color));
                                     row_div = row_div.child(
                                         div()
                                             .px_2()
@@ -602,19 +609,17 @@ impl Launcher {
                                 }
 
                                 row_div
-                                    .on_click(
-                                        _cx.listener(move |this, event, _window, cx| {
-                                            if is_primary_click(event) {
-                                                if let LauncherState::GuiMode { selected, .. } =
-                                                    &mut this.state
-                                                {
-                                                    *selected = vis_ix;
-                                                }
-                                                this.gui_select_row(cx);
-                                                cx.notify();
+                                    .on_click(_cx.listener(move |this, event, _window, cx| {
+                                        if is_primary_click(event) {
+                                            if let LauncherState::GuiMode { selected, .. } =
+                                                &mut this.state
+                                            {
+                                                *selected = vis_ix;
                                             }
-                                        }),
-                                    )
+                                            this.gui_select_row(cx);
+                                            cx.notify();
+                                        }
+                                    }))
                                     .into_any()
                             } else {
                                 let mut row_div = div()
@@ -635,19 +640,25 @@ impl Launcher {
                                     let toggle_icon = if is_toggled { "☑" } else { "☐" };
                                     row_div = row_div.child(
                                         div()
-                                            .text_color(if is_toggled { rgb(0x73daca) } else { desc_color })
+                                            .text_color(if is_toggled {
+                                                rgba(Self::color(&t.status_colors.active_background))
+                                            } else {
+                                                desc_color
+                                            })
                                             .text_size(px(t.font.size))
                                             .child(toggle_icon),
                                     );
                                 }
 
                                 if el.show_icons {
-                                    row_div = row_div.child(Self::render_gui_row_icon(icon_size, &row.icon));
+                                    row_div = row_div
+                                        .child(Self::render_gui_row_icon(icon_size, &row.icon));
                                 }
 
                                 let text_div = div().flex_1().text_color(name_color);
                                 let text_div = if markup_rows_val {
-                                    let (plain, highlights) = crate::core::pango::parse_pango(&row.text);
+                                    let (plain, highlights) =
+                                        crate::core::pango::parse_pango(&row.text);
                                     let mut st = gpui::StyledText::new(plain);
                                     if !highlights.is_empty() {
                                         st = st.with_highlights(highlights);
@@ -664,8 +675,8 @@ impl Launcher {
                                             .px_2()
                                             .py(px(2.0))
                                             .rounded_sm()
-                                            .bg(rgb(0xf7768e))
-                                            .text_color(rgb(0x1a1b26))
+                                            .bg(rgba(Self::color(&t.status_colors.urgent_background)))
+                                            .text_color(rgba(Self::color(&t.status_colors.urgent_text)))
                                             .text_size(px(t.font.size * 0.72))
                                             .child("URGENT"),
                                     );
@@ -677,15 +688,16 @@ impl Launcher {
                                             .px_2()
                                             .py(px(2.0))
                                             .rounded_sm()
-                                            .bg(rgb(0x73daca))
-                                            .text_color(rgb(0x1a1b26))
+                                            .bg(rgba(Self::color(&t.status_colors.active_background)))
+                                            .text_color(rgba(Self::color(&t.status_colors.active_text)))
                                             .text_size(px(t.font.size * 0.72))
                                             .child("ACTIVE"),
                                     );
                                 }
 
                                 if let Some(info) = &row.info {
-                                    let badge_col = rgb(Self::color(&t.listview.category_badge.color));
+                                    let badge_col =
+                                        rgba(Self::color(&t.listview.category_badge.color));
                                     row_div = row_div.child(
                                         div()
                                             .px_2()
@@ -718,7 +730,11 @@ impl Launcher {
                 block_count,
                 cx.processor(
                     move |this: &mut Launcher, range: std::ops::Range<usize>, _window, _cx| {
-                        if let LauncherState::GuiMode { preview_blocks: Some(b), .. } = &this.state {
+                        if let LauncherState::GuiMode {
+                            preview_blocks: Some(b),
+                            ..
+                        } = &this.state
+                        {
                             range.map(|i| this.render_md_block(&b[i])).collect()
                         } else {
                             vec![]
@@ -743,9 +759,9 @@ impl Launcher {
                             .w_1_2()
                             .h_full()
                             .border_l_1()
-                            .border_color(rgb(Self::color(&t.window.border_color)))
-                            .child(preview_panel)
-                    )
+                            .border_color(rgba(Self::color(&t.window.border_color)))
+                            .child(preview_panel),
+                    ),
             );
         } else {
             container = container.child(list_container.w_full());
@@ -755,10 +771,7 @@ impl Launcher {
     }
 
     /// Render the icon element for a GUI-mode row.
-    fn render_gui_row_icon(
-        icon_size: gpui::Pixels,
-        icon: &Option<String>,
-    ) -> gpui::AnyElement {
+    fn render_gui_row_icon(icon_size: gpui::Pixels, icon: &Option<String>) -> gpui::AnyElement {
         if let Some(icon_str) = icon {
             let is_image = icon_str.starts_with('/')
                 || icon_str.starts_with('~')
@@ -792,10 +805,14 @@ impl Launcher {
     }
 
     /// Render the `LauncherState::Confirming` view when a dangerous action requires confirmation.
-    pub(super) fn render_confirmation(&self, target: &Target, cx: &mut Context<Self>) -> gpui::AnyElement {
+    pub(super) fn render_confirmation(
+        &self,
+        target: &Target,
+        cx: &mut Context<Self>,
+    ) -> gpui::AnyElement {
         let t = &self.theme;
-        let text_color = rgb(Self::color(&t.element.text_color));
-        let sel_bg = rgb(Self::color(&t.element.selected.background));
+        let text_color = rgba(Self::color(&t.element.text_color));
+        let sel_bg = rgba(Self::color(&t.element.selected.background));
 
         div()
             .flex_1()
@@ -855,8 +872,8 @@ impl Launcher {
 
     fn render_full_output_running(&self, title: &str) -> gpui::AnyElement {
         let t = &self.theme;
-        let sel_bg = rgb(Self::color(&t.element.selected.background));
-        let sel_text = rgb(Self::color(&t.element.selected.text_color));
+        let sel_bg = rgba(Self::color(&t.element.selected.background));
+        let sel_text = rgba(Self::color(&t.element.selected.text_color));
 
         div()
             .size_full()
@@ -878,7 +895,7 @@ impl Launcher {
             .child(
                 div()
                     .text_base()
-                    .text_color(rgb(Self::color(&t.element.text_color)))
+                    .text_color(rgba(Self::color(&t.element.text_color)))
                     .child(title.to_string()),
             )
             .into_any_element()
@@ -894,7 +911,7 @@ impl Launcher {
             .justify_between()
             .pb(px(12.0))
             .border_b_1()
-            .border_color(rgb(Self::color(&t.window.border_color)))
+            .border_color(rgba(Self::color(&t.window.border_color)))
             .child(
                 div()
                     .flex()
@@ -902,7 +919,7 @@ impl Launcher {
                     .gap_3()
                     .child(
                         div()
-                            .text_color(rgb(0x7aa2f7)) // some accent color or back button style
+                            .text_color(rgba(Self::color(&t.status_colors.accent))) // some accent color or back button style
                             .text_sm()
                             .cursor(CursorStyle::PointingHand)
                             .id("full-output-back")
@@ -917,11 +934,11 @@ impl Launcher {
                     .child(
                         div()
                             .text_base()
-                            .text_color(rgb(Self::color(&t.element.text_color)))
+                            .text_color(rgba(Self::color(&t.element.text_color)))
                             .child(title.to_string()),
                     ),
             )
-            .child(div().text_xs().text_color(rgb(0x565f89)).child("↵ Rerun"));
+            .child(div().text_xs().text_color(rgba(Self::color(&t.status_colors.muted))).child("↵ Rerun"));
 
         let block_count = self.full_output_blocks.len();
         let body = if block_count == 0 {
@@ -929,7 +946,7 @@ impl Launcher {
                 .flex_1()
                 .text_sm()
                 .font_family("JetBrains Mono")
-                .text_color(rgb(Self::color(&t.inputbar.placeholder_color)))
+                .text_color(rgba(Self::color(&t.inputbar.placeholder_color)))
                 .child("(no output)")
                 .into_any()
         } else {
@@ -964,8 +981,8 @@ impl Launcher {
     fn render_md_block(&self, block: &crate::core::markdown::MdBlock) -> gpui::AnyElement {
         use crate::core::markdown::MdBlock;
         let t = &self.theme;
-        let text_color = rgb(Self::color(&t.element.text_color));
-        let dim_color = rgb(Self::color(&t.inputbar.placeholder_color));
+        let text_color = rgba(Self::color(&t.element.text_color));
+        let dim_color = rgba(Self::color(&t.inputbar.placeholder_color));
         let mono = gpui::SharedString::from("JetBrains Mono");
 
         let base = gpui::TextStyle {
@@ -999,7 +1016,7 @@ impl Launcher {
                     div()
                         .w_full()
                         .border_l_2()
-                        .border_color(rgb(Self::color(&t.window.border_color)))
+                        .border_color(rgba(Self::color(&t.window.border_color)))
                         .pl_3(),
                     &style,
                 )
@@ -1011,8 +1028,8 @@ impl Launcher {
                     .w_full()
                     .rounded_md()
                     .border_1()
-                    .border_color(rgb(Self::color(&t.window.border_color)))
-                    .bg(rgb(Self::color(&t.inputbar.background)))
+                    .border_color(rgba(Self::color(&t.window.border_color)))
+                    .bg(rgba(Self::color(&t.inputbar.background)))
                     .p_3();
                 if let Some(lang) = lang {
                     box_ = box_.child(
@@ -1043,7 +1060,7 @@ impl Launcher {
                 .w_full()
                 .h(px(1.0))
                 .my_1()
-                .bg(rgb(Self::color(&t.window.border_color)))
+                .bg(rgba(Self::color(&t.window.border_color)))
                 .into_any(),
             MdBlock::Plain(text) => div()
                 .w_full()
@@ -1061,6 +1078,7 @@ impl Launcher {
     /// size, colour) is inherited from the parent element's `text_style`.
     fn styled_md_text(&self, md: &crate::core::markdown::MdText) -> gpui::StyledText {
         use crate::core::markdown::InlineKind;
+        let t = &self.theme;
 
         let mut highlights: Vec<(std::ops::Range<usize>, gpui::HighlightStyle)> = Vec::new();
         let mut code_ranges: Vec<(std::ops::Range<usize>, gpui::SharedString)> = Vec::new();
@@ -1079,12 +1097,12 @@ impl Launcher {
                     ..Default::default()
                 },
                 InlineKind::Link => gpui::HighlightStyle {
-                    color: Some(Self::hsla_hex(0x7aa2f7)),
+                    color: Some(Self::hsla_hex(Self::color(&t.status_colors.accent))),
                     underline: Some(gpui::UnderlineStyle::default()),
                     ..Default::default()
                 },
                 InlineKind::Code => gpui::HighlightStyle {
-                    background_color: Some(Self::hsla_hex(0x3b4252).opacity(0.35)),
+                    background_color: Some(Self::hsla_hex(Self::color(&t.status_colors.muted)).opacity(0.35)),
                     ..Default::default()
                 },
             };
@@ -1113,19 +1131,23 @@ impl Launcher {
     }
 
     /// Convert a 0xRRGGBB value to an `Hsla`.
-    fn hsla_hex(rgb: u32) -> gpui::Hsla {
+    fn hsla_hex(rgba: u32) -> gpui::Hsla {
         gpui::Rgba {
-            r: ((rgb >> 16) & 0xff) as f32 / 255.0,
-            g: ((rgb >> 8) & 0xff) as f32 / 255.0,
-            b: (rgb & 0xff) as f32 / 255.0,
-            a: 1.0,
+            r: ((rgba >> 24) & 0xff) as f32 / 255.0,
+            g: ((rgba >> 16) & 0xff) as f32 / 255.0,
+            b: ((rgba >> 8) & 0xff) as f32 / 255.0,
+            a: (rgba & 0xff) as f32 / 255.0,
         }
         .into()
     }
 
     /// Render the result list styled from `theme.listview` and `theme.element`.
     /// When `columns > 1`, items are laid out in a grid.
-    pub(super) fn render_listview(&self, cx: &mut Context<Self>, columns: usize) -> impl IntoElement {
+    pub(super) fn render_listview(
+        &self,
+        cx: &mut Context<Self>,
+        columns: usize,
+    ) -> impl IntoElement {
         let t = &self.theme;
 
         if self.filtered.is_empty() {
@@ -1133,7 +1155,7 @@ impl Launcher {
                 .flex_1()
                 .px_2()
                 .py_1()
-                .text_color(rgb(Self::color(&t.listview.empty_text_color)))
+                .text_color(rgba(Self::color(&t.listview.empty_text_color)))
                 .child(t.listview.empty_text.clone())
                 .into_any();
         }
@@ -1213,11 +1235,11 @@ impl Launcher {
 
         let (cell_bg, name_color) = if is_selected {
             (
-                rgb(Self::color(&el.selected.background)),
-                rgb(Self::color(&el.selected.text_color)),
+                rgba(Self::color(&el.selected.background)),
+                rgba(Self::color(&el.selected.text_color)),
             )
         } else {
-            (rgba(0x00000000), rgb(Self::color(&el.text_color)))
+            (rgba(0x00000000), rgba(Self::color(&el.text_color)))
         };
 
         let icon_size = px(el.icon_size);
@@ -1236,7 +1258,7 @@ impl Launcher {
                 } else {
                     div()
                         .w(icon_size)
-                        .text_color(rgb(Self::color(
+                        .text_color(rgba(Self::color(
                             t.inputbar
                                 .icon_color
                                 .as_deref()
@@ -1285,17 +1307,17 @@ impl Launcher {
 
         let (row_bg, name_color) = if is_selected {
             (
-                rgb(Self::color(&el.selected.background)),
-                rgb(Self::color(&el.selected.text_color)),
+                rgba(Self::color(&el.selected.background)),
+                rgba(Self::color(&el.selected.text_color)),
             )
         } else {
-            (rgba(0x00000000), rgb(Self::color(&el.text_color)))
+            (rgba(0x00000000), rgba(Self::color(&el.text_color)))
         };
 
         let pad_h = el.padding.first().copied().unwrap_or(8.0);
         let pad_v = el.padding.get(1).copied().unwrap_or(12.0);
 
-        let desc_color = rgb(Self::color(
+        let desc_color = rgba(Self::color(
             el.description_color.as_deref().unwrap_or(&el.text_color),
         ));
 
@@ -1394,7 +1416,7 @@ impl Launcher {
                 } else {
                     div()
                         .w(icon_size)
-                        .text_color(rgb(Self::color(
+                        .text_color(rgba(Self::color(
                             t.inputbar
                                 .icon_color
                                 .as_deref()
@@ -1406,7 +1428,7 @@ impl Launcher {
             } else {
                 div()
                     .w(icon_size)
-                    .text_color(rgb(Self::color(
+                    .text_color(rgba(Self::color(
                         t.inputbar
                             .icon_color
                             .as_deref()
@@ -1456,7 +1478,7 @@ impl Launcher {
     fn render_category_badge(&self, item: &Target) -> gpui::AnyElement {
         let t = &self.theme;
         let b = &t.listview.category_badge;
-        let col = rgb(Self::color(&b.color));
+        let col = rgba(Self::color(&b.color));
         let font_sz = px((t.font.size - b.font_size_offset).max(8.0));
         let mut badge = div().text_color(col).text_size(font_sz);
         if b.padding_x > 0.0 {
@@ -1467,7 +1489,7 @@ impl Launcher {
         }
         if b.border {
             let bc = b.border_color.as_deref().unwrap_or(&b.color);
-            badge = badge.border(px(1.0)).border_color(rgb(Self::color(bc)));
+            badge = badge.border(px(1.0)).border_color(rgba(Self::color(bc)));
         }
         badge.child(item.category_label().to_string()).into_any()
     }

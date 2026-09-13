@@ -13,8 +13,7 @@ use gpui::App;
 use gpui_platform::application;
 
 fn main() {
-    // Index all targets (applications + scripts) and print a summary plus the
-    // parsed script metadata, so the parser can be verified at startup.
+    // Index all targets (applications + scripts).
     let app_config = core::config::AppConfig::load();
     let mut targets = core::scanner::scan_all(&app_config);
     let history = core::history::History::load();
@@ -37,27 +36,6 @@ fn main() {
         script_count,
         builtin_count
     );
-    let mut script_i = 0;
-    for item in &targets {
-        if let core::item::Target::Script {
-            name,
-            mode,
-            icon,
-            path,
-            ..
-        } = item
-        {
-            script_i += 1;
-            println!(
-                "  {}. {} | mode={} | icon={:?} | path={}",
-                script_i,
-                name,
-                mode.as_str(),
-                icon,
-                path.display()
-            );
-        }
-    }
 
     // Global target shortcuts (ADR 0002): resolve the configured combos to
     // keycodes and the named targets. Unknown combos/targets are skipped
@@ -68,7 +46,13 @@ fn main() {
             Some((keycode, modifiers)) => {
                 if let Some(target) = targets.iter().find(|t| t.name() == name).cloned() {
                     // Skip pipe-mode scripts: they copy to clipboard, no global hotkey needed.
-                    if matches!(target, crate::core::item::Target::Script { mode: crate::core::item::ScriptMode::Pipe, .. }) {
+                    if matches!(
+                        target,
+                        crate::core::item::Target::Script {
+                            mode: crate::core::item::ScriptMode::Pipe,
+                            ..
+                        }
+                    ) {
                         eprintln!(
                             "aerofi: warning: global shortcut {combo:?}: skipping pipe-mode script {name:?}"
                         );

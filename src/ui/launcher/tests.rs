@@ -270,7 +270,10 @@ fn escape_signals_hide_and_resets_query() {
     );
     l.handle_keystroke(&key("g"), None);
     assert_eq!(l.query, "g");
-    assert_eq!(l.handle_keystroke(&key("escape"), None), LauncherAction::Hide);
+    assert_eq!(
+        l.handle_keystroke(&key("escape"), None),
+        LauncherAction::Hide
+    );
     assert_eq!(l.query, "");
     assert_eq!(l.selected, 0);
 }

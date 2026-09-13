@@ -1,4 +1,4 @@
-use gpui::{HighlightStyle, Rgba, FontWeight, FontStyle, Hsla};
+use gpui::{FontStyle, FontWeight, HighlightStyle, Hsla};
 use std::ops::Range;
 
 /// Parse lightweight Pango-style markup and return the plain text along with GPUI highlight styles.
@@ -48,26 +48,47 @@ pub fn parse_pango(input: &str) -> (String, Vec<(Range<usize>, HighlightStyle)>)
                 let mut apply = false;
 
                 match tag_name.as_str() {
-                    "b" => { style.font_weight = Some(FontWeight::BOLD); apply = true; }
-                    "i" => { style.font_style = Some(FontStyle::Italic); apply = true; }
-                    "u" => { style.underline = Some(gpui::UnderlineStyle { color: None, thickness: 1.0.into(), wavy: false }); apply = true; }
-                    "s" => { style.strikethrough = Some(gpui::StrikethroughStyle { color: None, thickness: 1.0.into() }); apply = true; }
+                    "b" => {
+                        style.font_weight = Some(FontWeight::BOLD);
+                        apply = true;
+                    }
+                    "i" => {
+                        style.font_style = Some(FontStyle::Italic);
+                        apply = true;
+                    }
+                    "u" => {
+                        style.underline = Some(gpui::UnderlineStyle {
+                            color: None,
+                            thickness: 1.0.into(),
+                            wavy: false,
+                        });
+                        apply = true;
+                    }
+                    "s" => {
+                        style.strikethrough = Some(gpui::StrikethroughStyle {
+                            color: None,
+                            thickness: 1.0.into(),
+                        });
+                        apply = true;
+                    }
                     "span" | "font" => {
                         apply = true;
                         // Parse simple attributes: key="value" or key='value'
                         let mut attrs = attrs_str;
                         while let Some(eq_idx) = attrs.find('=') {
                             let key = attrs[..eq_idx].trim().to_lowercase();
-                            attrs = &attrs[eq_idx + 1..].trim_start();
-                            if attrs.is_empty() { break; }
-                            
+                            attrs = attrs[eq_idx + 1..].trim_start();
+                            if attrs.is_empty() {
+                                break;
+                            }
+
                             let quote = attrs.chars().next().unwrap();
                             if quote == '"' || quote == '\'' {
                                 attrs = &attrs[1..];
                                 if let Some(end_idx) = attrs.find(quote) {
                                     let value = &attrs[..end_idx];
                                     attrs = &attrs[end_idx + 1..];
-                                    
+
                                     match key.as_str() {
                                         "foreground" | "color" => {
                                             if let Some(c) = parse_hex_color(value) {
@@ -84,10 +105,8 @@ pub fn parse_pango(input: &str) -> (String, Vec<(Range<usize>, HighlightStyle)>)
                                                 style.font_weight = Some(FontWeight::BOLD);
                                             }
                                         }
-                                        "style" => {
-                                            if value.eq_ignore_ascii_case("italic") {
-                                                style.font_style = Some(FontStyle::Italic);
-                                            }
+                                        "style" if value.eq_ignore_ascii_case("italic") => {
+                                            style.font_style = Some(FontStyle::Italic);
                                         }
                                         _ => {}
                                     }
@@ -127,7 +146,7 @@ pub fn parse_pango(input: &str) -> (String, Vec<(Range<usize>, HighlightStyle)>)
                         break;
                     }
                 }
-                
+
                 if is_entity {
                     let decoded = match entity.as_str() {
                         "amp" => Some('&'),
@@ -137,7 +156,7 @@ pub fn parse_pango(input: &str) -> (String, Vec<(Range<usize>, HighlightStyle)>)
                         "apos" => Some('\''),
                         _ => None,
                     };
-                    
+
                     if let Some(dec_c) = decoded {
                         plain_text.push(dec_c);
                         for _ in 0..entity.len() + 1 {
@@ -201,14 +220,14 @@ mod tests {
         assert_eq!(highlights[0].0, 7..15);
         assert!(highlights[0].1.color.is_some());
     }
-    
+
     #[test]
     fn test_parse_pango_nested() {
         let (text, highlights) = parse_pango("<i><b>BoldItalic</b></i>");
         assert_eq!(text, "BoldItalic");
         assert_eq!(highlights.len(), 2);
     }
-    
+
     #[test]
     fn test_parse_entities() {
         let (text, _) = parse_pango("1 &lt; 2 &amp; 3 &gt; 1");

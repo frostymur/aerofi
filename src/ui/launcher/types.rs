@@ -87,4 +87,3 @@ pub enum LauncherState {
         markup_rows: bool,
     },
 }
-

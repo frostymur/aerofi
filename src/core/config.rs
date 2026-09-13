@@ -124,9 +124,7 @@ pub struct ScriptsConfig {
 
 impl Default for ScriptsConfig {
     fn default() -> Self {
-        Self {
-            dirs: vec![PathBuf::from("~/.config/aerofi/scripts")],
-        }
+        Self { dirs: Vec::new() }
     }
 }
 
@@ -235,7 +233,7 @@ impl AppConfig {
                 }
             }
         } else {
-            let defaults = AppConfig::default();
+            let defaults = toml::from_str::<AppConfig>(DEFAULT_CONFIG).unwrap_or_default();
             let parent = config_path.parent().map(PathBuf::from).unwrap_or_default();
             if let Err(err) =
                 fs::create_dir_all(&parent).and_then(|()| fs::write(&config_path, DEFAULT_CONFIG))
@@ -272,5 +270,44 @@ fn expand_tilde(dir: &Path, home: &Path) -> PathBuf {
             home.join(components.collect::<PathBuf>())
         }
         _ => dir.to_path_buf(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn config_without_scripts_has_empty_dirs() {
+        let toml_str = r#"
+            theme = "default"
+        "#;
+        let config: AppConfig = toml::from_str(toml_str).unwrap();
+        assert!(config.scripts.dirs.is_empty());
+    }
+
+    #[test]
+    fn config_with_scripts_dirs_parses_paths() {
+        let toml_str = r#"
+            [scripts]
+            dirs = ["/custom/scripts", "~/other_scripts"]
+        "#;
+        let config: AppConfig = toml::from_str(toml_str).unwrap();
+        assert_eq!(
+            config.scripts.dirs,
+            vec![
+                PathBuf::from("/custom/scripts"),
+                PathBuf::from("~/other_scripts")
+            ]
+        );
+    }
+
+    #[test]
+    fn default_config_string_has_default_scripts_dir() {
+        let config: AppConfig = toml::from_str(DEFAULT_CONFIG).unwrap();
+        assert_eq!(
+            config.scripts.dirs,
+            vec![PathBuf::from("~/.config/aerofi/scripts")]
+        );
     }
 }

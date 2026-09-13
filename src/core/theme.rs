@@ -285,7 +285,7 @@ impl Default for WindowConfig {
             background_position: None,
             image_scale: None,
             blur: true,
-            background_opacity: Some(0.62),
+            background_opacity: Some(0.50),
             corner_radius: 16.0,
             border_width: 1.0,
             border_color: "#2a2a2a".to_string(),
@@ -446,7 +446,10 @@ impl Default for ListViewConfig {
             scrollbar: false,
             empty_text: "No matches".to_string(),
             empty_text_color: "#888888".to_string(),
-            category_badge: BadgeConfig { show: false, ..BadgeConfig::default() },
+            category_badge: BadgeConfig {
+                show: false,
+                ..BadgeConfig::default()
+            },
             alias_badge,
             require_input: None,
         }
@@ -522,9 +525,67 @@ impl Default for ElementConfig {
             description_color: Some("#888888".to_string()),
             show_icons: true,
             icon_size: 24.0,
-            layout: Some(vec!["icon".to_string(), "name".to_string(), "spacer".to_string()]),
+            layout: Some(vec![
+                "icon".to_string(),
+                "name".to_string(),
+                "spacer".to_string(),
+            ]),
             selected: SelectedState::default(),
             hover: Some(HoverState::default()),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Status Colors
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct StatusColorsConfig {
+    pub urgent_background: String,
+    pub urgent_text: String,
+    pub urgent_row_background: String,
+    pub active_background: String,
+    pub active_text: String,
+    pub active_row_background: String,
+    pub accent: String,
+    pub muted: String,
+}
+
+impl Default for StatusColorsConfig {
+    fn default() -> Self {
+        Self {
+            urgent_background: "#f7768e".to_string(),
+            urgent_text: "#1a1b26".to_string(),
+            urgent_row_background: "#ff555518".to_string(),
+            active_background: "#73daca".to_string(),
+            active_text: "#1a1b26".to_string(),
+            active_row_background: "#50fa7b18".to_string(),
+            accent: "#7aa2f7".to_string(),
+            muted: "#565f89".to_string(),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Toast
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct ToastConfig {
+    pub running_dot: String,
+    pub success_dot: String,
+    pub error_dot: String,
+}
+
+impl Default for ToastConfig {
+    fn default() -> Self {
+        Self {
+            running_dot: "#aaaaaa".to_string(),
+            success_dot: "#9ece6a".to_string(),
+            error_dot: "#f7768e".to_string(),
         }
     }
 }
@@ -547,6 +608,10 @@ pub struct ThemeConfig {
     pub inputbar: InputBarConfig,
     pub listview: ListViewConfig,
     pub element: ElementConfig,
+    #[serde(default)]
+    pub status_colors: StatusColorsConfig,
+    #[serde(default)]
+    pub toast: ToastConfig,
     /// Custom widget definitions. Supports both table syntax (`[widgets.<id>]`)
     /// and array-of-tables syntax (`[[widgets]]`).
     #[serde(default, deserialize_with = "deserialize_widgets")]
@@ -569,6 +634,8 @@ impl Default for ThemeConfig {
             inputbar: InputBarConfig::default(),
             listview: ListViewConfig::default(),
             element: ElementConfig::default(),
+            status_colors: StatusColorsConfig::default(),
+            toast: ToastConfig::default(),
             widgets: Vec::new(),
             colors: HashMap::new(),
         }
@@ -616,6 +683,21 @@ impl ThemeConfig {
             resolve_opt(&mut hover.description_color, colors);
         }
 
+        // Status colors
+        resolve(&mut self.status_colors.urgent_background, colors);
+        resolve(&mut self.status_colors.urgent_text, colors);
+        resolve(&mut self.status_colors.urgent_row_background, colors);
+        resolve(&mut self.status_colors.active_background, colors);
+        resolve(&mut self.status_colors.active_text, colors);
+        resolve(&mut self.status_colors.active_row_background, colors);
+        resolve(&mut self.status_colors.accent, colors);
+        resolve(&mut self.status_colors.muted, colors);
+
+        // Toast
+        resolve(&mut self.toast.running_dot, colors);
+        resolve(&mut self.toast.success_dot, colors);
+        resolve(&mut self.toast.error_dot, colors);
+
         // Custom widgets
         for w in &mut self.widgets {
             w.resolve_colors(colors);
@@ -660,12 +742,16 @@ pub fn load_theme(theme_name: &str) -> ThemeConfig {
     let file_name = format!("{theme_name}.toml");
 
     // Check ~/.config/aerofi/themes/{name}.toml first (standard per config.rs).
-    let dot_config_path = dirs::home_dir()
-        .map(|h| h.join(".config").join("aerofi").join("themes").join(&file_name));
+    let dot_config_path = dirs::home_dir().map(|h| {
+        h.join(".config")
+            .join("aerofi")
+            .join("themes")
+            .join(&file_name)
+    });
 
     // Fallback to dirs::config_dir() (~/Library/Application Support/aerofi/themes/ on macOS).
-    let app_support_path = dirs::config_dir()
-        .map(|c| c.join("aerofi").join("themes").join(&file_name));
+    let app_support_path =
+        dirs::config_dir().map(|c| c.join("aerofi").join("themes").join(&file_name));
 
     let path = match (&dot_config_path, &app_support_path) {
         (Some(p), _) if p.is_file() => p.clone(),
@@ -711,6 +797,36 @@ pub fn load_theme(theme_name: &str) -> ThemeConfig {
 /// Parse a CSS-style hex colour (`"#1a1b26"`, `"7aa2f7"`, `"#fff"`) into
 /// a 24-bit RGB value suitable for GPUI's `rgb()`.  Returns `None` on
 /// malformed input.
+
+pub fn parse_hex_color_alpha(hex: &str) -> Option<u32> {
+    if hex == "transparent" {
+        return Some(0x00000000);
+    }
+    let hex = hex.trim().trim_start_matches('#');
+    match hex.len() {
+        3 => {
+            let r = u8::from_str_radix(&hex[0..1], 16).ok()? * 0x11;
+            let g = u8::from_str_radix(&hex[1..2], 16).ok()? * 0x11;
+            let b = u8::from_str_radix(&hex[2..3], 16).ok()? * 0x11;
+            Some(((r as u32) << 24) | ((g as u32) << 16) | ((b as u32) << 8) | 0xFF)
+        }
+        6 => {
+            let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
+            let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
+            let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
+            Some(((r as u32) << 24) | ((g as u32) << 16) | ((b as u32) << 8) | 0xFF)
+        }
+        8 => {
+            let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
+            let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
+            let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
+            let a = u8::from_str_radix(&hex[6..8], 16).ok()?;
+            Some(((r as u32) << 24) | ((g as u32) << 16) | ((b as u32) << 8) | (a as u32))
+        }
+        _ => None,
+    }
+}
+
 pub fn parse_hex_color(hex: &str) -> Option<u32> {
     let hex = hex.trim().trim_start_matches('#');
     let (r, g, b) = match hex.len() {
@@ -1084,7 +1200,10 @@ mod tests {
             panic!("expected Box widget");
         }
 
-        if let WidgetDef::Button { action, icon, text, .. } = by_id["btn_reload"] {
+        if let WidgetDef::Button {
+            action, icon, text, ..
+        } = by_id["btn_reload"]
+        {
             assert_eq!(action.as_deref(), Some("reload"));
             assert_eq!(icon.as_deref(), Some("🔄"));
             assert_eq!(text.as_deref(), Some("Reload"));

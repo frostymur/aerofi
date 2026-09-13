@@ -38,6 +38,7 @@ pub enum ScriptMode {
 
 impl ScriptMode {
     /// Canonical string form, as it appears in the annotation.
+    #[allow(dead_code)]
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Silent => "silent",
@@ -199,6 +200,8 @@ pub enum Target {
         name: SharedString,
         /// The action to run.
         action: BuiltinAction,
+        /// Optional icon (e.g. emoji or symbol).
+        icon: Option<SharedString>,
     },
 }
 
@@ -208,6 +211,7 @@ impl Target {
         Self::Builtin {
             name: SharedString::from("Reload Configuration"),
             action: BuiltinAction::ReloadConfig,
+            icon: Some(SharedString::from("🔄")),
         }
     }
 
@@ -231,12 +235,13 @@ impl Target {
         }
     }
 
-    /// Text icon (emoji or identifier) for scripts; `None` for apps
-    /// (they use a raster icon via [`icon_path`]) and built-in actions.
+    /// Text icon (emoji or identifier) for scripts and built-ins; `None` for apps
+    /// (they use a raster icon via [`icon_path`]).
     pub fn icon(&self) -> Option<&str> {
         match self {
             Self::Script { icon, .. } => icon.as_deref(),
-            Self::App { .. } | Self::Builtin { .. } => None,
+            Self::Builtin { icon, .. } => icon.as_deref(),
+            Self::App { .. } => None,
         }
     }
 
@@ -609,5 +614,6 @@ echo "Running script..."
         assert_eq!(app.category_label(), "Application");
         assert_eq!(script.category_label(), "Script");
         assert_eq!(builtin.category_label(), "Aerofi");
+        assert_eq!(builtin.icon(), Some("🔄"));
     }
 }

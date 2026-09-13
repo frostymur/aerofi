@@ -29,11 +29,11 @@ pub(super) fn expand_tilde_path(path: &str) -> String {
         if let Some(home) = dirs::home_dir() {
             return format!("{}{rest}", home.display());
         }
-    } else if path.starts_with("./") || path.starts_with("../") {
-        if let Some(home) = dirs::home_dir() {
-            let config_dir = home.join(".config").join("aerofi");
-            return config_dir.join(path).to_string_lossy().into_owned();
-        }
+    } else if (path.starts_with("./") || path.starts_with("../"))
+        && let Some(home) = dirs::home_dir()
+    {
+        let config_dir = home.join(".config").join("aerofi");
+        return config_dir.join(path).to_string_lossy().into_owned();
     }
     path.to_string()
 }
