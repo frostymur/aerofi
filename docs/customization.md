@@ -1,6 +1,34 @@
 # aerofi Customization Guide
 
-aerofi is configured via simple, transparent TOML files located in `~/.config/aerofi/`. There are no hidden binary states or opaque databases—everything from keyboard shortcuts to window glassmorphism is version-controllable and human-readable.
+aerofi is configured via transparent, human-readable TOML files located in `~/.config/aerofi/`. Everything from global hotkeys and script sources to window glassmorphism, container orientations, and custom UI widgets is fully configurable.
+
+---
+
+## 📑 Table of Contents
+
+- [📁 Directory Structure](#-directory-structure)
+- [📄 Complete Reference Files](#-complete-reference-files)
+- [⚙️ Application Configuration (`config.toml`)](#️-application-configuration-configtoml)
+  - [General Options](#general-options)
+  - [Search Sources](#search-sources)
+  - [Script Directories](#script-directories)
+  - [App Filtering](#app-filtering)
+  - [Aliases & Shortcuts](#aliases--shortcuts)
+  - [Custom Keys (GUI Mode)](#custom-keys-gui-mode)
+- [🎨 Theming Engine (`theme.toml`)](#-theming-engine-themetoml)
+  - [Font & Typography](#font--typography)
+  - [Window & Frosted Glassmorphism](#window--frosted-glassmorphism)
+  - [Layout Hierarchy (`[mainbox]`)](#layout-hierarchy-mainbox)
+  - [Search Bar (`[inputbar]`)](#search-bar-inputbar)
+  - [Results List & Badges (`[listview]`)](#results-list--badges-listview)
+  - [Row Slots & Hover States (`[element]`)](#row-slots--hover-states-element)
+  - [Semantic Status Colors](#semantic-status-colors)
+  - [Floating Toast](#floating-toast)
+  - [Palette Variable Aliases (`[colors]`)](#palette-variable-aliases-colors)
+- [🧩 Custom Widgets System](#-custom-widgets-system)
+  - [Widget Types & Properties](#widget-types--properties)
+  - [Composing a Custom Header and Footer](#composing-a-custom-header-and-footer)
+- [⚡ Performance Optimization](#-performance-optimization)
 
 ---
 
@@ -18,138 +46,163 @@ On first launch, aerofi automatically creates the following layout under `~/.con
 
 ---
 
-## ⚙️ Primary Configuration (`config.toml`)
+## 📄 Complete Reference Files
 
-The main configuration file is located at `~/.config/aerofi/config.toml`.
-
-### Quick Reload
-To apply changes to `config.toml` or themes without restarting aerofi:
-- Press `Cmd+R` while the launcher is open, or
-- Type `Reload Configuration` in the search bar and press `Enter`.
+For copy-pasteable reference files documenting **every single parameter and type**, see:
+- ⚙️ **[examples/config.toml](file:///Users/timuriskakov/projects/aerofi/examples/config.toml)** — Complete configuration reference.
+- 🎨 **[examples/theme.toml](file:///Users/timuriskakov/projects/aerofi/examples/theme.toml)** — Complete theme reference featuring custom layouts and widgets.
 
 ---
 
-### Reference Configuration
+## ⚙️ Application Configuration (`config.toml`)
 
-Here is an annotated, production-ready `config.toml`:
+Path: `~/.config/aerofi/config.toml` (or `$XDG_CONFIG_HOME/aerofi/config.toml`)
 
+### Quick Reload
+To apply changes without restarting aerofi:
+- Press `Cmd+R` while aerofi is open, or
+- Search for `Reload Configuration` and press `Enter`.
+
+### General Options
 ```toml
-# ==============================================================================
-# aerofi Configuration Reference
-# ==============================================================================
-
-# Active theme: matches a file in ~/.config/aerofi/themes/{theme}.toml
+# Active theme: resolved to ~/.config/aerofi/themes/{name}.toml
 # Built-in options: "default", "tokyo-night", "gruvbox"
 theme = "tokyo-night"
 
 [general]
-# Global hotkey to toggle aerofi.
-# Modifiers: "opt", "cmd", "ctrl", "shift"
-# Examples: "opt+space", "cmd+space", "ctrl+shift+p"
+# Global hotkey to toggle aerofi visibility.
+# Uses Carbon FFI (no macOS Accessibility permission required).
 toggle_hotkey = "opt+space"
 
-# Maximum number of items rendered simultaneously in the search list
+# Maximum number of search results displayed simultaneously.
 max_results = 20
 
-# Command used to open scripts for editing (e.g. vim, nvim, code, zed)
-# Opened in a new Terminal window.
+# Editor command for editing scripts (opens in a new Terminal window).
 editor = "nvim"
+```
 
+### Search Sources
+```toml
 [sources]
-# Toggle which sources are indexed and searchable
-apps = true
-scripts = true
-system_settings = true
+apps = true            # Applications from /Applications, /System/Applications, ~/Applications
+scripts = true         # Scripts from configured script directories
+system_settings = true # macOS System Settings panes (reserved)
+```
 
+### Script Directories
+```toml
 [scripts]
-# Directories scanned recursively for executable scripts.
-# The tilde "~" expands to your home directory.
+# Folders scanned recursively for launchable scripts.
+# Leading "~" expands to your home directory.
 dirs = [
     "~/.config/aerofi/scripts",
     "~/scripts"
 ]
+```
 
+### App Filtering
+```toml
 [apps]
-# Patterns to ignore when indexing macOS application bundles.
-# Supports glob wildcards ("*" and "?").
+# Names or glob patterns of bundles hidden from search.
+# "*" matches any characters; "?" matches a single character.
 ignored = [
     "Uninstall*",
     "Installer",
     "QuickTime Player",
     "*Helper"
 ]
+```
 
+### Aliases & Shortcuts
+```toml
 [aliases]
-# Fast keyword triggers.
-# Typing an alias finds the target; typing the alias exactly launches
-# the target immediately without pressing Enter.
+# Immediate launch triggers: typing the exact alias launches the target
+# immediately without needing to press Enter.
 "rc" = "Reload Configuration"
 "cb" = "Clipboard History"
 "term" = "Ghostty"
 
 [shortcuts]
-# In-launcher shortcuts: executed immediately when pressed inside aerofi.
-# Modifiers: cmd, ctrl, alt (or opt), shift
+# In-launcher shortcuts (active while aerofi is open).
 "cmd+r" = "Reload Configuration"
 "cmd+," = "Open Configuration"
 
 [global_shortcuts]
-# System-wide shortcuts registered at startup via Carbon FFI.
-# These trigger the target directly from anywhere without opening the search UI.
+# System-wide hotkeys registered at startup via Carbon.
+# Directly launches the target without opening the search UI.
 "opt+c" = "Clipboard History"
+```
 
+### Custom Keys (GUI Mode)
+```toml
 [custom_keys]
-# Custom keybindings forwarded as custom action codes (10..28) to GUI scripts.
-# See docs/scripts.md for details on the interactive GUI protocol.
+# Forward custom key combinations as action return codes (retv: 10..28)
+# to interactive GUI scripts (see docs/scripts.md).
 "kb-custom-1" = "alt+1"
 "kb-custom-2" = "alt+2"
+"kb-custom-3" = "ctrl+d"
 ```
 
 ---
 
-## 🎨 Theming Engine
+## 🎨 Theming Engine (`theme.toml`)
 
-aerofi features a native styling engine built directly on top of Metal and GPUI. Themes are defined as standalone `.toml` files inside `~/.config/aerofi/themes/`.
+aerofi themes are defined in standard TOML under `~/.config/aerofi/themes/{theme}.toml`.
 
-### Activating a Theme
-
-To switch themes, set the `theme` field in `config.toml` to the file stem (without `.toml`):
-
+### Font & Typography
 ```toml
-theme = "gruvbox"
-```
-
-aerofi looks for `~/.config/aerofi/themes/gruvbox.toml`.
-
----
-
-### Theme Anatomy
-
-Every visual aspect of aerofi is customizable:
-
-```toml
-name   = "Tokyo Night"
-author = "aerofi"
-
 [font]
-family = "SF Pro Text"
-size = 15.0
-fallback = ["SF Pro", "Helvetica Neue", "Arial"]
+family = "SF Pro Text"                                    # Font family name
+size = 15.0                                              # Base size in points
+weight = "normal"                                         # "thin", "light", "normal", "medium", "semibold", "bold", "black"
+fallback = ["SF Pro", "SF Mono", "Helvetica Neue", "Arial"] # Fallback glyph fonts
+```
 
+### Window & Frosted Glassmorphism
+```toml
 [window]
-width = 680.0
-height = 450.0
+width = 720.0
+height = 480.0
 padding = 16.0
 background = "$bg"
-blur = true                   # Enables native macOS translucent frosted glass
-background_opacity = 0.94     # Translucency level (0.0 - 1.0)
+blur = true               # Native macOS translucent frosted glass blur
+background_opacity = 0.94 # Translucency (0.0 = clear, 1.0 = opaque)
 corner_radius = 16.0
 border_width = 1.0
 border_color = "$border"
 
+# Optional background image:
+# background_image = "~/.config/aerofi/themes/wallpaper.jpg"
+# background_position = "cover" # "cover", "left", "right", "center"
+# image_scale = 1.0
+```
+
+### Layout Hierarchy (`[mainbox]`)
+
+aerofi allows you to completely rearrange the main UI layout!
+
+```toml
+[mainbox]
+# "vertical" (stacked top-to-bottom) or "horizontal" (side-by-side)
+orientation = "vertical"
+
+# List of widgets rendered inside the window.
+# Can include built-in widgets ("InputBar", "ListView", "Banner")
+# OR any custom widget ID defined under [widgets.<id>].
+children = [
+    "header_bar",
+    "InputBar",
+    "ListView",
+    "footer_bar"
+]
+```
+
+### Search Bar (`[inputbar]`)
+```toml
 [inputbar]
 height = 46.0
-padding = [10.0, 14.0]
+padding = [10.0, 14.0]               # [top/bottom, left/right]
+margin = [0.0, 0.0, 8.0, 0.0]        # [top, right, bottom, left]
 background = "$surface"
 text_color = "$text"
 placeholder = "Search apps, scripts, commands…"
@@ -157,13 +210,40 @@ placeholder_color = "$subtle"
 corner_radius = 10.0
 icon = "❯"
 icon_color = "$accent"
+```
 
+### Results List & Badges (`[listview]`)
+```toml
 [listview]
-columns = 1
-spacing = 4.0
-empty_text = "No matching items found"
+columns = 1                          # 1 for list, 2 or 3 for grid
+spacing = 4.0                        # Gap between rows
+scrollbar = false                    # Visible scrollbar
+empty_text = "No matching items"
 empty_text_color = "$subtle"
+# require_input = true               # Collapses listview until typing starts
 
+# Category Badge Styling ("Script", "Application", "Plugin")
+[listview.category_badge]
+show = true
+color = "$subtle"
+font_size_offset = 3.0
+radius = 4.0
+padding_x = 6.0
+border = false
+
+# Alias Pill Badge Styling (for items matched via [aliases])
+[listview.alias_badge]
+show = true
+color = "$accent"
+font_size_offset = 3.0
+radius = 4.0
+padding_x = 6.0
+border = true
+border_color = "$accent"
+```
+
+### Row Slots & Hover States (`[element]`)
+```toml
 [element]
 padding = [8.0, 12.0]
 corner_radius = 8.0
@@ -173,23 +253,58 @@ description_color = "$subtle"
 show_icons = true
 icon_size = 22.0
 
+# Customize the slot ordering inside each row!
+# Available slots: "icon", "name", "spacer", "description", "category_badge", "alias_badge", "shortcut"
+layout = [
+    "icon",
+    "name",
+    "spacer",
+    "description",
+    "category_badge",
+    "shortcut"
+]
+
+# Currently focused/selected row
 [element.selected]
 background = "$surface2"
 text_color = "$text"
 description_color = "$accent"
 
+# Mouse hover row
+[element.hover]
+background = "$surface"
+text_color = "$text"
+description_color = "$subtle"
+```
+
+### Semantic Status Colors
+Used for GUI interactive mode items (e.g. clipboard manager or script results):
+```toml
 [status_colors]
 urgent_background = "$urgent"
 urgent_text = "#ffffff"
+urgent_row_background = "#f7768e22"
 active_background = "$green"
 active_text = "#1a1b26"
+active_row_background = "#9ece6a22"
 accent = "$accent"
 muted = "$subtle"
+```
 
+### Floating Toast
+Status notification styling for background and compact script runs:
+```toml
+[toast]
+running_dot = "#aaaaaa"
+success_dot = "$green"
+error_dot = "$urgent"
+```
+
+### Palette Variable Aliases (`[colors]`)
+Define reusable color tokens. Any `$variable` in the theme is automatically replaced with its definition:
+```toml
 [colors]
-# Palette alias system: any "$key" in the theme maps to these definitions.
-# Colors can be 6-digit (#RRGGBB) or 8-digit (#RRGGBBAA) hex.
-bg = "#1a1b26f0"
+bg = "#1a1b26f0"        # 8-digit hex supports alpha channel transparency
 surface = "#24283b"
 surface2 = "#414868"
 border = "#41486880"
@@ -202,16 +317,110 @@ urgent = "#f7768e"
 
 ---
 
-### Color Variables & Alpha Transparency
+## 🧩 Custom Widgets System
 
-- **Hex Formats**: Colors support standard `#RGB`, `#RRGGBB`, and `#RRGGBBAA` (8-digit hex for alpha transparency).
-- **Variable Expansion**: Define your palette once in the `[colors]` table. Anywhere in the theme, reference them with a leading `$`, e.g. `background = "$surface"` or `border_color = "$border"`.
-- **Frosted Glass Blur**: When `window.blur = true`, macOS native window compositor applies real-time background blur behind the window. Combine this with `background_opacity = 0.90..0.96` for an authentic macOS glassmorphism aesthetic.
+aerofi includes a declarative widget system. You can build custom headers, sidebars, status bars, or action button strips directly in your theme without touching Rust code.
+
+Widgets are defined either using table syntax `[widgets.<id>]` or array syntax `[[widgets]]`.
+
+### Widget Types & Properties
+
+| Type | Description | Key Properties |
+|---|---|---|
+| **`box`** | Container for grouping widgets | `orientation` ("horizontal" / "vertical"), `gap`, `padding`, `align` ("left", "center", "right"), `background`, `radius`, `width`, `height`, `flex`, `children` |
+| **`text`** | Static typography label | `text`, `color`, `font_size`, `font_weight`, `align` |
+| **`icon`** | Symbol or emoji | `icon`, `size`, `color` |
+| **`image`** | Image asset | `path`, `width`, `height`, `radius` |
+| **`spacer`** | Flexible expanding space | Expands horizontally or vertically to push siblings apart |
+| **`divider`** | Separator rule | `color`, `thickness`, `margin` |
+| **`button`** | Clickable action button | `text`, `icon`, `action` (target name), `hotkey`, `background`, `hover_background`, `color`, `radius`, `padding`, `gap` |
 
 ---
 
-## ⚡ Performance Optimization Tips
+### Composing a Custom Header and Footer
+
+Here is a practical example of adding a custom header with a status pill and a footer bar with interactive buttons:
+
+```toml
+# 1. Add widgets to mainbox
+[mainbox]
+orientation = "vertical"
+children = [
+    "header_bar",
+    "InputBar",
+    "ListView",
+    "footer_bar"
+]
+
+# 2. Define Header Container
+[widgets.header_bar]
+type = "box"
+orientation = "horizontal"
+gap = 8.0
+padding = [4.0, 4.0]
+align = "center"
+children = ["header_icon", "header_title", "header_spacer", "header_badge"]
+
+[widgets.header_icon]
+type = "icon"
+icon = "⚡"
+size = 14.0
+color = "$accent"
+
+[widgets.header_title]
+type = "text"
+text = "aerofi"
+color = "$text"
+font_size = 12.0
+font_weight = "bold"
+
+[widgets.header_spacer]
+type = "spacer"
+
+[widgets.header_badge]
+type = "text"
+text = "PRO"
+color = "$accent"
+font_size = 10.0
+font_weight = "semibold"
+
+# 3. Define Footer Container
+[widgets.footer_bar]
+type = "box"
+orientation = "horizontal"
+gap = 8.0
+padding = [8.0, 4.0]
+align = "center"
+children = ["footer_help", "footer_spacer", "reload_button"]
+
+[widgets.footer_help]
+type = "text"
+text = "↵ Open • ⎋ Close • ⌘R Reload"
+color = "$subtle"
+font_size = 11.0
+
+[widgets.footer_spacer]
+type = "spacer"
+
+[widgets.reload_button]
+type = "button"
+text = "Reload Config"
+icon = "🔄"
+action = "Reload Configuration"
+hotkey = "cmd+r"
+color = "$text"
+background = "$surface"
+hover_background = "$surface2"
+radius = 6.0
+padding = [4.0, 8.0]
+font_size = 11.0
+gap = 4.0
+```
+
+---
+
+## ⚡ Performance Optimization
 
 1. **Keep `max_results` around 20–30**: Ensures near-zero memory allocation during fuzzy filtering.
-2. **Exclude Large Unneeded Folders**: If configuring custom script directories, point directly to specific folders rather than broad directories like `~` or `~/Downloads`.
-3. **Use `.dylib` plugins for massive datasets**: For querying thousands of records (e.g. Spotlight indexing or large databases), use aerofi's native C ABI `.dylib` plugin system (see [docs/plugins.md](plugins.md)) to avoid CLI spawn overhead.
+2. **Use Frosted Glass Blur Judiciously**: Real-time macOS blur is highly optimized on Apple Silicon Metal, but setting `window.blur = false` is available for pure minimum-power setups.
+3. **Use `.dylib` Plugins for Large Datasets**: For indexing tens of thousands of items (e.g. Spotlight or database queries), use aerofi's native C ABI `.dylib` plugin system ([docs/plugins.md](plugins.md)) to bypass CLI process spawning.

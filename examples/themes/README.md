@@ -106,15 +106,11 @@ active_text = "#1a1b26"
 accent = "$accent"
 muted = "$subtle"
 
-[colors]
-# Variable alias system: any "$key" in the theme maps to these values
-bg = "#1a1b26f0"
-surface = "#24283b"
-surface2 = "#414868"
-border = "#41486880"
-text = "#c0caf5"
-subtle = "#565f89"
-accent = "#7aa2f7"
-green = "#9ece6a"
-urgent = "#f7768e"
-```
+---
+
+## 📖 Complete Theme Reference & Custom Widgets
+
+For a complete reference showcasing **all layout options (`[mainbox]`), element slots (`[element.layout]`), and custom UI widgets (`[widgets.<id>]`)**:
+👉 **See [reference.toml](file:///Users/timuriskakov/projects/aerofi/examples/themes/reference.toml) / [examples/theme.toml](file:///Users/timuriskakov/projects/aerofi/examples/theme.toml)**
+👉 **Read the complete [Customization Guide](../../docs/customization.md)**
+
