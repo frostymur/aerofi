@@ -682,7 +682,8 @@ impl Launcher {
         let config = crate::core::config::AppConfig::load();
         let theme_name = &config.theme;
         let theme = crate::core::theme::load_theme(theme_name);
-        let targets = crate::core::scanner::scan_all(&config);
+        let mut targets = crate::core::scanner::scan_all(&config);
+        crate::sys::icons::extract_all(&mut targets);
         self.app_config = config;
         self.all = targets;
         self.search = SearchIndex::new(&self.app_config.aliases);
