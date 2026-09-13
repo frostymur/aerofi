@@ -147,7 +147,18 @@ pub fn create_launcher_window(
             |window, cx| {
                 appkit::store_ns_window(window);
                 appkit::set_borderless_style(window, theme.window.corner_radius);
-                cx.new(|_| Launcher::new(targets, theme, app_config, history))
+
+                cx.new(|cx| {
+                    cx.observe_window_activation(window, |launcher: &mut Launcher, window, cx| {
+                        if !window.is_window_active() {
+                            crate::ui::window::hide();
+                            launcher.on_hide();
+                            cx.notify();
+                        }
+                    })
+                    .detach();
+                    Launcher::new(targets, theme, app_config, history)
+                })
             },
         )
         .unwrap();
