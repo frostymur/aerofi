@@ -175,6 +175,15 @@ impl Launcher {
             return LauncherAction::None;
         }
 
+        // Reload configuration (customizable via [general] reload_hotkey or built-in Cmd+R / Ctrl+R)
+        if self.is_reload_keystroke(ks) {
+            self.reload();
+            if let Some(cx) = cx {
+                cx.notify();
+            }
+            return LauncherAction::None;
+        }
+
         let cmd = ks.modifiers.platform;
         let ctrl = ks.modifiers.control;
         let alt = ks.modifiers.alt;
@@ -1135,6 +1144,14 @@ impl Launcher {
         if let Some(retv) = custom_retv {
             if let Some(cx) = cx {
                 self.gui_dispatch_selection(cx, "custom", Some(retv));
+            }
+            return LauncherAction::None;
+        }
+
+        if self.is_reload_keystroke(ks) {
+            self.reload();
+            if let Some(cx) = cx {
+                cx.notify();
             }
             return LauncherAction::None;
         }
