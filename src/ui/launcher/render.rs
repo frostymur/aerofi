@@ -1640,13 +1640,15 @@ impl Launcher {
     pub(super) fn shortcut_label(&self, name: &str) -> Option<String> {
         let global = self
             .app_config
-            .global_shortcuts
+            .bindings
+            .global
             .iter()
             .find(|(_, target)| target.as_str() == name)
             .map(|(combo, _)| combo.clone());
         let local = self
             .app_config
-            .shortcuts
+            .bindings
+            .launcher
             .iter()
             .find(|(_, target)| target.as_str() == name)
             .map(|(combo, _)| combo.clone());

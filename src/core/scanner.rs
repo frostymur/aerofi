@@ -94,7 +94,13 @@ pub fn scan_applications(config: &AppConfig) -> Vec<Target> {
     let mut seen = HashSet::new();
     let mut items = Vec::new();
 
+    let ignore_dirs = config.expanded_ignore_dirs();
     let mut add_app = |path: PathBuf, items: &mut Vec<Target>| {
+        // Skip paths that are inside any ignored directory
+        if ignore_dirs.iter().any(|d| path.starts_with(d)) {
+            return;
+        }
+
         if !path.is_dir() || path.extension().and_then(|e| e.to_str()) != Some("app") {
             return;
         }
@@ -108,7 +114,7 @@ pub fn scan_applications(config: &AppConfig) -> Vec<Target> {
             .unwrap_or_default();
         if config
             .apps
-            .ignored
+            .ignore_names
             .iter()
             .any(|pattern| name_matches_pattern(pattern, &name))
         {
@@ -217,7 +223,8 @@ mod tests {
     struct TempTestDir(PathBuf);
     impl TempTestDir {
         fn new(name: &str) -> Self {
-            let p = std::env::temp_dir().join(format!("aerofi-test-{}-{}", name, std::process::id()));
+            let p =
+                std::env::temp_dir().join(format!("aerofi-test-{}-{}", name, std::process::id()));
             let _ = std::fs::remove_dir_all(&p);
             std::fs::create_dir_all(&p).unwrap();
             Self(p)
