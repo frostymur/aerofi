@@ -240,13 +240,13 @@ impl Target {
 
     /// Stable identifier for history/frecency: the path on disk, or the
     /// display name for built-in actions.
-    pub fn identifier(&self) -> SharedString {
+    pub fn identifier(&self) -> &str {
         match self {
             Self::App { path, .. } | Self::Script { path, .. } => {
-                SharedString::from(path.to_string_lossy().into_owned())
+                path.to_str().unwrap_or("")
             }
-            Self::Builtin { name, .. } => name.clone(),
-            Self::PluginItem { plugin_id, .. } => plugin_id.clone(),
+            Self::Builtin { name, .. } => name.as_ref(),
+            Self::PluginItem { plugin_id, .. } => plugin_id.as_ref(),
         }
     }
 
