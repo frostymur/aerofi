@@ -12,7 +12,7 @@ aerofi is configured via transparent, human-readable TOML files located in `~/.c
   - [General Options](#general-options)
   - [Search Sources](#search-sources)
   - [Script Directories](#script-directories)
-  - [App Filtering](#app-filtering)
+  - [App Filtering & Custom Discovery](#app-filtering--custom-discovery)
   - [Aliases & Shortcuts](#aliases--shortcuts)
   - [Custom Keys (GUI Mode)](#custom-keys-gui-mode)
 - [🎨 Theming Engine (`theme.toml`)](#-theming-engine-themetoml)
@@ -97,7 +97,11 @@ dirs = [
 ]
 ```
 
-### App Filtering
+### App Filtering & Custom Discovery
+aerofi indexes standard application directories (`/Applications`, `/System/Applications`, and their `Utilities/` subdirectories such as Activity Monitor, Console, and Terminal) automatically.
+
+You can exclude specific apps, add additional directories (e.g. Homebrew casks), or include individual `.app` bundles directly:
+
 ```toml
 [apps]
 # Names or glob patterns of bundles hidden from search.
@@ -107,6 +111,17 @@ ignored = [
     "Installer",
     "QuickTime Player",
     "*Helper"
+]
+
+# Additional directories to scan for `.app` bundles (tilde "~" expanded).
+extra_dirs = [
+    "/opt/homebrew/Applications",
+    "~/Applications/Custom"
+]
+
+# Explicit individual `.app` bundle paths to include.
+extra_apps = [
+    "/System/Library/CoreServices/Finder.app"
 ]
 ```
 

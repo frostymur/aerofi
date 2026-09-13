@@ -42,6 +42,10 @@ dirs = ["~/.config/aerofi/scripts"]
 # `*` matches any run of characters, `?` matches any single character;
 # entries without wildcards are exact names.
 ignored = ["Uninstall*", "Installer"]
+# Additional folders scanned for .app bundles (e.g. "~/Applications", "/opt/homebrew/Applications")
+extra_dirs = []
+# Explicit individual .app bundles to include
+extra_apps = []
 
 [aliases]
 # Alternate names for targets. Typing an alias finds the target in the
@@ -124,12 +128,18 @@ pub struct ScriptsConfig {
 pub struct AppsConfig {
     /// Names (or `*`/`?` patterns) of bundles hidden from the launcher.
     pub ignored: Vec<String>,
+    /// Additional folders scanned for `.app` bundles (tilde `~` expanded).
+    pub extra_dirs: Vec<PathBuf>,
+    /// Explicit paths to individual `.app` bundles to include (tilde `~` expanded).
+    pub extra_apps: Vec<PathBuf>,
 }
 
 impl Default for AppsConfig {
     fn default() -> Self {
         Self {
             ignored: vec!["Uninstall*".to_string(), "Installer".to_string()],
+            extra_dirs: Vec::new(),
+            extra_apps: Vec::new(),
         }
     }
 }
@@ -190,6 +200,32 @@ impl AppConfig {
             .dirs
             .iter()
             .map(|dir| expand_tilde(dir, &home))
+            .collect()
+    }
+
+    /// `apps.extra_dirs` with a leading `~` replaced by the user's home
+    /// directory. Paths without a leading `~` are returned unchanged.
+    pub fn expanded_app_dirs(&self) -> Vec<PathBuf> {
+        let Some(home) = dirs::home_dir() else {
+            return self.apps.extra_dirs.clone();
+        };
+        self.apps
+            .extra_dirs
+            .iter()
+            .map(|dir| expand_tilde(dir, &home))
+            .collect()
+    }
+
+    /// `apps.extra_apps` with a leading `~` replaced by the user's home
+    /// directory. Paths without a leading `~` are returned unchanged.
+    pub fn expanded_extra_apps(&self) -> Vec<PathBuf> {
+        let Some(home) = dirs::home_dir() else {
+            return self.apps.extra_apps.clone();
+        };
+        self.apps
+            .extra_apps
+            .iter()
+            .map(|app| expand_tilde(app, &home))
             .collect()
     }
 
@@ -325,9 +361,36 @@ mod tests {
         assert!(config.sources.scripts);
         assert_eq!(config.scripts.dirs.len(), 2);
         assert_eq!(config.apps.ignored.len(), 5);
+        assert!(config.apps.extra_dirs.is_empty());
+        assert!(config.apps.extra_apps.is_empty());
         assert_eq!(config.aliases.len(), 4);
         assert_eq!(config.shortcuts.len(), 3);
         assert_eq!(config.global_shortcuts.len(), 2);
         assert_eq!(config.custom_keys.len(), 3);
+    }
+
+    #[test]
+    fn apps_config_parses_extra_dirs_and_apps() {
+        let toml_str = r#"
+            [apps]
+            ignored = ["Test*"]
+            extra_dirs = ["/opt/homebrew/Applications", "~/CustomApps"]
+            extra_apps = ["/System/Library/CoreServices/Finder.app"]
+        "#;
+        let config: AppConfig = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.apps.ignored, vec!["Test*"]);
+        assert_eq!(config.apps.extra_dirs.len(), 2);
+        assert_eq!(config.apps.extra_apps.len(), 1);
+
+        let expanded_dirs = config.expanded_app_dirs();
+        assert_eq!(expanded_dirs.len(), 2);
+        assert!(!expanded_dirs[1].to_string_lossy().starts_with('~'));
+
+        let expanded_apps = config.expanded_extra_apps();
+        assert_eq!(expanded_apps.len(), 1);
+        assert_eq!(
+            expanded_apps[0],
+            PathBuf::from("/System/Library/CoreServices/Finder.app")
+        );
     }
 }

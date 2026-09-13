@@ -19,6 +19,7 @@ pub struct LoadedPlugin {
 
 impl LoadedPlugin {
     /// Load a plugin from a `.dylib` file.
+    #[allow(dead_code)]
     pub fn load(path: impl AsRef<Path>) -> Result<Self, String> {
         let path = path.as_ref();
         let lib =
@@ -121,12 +122,13 @@ impl PluginManager {
 
     /// Scan the plugins directory and load all `.dylib` files.
     pub fn load_all() -> Self {
-        let mut manager = Self::new();
-
         #[cfg(test)]
-        return manager;
+        return Self::new();
 
-        let mut candidate_dirs = Vec::new();
+        #[cfg(not(test))]
+        {
+            let mut manager = Self::new();
+            let mut candidate_dirs = Vec::new();
 
         if let Some(home) = dirs::home_dir() {
             candidate_dirs.push(home.join(".config").join("aerofi").join("plugins"));
@@ -170,6 +172,7 @@ impl PluginManager {
         }
 
         manager
+        }
     }
 
     /// Find a plugin by its prefix. If a query matches the prefix, returns the plugin and the remainder of the query.

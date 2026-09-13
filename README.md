@@ -38,6 +38,7 @@
 - ⚡ **Sub-2ms Hotkey Latency**: Built directly on [GPUI](https://github.com/zed-industries/zed) (the GPU-accelerated UI framework behind Zed) rendering natively at 120 FPS via Metal (~1–2ms warm path on Apple Silicon).
 - 🪶 **Minimal Memory Footprint**: Strictly constrained memory budget—**~40 MB RSS idle, ~50 MB active**. Automatically frees GPU framebuffers when hidden.
 - 🔑 **Zero-Friction Global Hotkey**: Uses native macOS Carbon FFI (`RegisterEventHotKey`) by default. **Requires no invasive Accessibility permissions** to install and run.
+- 🔍 **Comprehensive App & Utilities Discovery**: Instantly indexes standard apps, `/System/Applications/Utilities` (Activity Monitor, Console, Terminal, etc.), and custom directories or individual bundles via `[apps.extra_dirs]` / `[apps.extra_apps]`.
 - 📜 **Full Raycast Script Compatibility**: Drop any existing Raycast script command into your scripts folder—aerofi natively parses `@raycast.title`, `@raycast.mode`, `@raycast.argument*`, and metadata annotations.
 - 🛠️ **6 Script Execution Modes**:
   - `silent`: Detached background execution with floating toast status.
