@@ -67,7 +67,7 @@ dirs = [
 
 
 # ------------------------------------------------------------------------------
-# [apps] - Application Filtering
+# [apps] - Application Filtering & Custom Discovery
 # ------------------------------------------------------------------------------
 [apps]
 # List of application names to exclude from the launcher index.
@@ -82,6 +82,23 @@ ignored = [
     "QuickTime Player",
     "*Helper",
     "Captive Network Assistant"
+]
+
+# Additional directories to scan for `.app` bundles (e.g. Homebrew casks, custom tools).
+# Note: aerofi automatically indexes /Applications, /System/Applications, and their
+# Utilities/ folders (Activity Monitor, Console, Terminal, etc.) by default.
+# Type: Array of Strings (PathBuf)
+# Leading "~" is expanded to the user's home directory.
+extra_dirs = [
+    # "/opt/homebrew/Applications",
+    # "~/Applications/Custom"
+]
+
+# Explicit individual `.app` bundle paths to include.
+# Type: Array of Strings (PathBuf)
+# Leading "~" is expanded to the user's home directory.
+extra_apps = [
+    # "/System/Library/CoreServices/Finder.app"
 ]
 
 
