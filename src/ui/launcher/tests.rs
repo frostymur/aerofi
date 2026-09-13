@@ -319,13 +319,16 @@ fn format_combo_uses_macos_glyphs_in_canonical_order() {
 fn shortcut_label_shows_global_then_local_combos() {
     let mut app_config = AppConfig::default();
     app_config
-        .global_shortcuts
+        .bindings
+        .global
         .insert("opt+g".to_string(), "Marker".to_string());
     app_config
-        .shortcuts
+        .bindings
+        .launcher
         .insert("cmd+r".to_string(), "Reload Configuration".to_string());
     app_config
-        .global_shortcuts
+        .bindings
+        .global
         .insert("opt+m".to_string(), "Reload Configuration".to_string());
     let l = Launcher::new(
         vec![item("Marker"), item("Grep")],

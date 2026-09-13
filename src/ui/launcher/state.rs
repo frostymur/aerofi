@@ -144,7 +144,8 @@ impl Launcher {
         if matches!(self.state, LauncherState::Search)
             && let Some((_, name)) = self
                 .app_config
-                .shortcuts
+                .bindings
+                .launcher
                 .iter()
                 .find(|(combo, _)| combo_matches(combo, ks))
             && let Some(item) = self.all.iter().find(|t| t.name() == name)
@@ -827,13 +828,20 @@ impl Launcher {
 
     /// Check if the keystroke triggers configuration reload.
     fn is_reload_keystroke(&self, ks: &gpui::Keystroke) -> bool {
-        if let Some(custom) = &self.app_config.general.reload_hotkey {
-            combo_matches(custom, ks)
-        } else {
-            let cmd = ks.modifiers.platform;
-            let ctrl = ks.modifiers.control;
-            (cmd || ctrl) && (ks.key.eq_ignore_ascii_case("r") || ks.key == "к" || ks.key == "К")
+        let is_bound = self
+            .app_config
+            .bindings
+            .launcher
+            .iter()
+            .any(|(combo, name)| name == "Reload Configuration" && combo_matches(combo, ks));
+
+        if is_bound {
+            return true;
         }
+
+        let cmd = ks.modifiers.platform;
+        let ctrl = ks.modifiers.control;
+        (cmd || ctrl) && (ks.key.eq_ignore_ascii_case("r") || ks.key == "к" || ks.key == "К")
     }
 
     /// Execute an action triggered by a custom button widget. If rendered
@@ -1130,7 +1138,7 @@ impl Launcher {
         let shift = ks.modifiers.shift;
 
         let mut custom_retv = None;
-        for (kb, combo_str) in &self.app_config.custom_keys {
+        for (kb, combo_str) in &self.app_config.bindings.custom {
             if combo_matches(combo_str, ks)
                 && let Some(num_str) = kb.strip_prefix("kb-custom-")
                 && let Ok(num) = num_str.parse::<i32>()

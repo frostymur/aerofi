@@ -41,7 +41,7 @@ fn main() {
     // keycodes and the named targets. Unknown combos/targets are skipped
     // with a warning and never block startup.
     let mut globals = Vec::new();
-    for (combo, name) in &app_config.global_shortcuts {
+    for (combo, name) in &app_config.bindings.global {
         match sys::carbon::parse_combo(combo) {
             Some((keycode, modifiers)) => {
                 if let Some(target) = targets.iter().find(|t| t.name() == name).cloned() {
@@ -86,7 +86,7 @@ fn main() {
         // active and MainThreadMarker is available.
         sys::icons::extract_all(&mut targets);
         let theme = core::theme::load_theme(&app_config.theme);
-        let toggle_hotkey = app_config.general.toggle_hotkey.clone();
+        let toggle_hotkey = app_config.bindings.toggle.clone();
         let view =
             ui::window::create_launcher_window(cx, targets.clone(), theme, app_config, history);
 
@@ -119,7 +119,7 @@ fn main() {
         .detach();
 
         // Global hotkeys: toggle_hotkey toggles the launcher; configured
-        // `[global_shortcuts]` run their targets directly.
+        // `[bindings.global]` run their targets directly.
         if let Err(e) = sys::carbon::install(&toggle_hotkey, globals) {
             eprintln!("aerofi: failed to register global hotkeys: {e}");
         }

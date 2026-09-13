@@ -73,21 +73,13 @@ extra_apps = []
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct GeneralConfig {
-    /// Global hotkey used to toggle the launcher (e.g. "opt+space").
-    pub toggle_hotkey: String,
-    /// Maximum number of results shown in the launcher list.
+    /// The maximum number of search results displayed in the UI.
     pub max_results: usize,
-    /// Hotkey used to reload configuration inside the launcher (default "cmd+r").
-    pub reload_hotkey: Option<String>,
 }
 
 impl Default for GeneralConfig {
     fn default() -> Self {
-        Self {
-            toggle_hotkey: "opt+space".to_string(),
-            max_results: 20,
-            reload_hotkey: None,
-        }
+        Self { max_results: 20 }
     }
 }
 
@@ -127,7 +119,10 @@ pub struct ScriptsConfig {
 #[serde(default)]
 pub struct AppsConfig {
     /// Names (or `*`/`?` patterns) of bundles hidden from the launcher.
-    pub ignored: Vec<String>,
+    #[serde(alias = "ignored")]
+    pub ignore_names: Vec<String>,
+    /// Directories completely excluded from scanning (tilde `~` expanded).
+    pub ignore_dirs: Vec<PathBuf>,
     /// Additional folders scanned for `.app` bundles (tilde `~` expanded).
     pub extra_dirs: Vec<PathBuf>,
     /// Explicit paths to individual `.app` bundles to include (tilde `~` expanded).
@@ -137,9 +132,35 @@ pub struct AppsConfig {
 impl Default for AppsConfig {
     fn default() -> Self {
         Self {
-            ignored: vec!["Uninstall*".to_string(), "Installer".to_string()],
+            ignore_names: vec!["Uninstall*".to_string(), "Installer".to_string()],
+            ignore_dirs: Vec::new(),
             extra_dirs: Vec::new(),
             extra_apps: Vec::new(),
+        }
+    }
+}
+
+/// Unified keybindings configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct BindingsConfig {
+    /// Global hotkey used to toggle the launcher.
+    pub toggle: String,
+    /// Hotkeys active while the launcher is open (combo -> target name).
+    pub launcher: HashMap<String, String>,
+    /// System-wide global hotkeys (combo -> target name).
+    pub global: HashMap<String, String>,
+    /// Custom hotkeys for GUI scripts (kb-custom-N -> combo).
+    pub custom: HashMap<String, String>,
+}
+
+impl Default for BindingsConfig {
+    fn default() -> Self {
+        Self {
+            toggle: "opt+space".to_string(),
+            launcher: HashMap::new(),
+            global: HashMap::new(),
+            custom: HashMap::new(),
         }
     }
 }
@@ -148,42 +169,28 @@ impl Default for AppsConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AppConfig {
+    /// Theme name resolved to `~/.config/aerofi/themes/{name}.toml`.
+    pub theme: String,
     pub general: GeneralConfig,
     pub sources: SourcesConfig,
     pub scripts: ScriptsConfig,
     pub apps: AppsConfig,
-    /// Alternate names for targets (alias -> target name): used by the
-    /// fuzzy search, and typing an alias exactly runs the target
-    /// immediately (no Enter needed).
+    /// Alternate names for targets (alias -> target name).
     pub aliases: HashMap<String, String>,
-    /// Key combinations (e.g. "cmd+r" -> target name) that run the target
-    /// immediately while the launcher is open.
-    pub shortcuts: HashMap<String, String>,
-    /// System-wide shortcuts (combo -> target name): run the target
-    /// directly without opening the launcher. Registered at startup via
-    /// Carbon `RegisterEventHotKey` (no Accessibility permission needed);
-    /// see ADR 0002.
-    pub global_shortcuts: HashMap<String, String>,
-    /// Custom hotkeys for GUI scripts (kb-custom-N -> combo).
-    /// e.g. "kb-custom-1" -> "alt+1". Triggers retv 10..28.
-    pub custom_keys: HashMap<String, String>,
-    /// Theme name resolved to `~/.config/aerofi/themes/{name}.toml`.
-    /// The special value `"default"` uses the built-in Tokyo Night palette.
-    pub theme: String,
+    /// Unified keybindings configuration.
+    pub bindings: BindingsConfig,
 }
 
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
+            theme: "default".to_string(),
             general: GeneralConfig::default(),
             sources: SourcesConfig::default(),
             scripts: ScriptsConfig::default(),
             apps: AppsConfig::default(),
             aliases: HashMap::new(),
-            shortcuts: HashMap::new(),
-            global_shortcuts: HashMap::new(),
-            custom_keys: HashMap::new(),
-            theme: "default".to_string(),
+            bindings: BindingsConfig::default(),
         }
     }
 }
@@ -226,6 +233,19 @@ impl AppConfig {
             .extra_apps
             .iter()
             .map(|app| expand_tilde(app, &home))
+            .collect()
+    }
+
+    /// `apps.ignore_dirs` with a leading `~` replaced by the user's home
+    /// directory. Paths without a leading `~` are returned unchanged.
+    pub fn expanded_ignore_dirs(&self) -> Vec<PathBuf> {
+        let Some(home) = dirs::home_dir() else {
+            return self.apps.ignore_dirs.clone();
+        };
+        self.apps
+            .ignore_dirs
+            .iter()
+            .map(|dir| expand_tilde(dir, &home))
             .collect()
     }
 
@@ -355,30 +375,31 @@ mod tests {
         let config: AppConfig =
             toml::from_str(content).expect("examples/config.toml should parse cleanly");
         assert_eq!(config.theme, "tokyo-night");
-        assert_eq!(config.general.toggle_hotkey, "opt+space");
+        assert_eq!(config.bindings.toggle, "opt+space");
         assert_eq!(config.general.max_results, 20);
         assert!(config.sources.apps);
         assert!(config.sources.scripts);
         assert_eq!(config.scripts.dirs.len(), 2);
-        assert_eq!(config.apps.ignored.len(), 5);
+        assert_eq!(config.apps.ignore_names.len(), 5);
+        assert!(config.apps.ignore_dirs.is_empty());
         assert!(config.apps.extra_dirs.is_empty());
         assert!(config.apps.extra_apps.is_empty());
         assert_eq!(config.aliases.len(), 4);
-        assert_eq!(config.shortcuts.len(), 3);
-        assert_eq!(config.global_shortcuts.len(), 2);
-        assert_eq!(config.custom_keys.len(), 3);
+        assert_eq!(config.bindings.launcher.len(), 3);
+        assert_eq!(config.bindings.global.len(), 2);
+        assert_eq!(config.bindings.custom.len(), 3);
     }
 
     #[test]
     fn apps_config_parses_extra_dirs_and_apps() {
         let toml_str = r#"
             [apps]
-            ignored = ["Test*"]
+            ignore_names = ["Test*"]
             extra_dirs = ["/opt/homebrew/Applications", "~/CustomApps"]
             extra_apps = ["/System/Library/CoreServices/Finder.app"]
         "#;
         let config: AppConfig = toml::from_str(toml_str).unwrap();
-        assert_eq!(config.apps.ignored, vec!["Test*"]);
+        assert_eq!(config.apps.ignore_names, vec!["Test*"]);
         assert_eq!(config.apps.extra_dirs.len(), 2);
         assert_eq!(config.apps.extra_apps.len(), 1);
 

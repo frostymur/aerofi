@@ -97,32 +97,20 @@ dirs = [
 ]
 ```
 
-### App Filtering & Custom Discovery
+### App Discovery & Filtering
 aerofi indexes standard application directories (`/Applications`, `/System/Applications`, and their `Utilities/` subdirectories such as Activity Monitor, Console, and Terminal) automatically.
 
 You can exclude specific apps, add additional directories (e.g. Homebrew casks), or include individual `.app` bundles directly:
 
 ```toml
 [apps]
-# Names or glob patterns of bundles hidden from search.
-# "*" matches any characters; "?" matches a single character.
-ignored = [
-    "Uninstall*",
-    "Installer",
-    "QuickTime Player",
-    "*Helper"
-]
+# Filter out unwanted items
+ignore_names = ["Uninstall*", "Installer"]
+ignore_dirs = ["~/Applications/Chrome Apps.localized"]
 
-# Additional directories to scan for `.app` bundles (tilde "~" expanded).
-extra_dirs = [
-    "/opt/homebrew/Applications",
-    "~/Applications/Custom"
-]
-
-# Explicit individual `.app` bundle paths to include.
-extra_apps = [
-    "/System/Library/CoreServices/Finder.app"
-]
+# Add specific paths
+extra_dirs = ["/opt/homebrew/Applications"]
+extra_apps = ["/System/Library/CoreServices/Finder.app"]
 ```
 
 ### Aliases & Shortcuts
@@ -133,13 +121,23 @@ extra_apps = [
 "rc" = "Reload Configuration"
 "cb" = "Clipboard History"
 "term" = "Ghostty"
+```
 
-[shortcuts]
-# In-launcher shortcuts (active while aerofi is open).
+### Hotkeys and Bindings
+The `[bindings]` table centrally manages all keyboard shortcuts for the launcher:
+
+```toml
+[bindings]
+# Global hotkey to toggle the launcher visibility
+toggle = "opt+space"
+
+[bindings.launcher]
+# Shortcuts active only while aerofi is open.
+# Triggers the target matching the mapped string.
 "cmd+r" = "Reload Configuration"
 "cmd+," = "Open Configuration"
 
-[global_shortcuts]
+[bindings.global]
 # System-wide hotkeys registered at startup via Carbon.
 # Directly launches the target without opening the search UI.
 "opt+c" = "Clipboard History"
@@ -147,7 +145,7 @@ extra_apps = [
 
 ### Custom Keys (GUI Mode)
 ```toml
-[custom_keys]
+[bindings.custom]
 # Forward custom key combinations as action return codes (retv: 10..28)
 # to interactive GUI scripts (see docs/scripts.md).
 "kb-custom-1" = "alt+1"
