@@ -76,9 +76,6 @@ toggle_hotkey = "opt+space"
 
 # Maximum number of search results displayed simultaneously.
 max_results = 20
-
-# Editor command for editing scripts (opens in a new Terminal window).
-editor = "nvim"
 ```
 
 ### Search Sources
