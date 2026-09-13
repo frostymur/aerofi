@@ -231,9 +231,10 @@ impl Target {
     /// Display name.
     pub fn name(&self) -> &str {
         match self {
-            Self::App { name, .. } | Self::Script { name, .. } | Self::Builtin { name, .. } | Self::PluginItem { name, .. } => {
-                name.as_ref()
-            }
+            Self::App { name, .. }
+            | Self::Script { name, .. }
+            | Self::Builtin { name, .. }
+            | Self::PluginItem { name, .. } => name.as_ref(),
         }
     }
 
