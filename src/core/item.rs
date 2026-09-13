@@ -242,9 +242,7 @@ impl Target {
     /// display name for built-in actions.
     pub fn identifier(&self) -> &str {
         match self {
-            Self::App { path, .. } | Self::Script { path, .. } => {
-                path.to_str().unwrap_or("")
-            }
+            Self::App { path, .. } | Self::Script { path, .. } => path.to_str().unwrap_or(""),
             Self::Builtin { name, .. } => name.as_ref(),
             Self::PluginItem { plugin_id, .. } => plugin_id.as_ref(),
         }

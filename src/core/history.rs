@@ -88,6 +88,7 @@ impl History {
     /// Frecency score: the sum over all launches of the target of the
     /// points its recency earns — 100 for a launch < 4 hours old, 80 for
     /// < 1 day, 40 for < 7 days, 10 for anything older.
+    #[allow(dead_code)]
     pub fn calculate_frecency(&self, target_identifier: &str) -> u32 {
         let now = now_secs();
         self.records
