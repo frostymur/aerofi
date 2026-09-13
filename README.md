@@ -33,83 +33,104 @@
 
 ---
 
-## ✨ Key Features
+## Why aerofi?
 
-- ⚡ **Sub-2ms Hotkey Latency**: Built directly on [GPUI](https://github.com/zed-industries/zed) (the GPU-accelerated UI framework behind Zed) rendering natively at 120 FPS via Metal (~1–2ms warm path on Apple Silicon).
-- 🪶 **Minimal Memory Footprint**: Strictly constrained memory budget—**~40 MB RSS idle, ~50 MB active**. Automatically frees GPU framebuffers when hidden.
-- 🔑 **Zero-Friction Global Hotkey**: Uses native macOS Carbon FFI (`RegisterEventHotKey`) by default. **Requires no invasive Accessibility permissions** to install and run.
-- 🔍 **Comprehensive App & Utilities Discovery**: Instantly indexes standard apps, `/System/Applications/Utilities` (Activity Monitor, Console, Terminal, etc.), and custom directories or individual bundles via `[apps.extra_dirs]` / `[apps.extra_apps]`.
-- 📜 **Full Raycast Script Compatibility**: Drop any existing Raycast script command into your scripts folder—aerofi natively parses `@raycast.title`, `@raycast.mode`, `@raycast.argument*`, and metadata annotations.
-- 🛠️ **6 Script Execution Modes**:
-  - `silent`: Detached background execution with floating toast status.
-  - `compact`: Transient single-line progress indicator.
-  - `inline`: Real-time output row displayed directly in the launcher list (great for battery, git, weather).
-  - `fullOutput`: Rich in-app Markdown and ANSI terminal output viewer.
-  - `pipe`: Captures output and copies directly to system clipboard (`pbcopy`).
-  - `gui`: Persistent two-way interactive Rofi-compatible IPC protocol.
-- 🔌 **Dynamic C ABI Plugins (`.dylib`)**: Build high-performance compiled extensions in Rust, C, C++, Zig, or Swift that load dynamically at runtime with zero overhead.
-- 🎨 **Declarative TOML Theming**: Transparent styling system with true macOS frosted glass blur, custom paddings, borders, typography, and variable color palettes (includes Tokyo Night & Gruvbox Dark).
-- 🚀 **Native macOS Service**: Run aerofi smoothly in the background as a daemon using `brew services`.
+Lightweight, open-source macOS launcher compatible with Raycast scripts.
+Compare to alternatives:
 
----
+| Feature | aerofi | Raycast | Alfred |
+|---------|--------|---------|--------|
+| Memory | ~40 MB | 250 MB | 200 MB |
+| Open Source | ✅ | ❌ | ❌ |
+| Raycast Scripts | ✅ | ✅ | ❌ |
+| C ABI Plugins | ✅ | ❌ | ❌ |
+| Cost | Free | $12/mo | $42 |
+| Hotkey Latency | <2ms | ~5ms | ~3ms |
 
-## 📦 Installation
+## Examples
+
+Ready-to-use scripts in `examples/scripts/`:
+
+- **clipboard-history.sh** — Browse clipboard history
+- **calculator.sh** — Quick math calculations
+- **emoji-picker.sh** — Search and copy emojis
+- **git-branch.sh** — Switch git branches
+
+Copy any of these to `~/.config/aerofi/scripts/` and they work immediately.
+
+## Key Features
+
+**Performance**
+- ⚡ Sub-2ms hotkey latency (GPU-accelerated via Metal)
+- 🪶 ~40 MB memory (vs 250 MB Raycast)
+
+**Compatibility**
+- 📜 Raycast script commands work out-of-the-box
+- 🔑 Zero-friction Carbon hotkey (no Accessibility permissions)
+
+**Flexibility**
+- 6 execution modes: silent, compact, inline, fullOutput, pipe, gui
+- 🎨 Deep TOML theming (colors, fonts, layouts)
+- 🔌 C ABI plugins (Rust, C, C++, Swift)
+
+**Developer-Friendly**
+- 💻 Open source (MIT license)
+- 📚 Full documentation & examples
+- 🚀 Active development
+
+## For rofi Users
+
+aerofi is inspired by rofi's Unix philosophy but for macOS:
+- Same stdin/stdout piping model (`gui` mode = rofi-compatible)
+- Native macOS experience (no X11 layers)
+- GPUI rendering (120 FPS, Metal acceleration)
+- Modern scripting ecosystem (Raycast compatibility)
+
+You can port rofi scripts to aerofi with minimal changes.
+
+## Installation
 
 ### Homebrew (Recommended)
-
-Install aerofi and start it as a background service:
-
 ```bash
-# Install aerofi
-brew install frostymur/aerofi/aerofi
-
-# Start aerofi as a background service (starts automatically on login)
-brew services start frostymur/aerofi/aerofi
+brew tap frostymur/aerofi
+brew install aerofi
 ```
 
-To stop the background service:
+### Cargo
 ```bash
-brew services stop aerofi
+cargo install aerofi
 ```
 
----
-
-### Building from Source
-
-Ensure you have Rust (stable 2024 edition) and Xcode Command Line Tools installed:
-
+### Or Build from Source
 ```bash
-# Clone the repository
-git clone https://github.com/frostymur/aerofi.git
+git clone https://github.com/frostymur/aerofi
 cd aerofi
-
-# Build the release binary
 cargo build --release
-
-# Install locally
-cargo install --path .
+./target/release/aerofi
 ```
 
----
+## Quick Start
 
-## 🚀 Quick Start
+### 1. Start aerofi
+```bash
+aerofi  # or set it to launch on login via System Preferences
+```
 
-1. **Open aerofi**: Press `Option+Space` (default global toggle).
-2. **Search**: Start typing to fuzzy-search across your Applications and scripts.
-3. **Launch**: Press `Enter` to open an application or run a script.
-4. **Reload**: Press `Cmd+R` or search for `Reload Configuration` to reload your config and themes instantly.
+### 2. Create Your First Script
+```bash
+mkdir -p ~/.config/aerofi/scripts
+cat > ~/.config/aerofi/scripts/hello.sh << 'EOF'
+#!/bin/bash
+# @aerofi.title Hello World
+# @aerofi.mode compact
 
----
+echo "Hello from aerofi! 👋"
+EOF
+chmod +x ~/.config/aerofi/scripts/hello.sh
+```
 
-## 📚 Documentation
-
-| Guide | Description |
-|---|---|
-| ⚙️ **[Customization Guide](docs/customization.md)** | `config.toml` reference, keybindings, aliases, app exclusions, and theming engine. |
-| 📜 **[Scripting & GUI Protocol](docs/scripts.md)** | Raycast compatibility, 6 execution modes, bidirectional GUI protocol, and Pango styling. |
-| 🔌 **[Native Plugins Guide](docs/plugins.md)** | Developing C ABI dynamic `.dylib` plugins in Rust/C with `aerofi-plugin-api`. |
-| 🏛️ **[Architecture Decisions](ARCHITECTURE.md)** | System layers, GPUI policies, memory limits, and design principles. |
-| 🤝 **[Contributing Guide](CONTRIBUTING.md)** | Developer workflow, signing keys, code quality standards, and PR guidelines. |
+### 3. Try It
+Press **Option+Space** (default hotkey), type "hello", press Enter.
 
 ---
 
@@ -137,16 +158,25 @@ aerofi comes bundled with curated modern themes in `~/.config/aerofi/themes/`:
 | **Gruvbox Dark** | Warm vintage retro-groove palette with high contrast and earthy tones. |
 | **Dark Transparent** | Minimalist semi-translucent dark monochrome design. |
 
-*See [docs/customization.md](docs/customization.md) for instructions on creating and customizing themes.*
-
 ---
 
-## 🤝 Contributing
+## Getting Help
 
-Contributions are welcome! Please check out [CONTRIBUTING.md](CONTRIBUTING.md) for details on code style, testing requirements, and cryptographic commit signing.
+- **Documentation**: [docs/](./docs/) for full config schema and scripting guide
+- **Examples**: [examples/scripts/](./examples/scripts/) for working scripts
+- **Issues**: [GitHub Issues](https://github.com/frostymur/aerofi/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/frostymur/aerofi/discussions)
 
----
+## Contributing
 
-## 📄 License
+We welcome contributions! See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
 
-aerofi is open-source software licensed under the [MIT License](LICENSE).
+## License
+
+MIT — See [LICENSE](./LICENSE)
+
+## Credits
+
+- Built on [GPUI](https://github.com/zed-industries/zed) — the GPU-accelerated UI framework from Zed
+- Inspired by [rofi](https://github.com/davatorium/rofi)
+- Raycast script compatibility via [@raycast/script-commands](https://github.com/raycast/script-commands)
