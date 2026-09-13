@@ -1,0 +1,14 @@
+# cargo-release configuration for aerofi
+# Usage: cargo release [patch|minor|major] --execute
+
+# Do not publish to crates.io automatically for now (relies on GitHub Releases)
+publish = false
+
+# Tag format
+tag-name = "v{{version}}"
+
+# Commit message for the version bump
+pre-release-commit-message = "chore(core): bump version to {{version}}"
+
+# Push the commit and tag to the remote
+push = true
