@@ -27,7 +27,10 @@ fn key(k: &str) -> Keystroke {
 }
 
 fn names(l: &Launcher) -> Vec<String> {
-    l.filtered.iter().map(|&i| l.all[i].name().to_string()).collect()
+    l.filtered
+        .iter()
+        .map(|&i| l.all[i].name().to_string())
+        .collect()
 }
 
 fn cap_config(max_results: usize) -> AppConfig {
@@ -112,7 +115,10 @@ fn inline_output_updates_rows_without_reordering() {
     // the scroll position).
     l.apply_inline_output(&path, Some("subtitle-updated".into()));
     assert_eq!(l.all[1].inline_output(), Some("subtitle-updated"));
-    assert_eq!(l.all[l.filtered[1]].inline_output(), Some("subtitle-updated"));
+    assert_eq!(
+        l.all[l.filtered[1]].inline_output(),
+        Some("subtitle-updated")
+    );
     assert_eq!(names(&l), vec!["Alpha", "Inline Script", "Zeta"]);
 }
 

@@ -53,13 +53,15 @@ impl Render for ToastWindow {
         let pad = t.element.padding.first().copied().unwrap_or(8.0);
         let window_bg = rgba(parse_hex_color_alpha(&t.window.background).unwrap_or(0x000000FF));
         let text_color = rgba(parse_hex_color_alpha(&t.element.text_color).unwrap_or(0x000000FF));
-        let desc_color = rgba(parse_hex_color_alpha(
-            t.element
-                .description_color
-                .as_deref()
-                .unwrap_or(&t.element.text_color),
-        )
-        .unwrap_or(0x000000FF));
+        let desc_color = rgba(
+            parse_hex_color_alpha(
+                t.element
+                    .description_color
+                    .as_deref()
+                    .unwrap_or(&t.element.text_color),
+            )
+            .unwrap_or(0x000000FF),
+        );
 
         let mut root = div()
             .size_full()
@@ -84,11 +86,12 @@ impl Render for ToastWindow {
             ToastState::Running { title } => {
                 root = root
                     .child(
-                        div()
-                            .w(px(10.0))
-                            .h(px(10.0))
-                            .rounded_full()
-                            .bg(rgba(crate::core::theme::parse_hex_color_alpha(&self.theme.toast.running_dot).unwrap_or(0xaaaaaaFF))),
+                        div().w(px(10.0)).h(px(10.0)).rounded_full().bg(rgba(
+                            crate::core::theme::parse_hex_color_alpha(
+                                &self.theme.toast.running_dot,
+                            )
+                            .unwrap_or(0xaaaaaaff),
+                        )),
                     )
                     .child(
                         div()
@@ -116,9 +119,11 @@ impl Render for ToastWindow {
                 is_error,
             } => {
                 let dot_color: u32 = if *is_error {
-                    crate::core::theme::parse_hex_color_alpha(&self.theme.toast.error_dot).unwrap_or(0xf7768eFF)
+                    crate::core::theme::parse_hex_color_alpha(&self.theme.toast.error_dot)
+                        .unwrap_or(0xf7768eff)
                 } else {
-                    crate::core::theme::parse_hex_color_alpha(&self.theme.toast.success_dot).unwrap_or(0x9ece6aFF)
+                    crate::core::theme::parse_hex_color_alpha(&self.theme.toast.success_dot)
+                        .unwrap_or(0x9ece6aff)
                 };
                 root = root
                     .child(

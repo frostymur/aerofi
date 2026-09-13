@@ -211,9 +211,9 @@ impl Launcher {
                 .rounded_sm()
                 .into_any()
         } else {
-            let col = color
-                .and_then(parse_hex_color)
-                .unwrap_or_else(|| parse_hex_color_alpha(&t.element.text_color).unwrap_or(0x000000FF));
+            let col = color.and_then(parse_hex_color).unwrap_or_else(|| {
+                parse_hex_color_alpha(&t.element.text_color).unwrap_or(0x000000FF)
+            });
 
             div()
                 .text_color(rgb(col))
@@ -405,7 +405,7 @@ impl Launcher {
 
         let col = color
             .and_then(parse_hex_color)
-            .unwrap_or_else(|| parse_hex_color_alpha(&t.element.text_color).unwrap_or(0xffffffFF));
+            .unwrap_or_else(|| parse_hex_color_alpha(&t.element.text_color).unwrap_or(0xffffffff));
         btn = btn.text_color(rgb(col));
 
         let hbg_opt = hover_background.and_then(parse_hex_color);

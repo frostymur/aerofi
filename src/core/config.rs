@@ -114,18 +114,12 @@ impl Default for SourcesConfig {
 }
 
 /// Script source settings.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ScriptsConfig {
     /// Folders scanned for scripts. A leading `~` is expanded via
     /// [`AppConfig::expanded_script_dirs`].
     pub dirs: Vec<PathBuf>,
-}
-
-impl Default for ScriptsConfig {
-    fn default() -> Self {
-        Self { dirs: Vec::new() }
-    }
 }
 
 /// Application source settings.

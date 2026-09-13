@@ -797,7 +797,6 @@ pub fn load_theme(theme_name: &str) -> ThemeConfig {
 /// Parse a CSS-style hex colour (`"#1a1b26"`, `"7aa2f7"`, `"#fff"`) into
 /// a 24-bit RGB value suitable for GPUI's `rgb()`.  Returns `None` on
 /// malformed input.
-
 pub fn parse_hex_color_alpha(hex: &str) -> Option<u32> {
     if hex == "transparent" {
         return Some(0x00000000);

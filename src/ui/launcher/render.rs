@@ -512,9 +512,15 @@ impl Launcher {
                             } else if !is_selectable {
                                 (rgba(0x00000000), desc_color)
                             } else if is_urgent {
-                                (rgba(Self::color(&t.status_colors.urgent_row_background)), rgba(Self::color(&el.text_color)))
+                                (
+                                    rgba(Self::color(&t.status_colors.urgent_row_background)),
+                                    rgba(Self::color(&el.text_color)),
+                                )
                             } else if is_active {
-                                (rgba(Self::color(&t.status_colors.active_row_background)), rgba(Self::color(&el.text_color)))
+                                (
+                                    rgba(Self::color(&t.status_colors.active_row_background)),
+                                    rgba(Self::color(&el.text_color)),
+                                )
                             } else {
                                 (rgba(0x00000000), rgba(Self::color(&el.text_color)))
                             };
@@ -538,7 +544,9 @@ impl Launcher {
                                     row_div = row_div.child(
                                         div()
                                             .text_color(if is_toggled {
-                                                rgba(Self::color(&t.status_colors.active_background))
+                                                rgba(Self::color(
+                                                    &t.status_colors.active_background,
+                                                ))
                                             } else {
                                                 desc_color
                                             })
@@ -572,8 +580,12 @@ impl Launcher {
                                             .px_2()
                                             .py(px(2.0))
                                             .rounded_sm()
-                                            .bg(rgba(Self::color(&t.status_colors.urgent_background)))
-                                            .text_color(rgba(Self::color(&t.status_colors.urgent_text)))
+                                            .bg(rgba(Self::color(
+                                                &t.status_colors.urgent_background,
+                                            )))
+                                            .text_color(rgba(Self::color(
+                                                &t.status_colors.urgent_text,
+                                            )))
                                             .text_size(px(t.font.size * 0.72))
                                             .child("URGENT"),
                                     );
@@ -585,8 +597,12 @@ impl Launcher {
                                             .px_2()
                                             .py(px(2.0))
                                             .rounded_sm()
-                                            .bg(rgba(Self::color(&t.status_colors.active_background)))
-                                            .text_color(rgba(Self::color(&t.status_colors.active_text)))
+                                            .bg(rgba(Self::color(
+                                                &t.status_colors.active_background,
+                                            )))
+                                            .text_color(rgba(Self::color(
+                                                &t.status_colors.active_text,
+                                            )))
                                             .text_size(px(t.font.size * 0.72))
                                             .child("ACTIVE"),
                                     );
@@ -641,7 +657,9 @@ impl Launcher {
                                     row_div = row_div.child(
                                         div()
                                             .text_color(if is_toggled {
-                                                rgba(Self::color(&t.status_colors.active_background))
+                                                rgba(Self::color(
+                                                    &t.status_colors.active_background,
+                                                ))
                                             } else {
                                                 desc_color
                                             })
@@ -675,8 +693,12 @@ impl Launcher {
                                             .px_2()
                                             .py(px(2.0))
                                             .rounded_sm()
-                                            .bg(rgba(Self::color(&t.status_colors.urgent_background)))
-                                            .text_color(rgba(Self::color(&t.status_colors.urgent_text)))
+                                            .bg(rgba(Self::color(
+                                                &t.status_colors.urgent_background,
+                                            )))
+                                            .text_color(rgba(Self::color(
+                                                &t.status_colors.urgent_text,
+                                            )))
                                             .text_size(px(t.font.size * 0.72))
                                             .child("URGENT"),
                                     );
@@ -688,8 +710,12 @@ impl Launcher {
                                             .px_2()
                                             .py(px(2.0))
                                             .rounded_sm()
-                                            .bg(rgba(Self::color(&t.status_colors.active_background)))
-                                            .text_color(rgba(Self::color(&t.status_colors.active_text)))
+                                            .bg(rgba(Self::color(
+                                                &t.status_colors.active_background,
+                                            )))
+                                            .text_color(rgba(Self::color(
+                                                &t.status_colors.active_text,
+                                            )))
                                             .text_size(px(t.font.size * 0.72))
                                             .child("ACTIVE"),
                                     );
@@ -938,7 +964,12 @@ impl Launcher {
                             .child(title.to_string()),
                     ),
             )
-            .child(div().text_xs().text_color(rgba(Self::color(&t.status_colors.muted))).child("↵ Rerun"));
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(rgba(Self::color(&t.status_colors.muted)))
+                    .child("↵ Rerun"),
+            );
 
         let block_count = self.full_output_blocks.len();
         let body = if block_count == 0 {
@@ -1102,7 +1133,9 @@ impl Launcher {
                     ..Default::default()
                 },
                 InlineKind::Code => gpui::HighlightStyle {
-                    background_color: Some(Self::hsla_hex(Self::color(&t.status_colors.muted)).opacity(0.35)),
+                    background_color: Some(
+                        Self::hsla_hex(Self::color(&t.status_colors.muted)).opacity(0.35),
+                    ),
                     ..Default::default()
                 },
             };

@@ -166,7 +166,6 @@ mod tests {
         results.into_iter().map(|i| targets[i].clone()).collect()
     }
 
-
     /// A launch recorded "just now" (100 frecency points).
     fn fresh_record(identifier: &str) -> ExecutionRecord {
         ExecutionRecord {
