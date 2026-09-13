@@ -28,7 +28,7 @@ starts the app (aerofi daemon listens for Alt+Space).
   a PR, squash-merge.
 - Any PR that touches the workspace layout, the IPC protocol, or the
   hotkey backend should be preceded by a short discussion in an issue and
-  land with an ADR (see `ARCHITECTURE.md`), not just code.
+  land with architectural documentation in `ARCHITECTURE.md`, not just code.
 
 ## Commit messages — Conventional Commits
 
@@ -51,8 +51,20 @@ perf(daemon): drop idle RSS by lazily loading nucleo index
 
 ## Versioning & releases
 
-SemVer, tags `vX.Y.Z` on the single crate. Release notes generated from
-Conventional Commits since the last tag. Releases are cut from `main` only.
+We adhere to [Semantic Versioning (SemVer)](https://semver.org/) via git tags `vX.Y.Z` on the single crate:
+
+- **PATCH (`z` in `X.Y.Z`, e.g., `0.0.7` -> `0.0.8`)**:
+  - Incremented for backward-compatible bug fixes and internal improvements.
+  - Triggers: `fix:`, `perf:`, internal refactorings, dependency updates, and maintenance without user-facing breaking changes.
+- **MINOR (`y` in `X.Y.Z`, e.g., `0.0.8` -> `0.1.0`)**:
+  - Incremented when new backward-compatible functionality is added.
+  - Triggers: `feat:` (e.g., new script modes, new theme widgets, new configuration options, new UI capabilities).
+- **MAJOR (`x` in `X.Y.Z`, e.g., `0.1.0` -> `1.0.0`)**:
+  - Incremented for incompatible breaking changes that require users to alter their `config.toml`, themes, or script protocol usage.
+  - Triggers: commits with `BREAKING CHANGE:` in footer or `!` after type (e.g., `feat!:`, `fix!:`).
+  - *Pre-1.0 note*: In the `0.Y.Z` phase, breaking changes may bump `Y` while the public API stabilizes toward `1.0.0`.
+
+Release notes are generated from Conventional Commits since the last tag. Releases are cut from `main` only.
 
 ## Testing
 

@@ -10,20 +10,27 @@ Single-crate (monorepo style), organized by concern:
 src/
 ├── main.rs              # GPUI initialization, hotkey registration, event loop
 ├── ui/                  # Everything that renders (depends on GPUI)
-│   ├── window.rs        # Window setup (borderless, focus management)
-│   └── launcher/        # Input field, search list, keyboard handlers, GUI mode rendering
+│   ├── window.rs        # Window setup (borderless PopUp NSPanel, focus & lifecycle)
+│   ├── toast_window.rs  # Compact & silent script status notifications (floating toast)
+│   ├── execute.rs       # Script execution routing by mode (silent, compact, inline, fullOutput, pipe, gui)
+│   └── launcher/        # Input field, search list, keyboard handlers, custom widgets & GUI mode rendering
 ├── core/                # Data models, config & execution engine (knows nothing about GPUI)
-│   ├── item.rs          # Target (App/Script), ScriptMode, @raycast.* parsing
-│   ├── scanner.rs       # Directory indexing: /Applications* + scripts folder
-│   ├── executor.rs      # Launching targets (open / sh)
+│   ├── item.rs          # Target (App/Script/Builtin), ScriptMode, metadata parsing
+│   ├── config.rs        # AppConfig loader (~/.config/aerofi/config.toml) & defaults
+│   ├── scanner.rs       # Directory indexing: /Applications* + configured script folders
+│   ├── executor.rs      # Launching targets (open, interpreter commands, pbcopy)
+│   ├── history.rs       # Launch history & frecency calculation
 │   ├── gui_protocol.rs  # Rofi-compatible GUI mode protocol parser
 │   ├── gui_session.rs   # GUI mode interactive process session management
-│   ├── search.rs        # nucleo-matcher wrapper
-│   ├── theme.rs         # Theme configuration parser & colors
+│   ├── markdown.rs      # Markdown AST parser for full-output script reader
+│   ├── pango.rs         # Pango markup parsing for rich rows
+│   ├── search.rs        # Zero-allocation Nucleo fuzzy matcher & frecency ranker
+│   ├── theme.rs         # Theme configuration parser, alpha channels & palette resolver
 │   └── widget.rs        # Widget tree definition and validation
-└── sys/                 # System calls (macOS-only for v0.1, so flat — no per-OS nesting)
-    ├── carbon.rs        # Carbon RegisterEventHotKey binding
-    └── appkit.rs        # NSWindow/NSApplication FFI (chrome, show/hide)
+└── sys/                 # System calls (macOS-only)
+    ├── carbon.rs        # Carbon RegisterEventHotKey global hotkey bindings
+    ├── appkit.rs        # NSWindow/NSApplication FFI (chrome, transparency, show/hide)
+    └── icons.rs         # Native macOS .app icon extraction
 ```
 
 **Rationale:** single crate keeps the build simple (one `cargo build`, no
@@ -32,92 +39,46 @@ of concerns *within* the crate.
 
 ## Validated performance baseline
 
-As of the first working prototype: **~24 MB RSS while active, ~0.1% CPU
-idle**, fully interactive GPUI window. Treat this as the baseline to
-protect, not a one-time measurement to forget:
+Current operational baseline: **~40 MB RSS idle, ~50 MB RSS active, ~0.1% CPU idle**, fully interactive GPUI window. Treat this as the baseline to protect:
 
-- Idle/backgrounded RSS: keep under 30 MB (macOS compresses Metal buffers
-  once the window is hidden — verify this after every dependency bump,
-  don't assume it holds).
-- Active/foreground RSS: keep under 40 MB with the script index loaded.
+- Idle/backgrounded RSS: keep around ~40 MB (textures dropped and Metal buffers compressed once hidden).
+- Active/foreground RSS: keep around ~50 MB with the search index and applications loaded.
 - Hotkey-to-rendered-frame latency: under 5 ms on the warm path.
 
-Any PR that grows active RSS by more than ~10% needs a one-line
-justification in the PR description. Measure with Activity Monitor or
-`footprint <pid>`, before and after hiding the window.
+Any PR that grows active RSS by more than ~10% needs a one-line justification in the PR description. Measure with Activity Monitor or `footprint <pid>`, before and after hiding the window.
 
 ## Hotkey subsystem
 
-Default path: Carbon `RegisterEventHotKey` (via the `carbonhotkey` crate or
-equivalent). This is the only public macOS API for a global hotkey that
-requires no Accessibility permission — do not require Accessibility just to
-install the app.
+Default path: Carbon `RegisterEventHotKey` (via Carbon FFI). This is the only public macOS API for a global hotkey that requires no Accessibility permission — do not require Accessibility just to install the app.
 
-Known limitation, not a bug to "fix" by switching defaults: Carbon
-`RegisterEventHotKey` silently fails to fire when the frontmost app is a
-self-drawn text UI — this includes GPU-rendered terminals (WezTerm,
-Ghostty, Zed's own terminal), which is exactly where this app's users
-spend most of their time. The fix is a second, **opt-in** backend using
-`NSEvent.addGlobalMonitorForEvents`, gated behind Accessibility permission
-and an explicit config flag (`hotkey.reliable_mode = true`). Never make
-this the default — it trades zero-friction install for reliability, and
-that trade should be the user's choice, not ours.
+Known limitation, not a bug to "fix" by switching defaults: Carbon `RegisterEventHotKey` silently fails to fire when the frontmost app is a self-drawn text UI — this includes GPU-rendered terminals (WezTerm, Ghostty, Zed's own terminal), which is exactly where this app's users spend most of their time. The fix is a second, **opt-in** backend using `NSEvent.addGlobalMonitorForEvents`, gated behind Accessibility permission and an explicit config flag (`hotkey.reliable_mode = true`). Never make this the default — it trades zero-friction install for reliability, and that trade should be the user's choice, not ours.
 
 ## GPUI dependency policy
 
-GPUI is pinned to a specific git commit SHA in `Cargo.toml`, never `main`
-and never a floating branch. GPUI is pre-1.0 with breaking changes expected
-between revisions. Bumping the pin is a deliberate PR on its own — not
-bundled with feature work — that must (a) pass the full test suite and
-(b) re-verify the RSS baseline above before merging.
+GPUI is pinned to a specific git commit SHA in `Cargo.toml`, never `main` and never a floating branch. GPUI is pre-1.0 with breaking changes expected between revisions. Bumping the pin is a deliberate PR on its own — not bundled with feature work — that must (a) pass the full test suite and (b) re-verify the RSS baseline above before merging.
 
-## Script execution: terminal-based output in v0.1
+## Script execution modes
 
-Scripts run as `sh <script>`, a child of aerofi with stdio inherited, so the
-script's stdout/stderr are visible in the terminal aerofi was launched from.
+- `silent`: Runs detached in the background, launcher window closes immediately; floating toast displays status.
+- `compact`: Floating toast shows running indicator, outputs single-line status updates.
+- `inline`: Displays output dynamically as a subtitle next to the script in the launcher list.
+- `fullOutput`: Renders stdout in the built-in markdown viewer with ANSI/Markdown support.
+- `pipe`: Captures stdout and copies output directly to the system clipboard (`pbcopy`).
+- `gui`: Two-way interactive Rofi-compatible streaming protocol via stdin/stdout (`\0prompt`, `\0message`, etc.).
+
 Applications open via `open <path>`.
-
-**Rationale:** This is simple, honest, and defers UI complexity. If a
-script needs interactive output (a menu, a prompt), it can use its own
-tooling (`read`, `fzf`, `osascript`). The launcher's job is to find and
-run the script, not to build a shell inside the UI.
-
-Deferred for v0.2+: capturing stdout and rendering it in the aerofi UI
-(Script Kit style) would require async piping + real-time GPUI updates. This
-is worth doing eventually, but not required for v0.1 functionality to be
-complete and useful.
 
 ## Script metadata: Raycast Script Commands compatible, not extension compatible
 
-The indexer recognizes `# @raycast.title`, `# @raycast.mode`,
-`# @raycast.icon`, `# @raycast.packageName`, and `# @raycast.argument*`
-comment tags as first-class, alongside the native `@name` / `@description`
-/ `@icon` / `@shortcut` / `@mode` tags. Existing Raycast script commands
-should work unmodified when dropped into the scripts folder.
+The indexer recognizes `# @raycast.title`, `# @raycast.mode`, `# @raycast.icon`, `# @raycast.packageName`, and `# @raycast.argument*` comment tags as first-class, alongside native tags. Existing Raycast script commands work unmodified when dropped into the scripts folder.
 
-We do **not** build a React/TypeScript extension runtime, and we do not
-attempt live compatibility with the Raycast Store. This is permanent, not
-a v0.1 scope cut — it requires chasing a third party's evolving API
-surface indefinitely (this is specifically what makes Vicinae's Raycast
-extensions crash over time) and it means bundling a JS runtime, which
-directly undermines the RSS budget above.
+We do **not** build a React/TypeScript extension runtime, and we do not attempt live compatibility with the Raycast Store. This is permanent, not a scope cut — it requires chasing a third party's evolving API surface indefinitely and requires bundling a JS runtime, which directly undermines the RSS budget above.
 
 ## Explicit non-goals (not "later" — architecturally excluded from v1)
 
 - Windows/Linux support.
 - A settings GUI panel — config stays a hand-edited `config.toml` for v1.
 - Any plugin/extension runtime.
-- AeroSpace/yabai-native quick actions — genuinely valuable (see roadmap),
-  but not part of the core daemon; when it happens, it should be scripts
-  shelling out to the `aerospace` CLI, not a special-cased integration.
-  
-## ADR process
+- AeroSpace/yabai-native quick actions — genuinely valuable, but not part of the core daemon; when it happens, it should be scripts shelling out to the `aerospace` CLI, not a special-cased integration.
 
-Any decision expensive to reverse gets a short ADR under `docs/adr/` using
-Context / Decision / Status / Consequences. The sections above already
-constitute ADR 0001 (single-crate layout + GPUI pin + baseline RSS), ADR
-0002 (terminal-based script output, deferred UI piping), and ADR 0003
-(Raycast script-command compat, not extension compat) — write those up
-formally in `docs/adr/` rather than leaving them only in this file, so
-future contributors see the dated record of when and why.
 

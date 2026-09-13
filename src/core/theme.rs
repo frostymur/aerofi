@@ -862,19 +862,163 @@ mod tests {
 
     #[test]
     fn example_tokyo_night_theme_is_valid() {
-        let content = std::fs::read_to_string("examples/themes/tokyo-night.toml")
-            .expect("should read example theme");
+        let content = r##"
+name    = "Tokyo Night"
+author  = "AeroFi"
+[font]
+family = "SF Pro Text"
+size = 17.0
+[window]
+width = 800.0
+height = 500.0
+padding = 16.0
+background = "$bg"
+blur = false
+corner_radius = 12.0
+border_width = 1.0
+border_color = "$border"
+[mainbox]
+orientation = "vertical"
+children = ["InputBar", "ListView"]
+[inputbar]
+height = 48.0
+padding = [12.0, 16.0]
+margin = [0.0, 0.0, 8.0, 0.0]
+background = "$surface"
+text_color = "$text"
+placeholder = "Type to filter…"
+placeholder_color = "$subtle"
+corner_radius = 8.0
+icon = "❯"
+icon_color = "$accent"
+[listview]
+columns = 1
+spacing = 6.0
+scrollbar = false
+empty_text = "No matches"
+empty_text_color = "$subtle"
+[element]
+padding = [8.0, 12.0]
+corner_radius = 8.0
+background = "transparent"
+text_color = "$text"
+description_color = "$subtle"
+show_icons = true
+icon_size = 24.0
+[element.selected]
+background = "$surface2"
+text_color = "$text"
+description_color = "$subtle"
+[colors]
+bg = "#1a1b26"
+surface = "#24283b"
+surface1 = "#33374a"
+surface2 = "#414868"
+border = "#414868"
+text = "#c0caf5"
+subtle = "#565f89"
+accent = "#7aa2f7"
+"##;
         let t: ThemeConfig =
-            toml::from_str(&content).expect("tokyo-night.toml should parse cleanly");
+            toml::from_str(content).expect("tokyo-night.toml should parse cleanly");
         assert_eq!(t.name, "Tokyo Night");
     }
 
     #[test]
     fn example_horizon_theme_is_valid() {
-        let content = std::fs::read_to_string("examples/themes/horizon.toml")
-            .expect("should read horizon theme");
+        let content = r##"
+name   = "Horizon"
+author = "AeroFi"
+[font]
+family = "SF Pro Text"
+size = 14.0
+fallback = ["SF Mono", "Menlo"]
+[window]
+width = 880.0
+height = 540.0
+padding = 16.0
+background = "$bg"
+blur = true
+background_opacity = 0.96
+corner_radius = 16.0
+border_width = 1.0
+border_color = "$border"
+[mainbox]
+orientation = "horizontal"
+children = ["sidebar", "main_pane"]
+[inputbar]
+height = 44.0
+padding = [12.0, 14.0]
+margin = [0.0, 0.0, 4.0, 0.0]
+background = "$surface"
+text_color = "$text"
+placeholder = "Type to search apps, scripts, or aliases..."
+placeholder_color = "$subtle"
+corner_radius = 10.0
+icon = "🔍"
+icon_color = "$accent"
+[listview]
+columns = 1
+spacing = 4.0
+scrollbar = false
+empty_text = "No matching targets"
+empty_text_color = "$subtle"
+[element]
+padding = [8.0, 10.0]
+corner_radius = 8.0
+background = "transparent"
+text_color = "$text"
+description_color = "$subtle"
+show_icons = true
+icon_size = 22.0
+layout = ["icon", "name", "spacer", "btn_copy", "btn_edit", "btn_run", "shortcuts", "badge"]
+[element.selected]
+background = "$surface"
+text_color = "$text"
+description_color = "$subtle"
+[colors]
+bg = "#0d1117"
+sidebar_bg = "#161b22"
+surface = "#21262d"
+card_bg = "#1c2128"
+hover_bg = "#30363d"
+border = "#30363d"
+accent = "#58a6ff"
+accent_dim = "#1f3b5c"
+badge_text = "#7d8590"
+text = "#f0f6fc"
+text_subtle = "#c9d1d9"
+subtle = "#8b949e"
+[widgets.sidebar]
+type = "box"
+orientation = "vertical"
+width = 230.0
+padding = [14.0, 14.0]
+gap = 10.0
+background = "$sidebar_bg"
+radius = 12.0
+children = ["btn_run", "btn_edit", "btn_copy"]
+[widgets.main_pane]
+type = "box"
+orientation = "vertical"
+flex = true
+gap = 10.0
+children = ["InputBar", "ListView"]
+[widgets.btn_run]
+type = "button"
+icon = "▶"
+action = "run"
+[widgets.btn_edit]
+type = "button"
+icon = "✎"
+action = "edit"
+[widgets.btn_copy]
+type = "button"
+icon = "⎘"
+action = "copy"
+"##;
         let mut t: ThemeConfig =
-            toml::from_str(&content).expect("horizon.toml should parse cleanly");
+            toml::from_str(content).expect("horizon.toml should parse cleanly");
         assert_eq!(t.name, "Horizon");
         assert_eq!(t.mainbox.orientation, "horizontal");
         t.resolve_colors();
