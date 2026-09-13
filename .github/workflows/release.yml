@@ -59,67 +59,88 @@ jobs:
           repository: frostymur/homebrew-aerofi
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           path: homebrew-aerofi
+          ref: main
 
       - name: Calculate Checksums & Update Formula
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
-          ARM64_URL="https://github.com/${{ github.repository }}/releases/download/${TAG}/aerofi-mac-arm64.tar.gz"
-          X86_URL="https://github.com/${{ github.repository }}/releases/download/${TAG}/aerofi-mac-x86_64.tar.gz"
+          REPO="${{ github.repository }}"
+          echo "Processing Homebrew formula for tag: ${TAG}"
 
-          echo "Target Release Tag: ${TAG}"
+          mkdir -p /tmp/aerofi-dist
+          cd /tmp/aerofi-dist
 
-          EMPTY_SHA="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
           for i in {1..12}; do
-            ARM64_SHA=$(curl -sSL "$ARM64_URL" | sha256sum | awk '{print $1}')
-            X86_SHA=$(curl -sSL "$X86_URL" | sha256sum | awk '{print $1}')
-
-            if [ -n "$ARM64_SHA" ] && [ "$ARM64_SHA" != "$EMPTY_SHA" ] && \
-               [ -n "$X86_SHA" ] && [ "$X86_SHA" != "$EMPTY_SHA" ]; then
-              echo "Checksums verified successfully:"
-              echo "ARM64: ${ARM64_SHA}"
-              echo "X86_64: ${X86_SHA}"
-              break
+            if gh release download "${TAG}" --repo "${REPO}" --pattern "*.tar.gz"; then
+              if [ -f "aerofi-mac-arm64.tar.gz" ] && [ -f "aerofi-mac-x86_64.tar.gz" ]; then
+                echo "Release assets verified on disk."
+                break
+              fi
             fi
-
-            echo "Assets not ready yet, retrying in 5 seconds (attempt $i/12)..."
+            echo "Waiting for release assets to become available (attempt $i/12)..."
             sleep 5
           done
 
-          if [ -z "$ARM64_SHA" ] || [ "$ARM64_SHA" = "$EMPTY_SHA" ] || \
-             [ -z "$X86_SHA" ] || [ "$X86_SHA" = "$EMPTY_SHA" ]; then
-            echo "Error: Failed to fetch valid release assets."
+          if [ ! -f "aerofi-mac-arm64.tar.gz" ] || [ ! -f "aerofi-mac-x86_64.tar.gz" ]; then
+            echo "Error: Failed to download release binaries from GitHub release."
             exit 1
           fi
 
-          cat <<EOF > homebrew-aerofi/Formula/aerofi.rb
-class Aerofi < Formula
-  desc "Lightweight, keyboard- and mouse-driven script launcher for macOS"
-  homepage "https://github.com/frostymur/aerofi"
-  license "MIT"
+          export TAG
+          export REPO
+          export ARM64_SHA=$(sha256sum aerofi-mac-arm64.tar.gz | awk '{print $1}')
+          export X86_SHA=$(sha256sum aerofi-mac-x86_64.tar.gz | awk '{print $1}')
 
-  if Hardware::CPU.arm?
-    url "https://github.com/frostymur/aerofi/releases/download/${TAG}/aerofi-mac-arm64.tar.gz"
-    sha256 "${ARM64_SHA}"
-  else
-    url "https://github.com/frostymur/aerofi/releases/download/${TAG}/aerofi-mac-x86_64.tar.gz"
-    sha256 "${X86_SHA}"
-  end
+          echo "ARM64 SHA256: ${ARM64_SHA}"
+          echo "X86_64 SHA256: ${X86_SHA}"
 
-  def install
-    bin.install "aerofi"
-  end
+          cd "$GITHUB_WORKSPACE"
 
-  service do
-    run opt_bin/"aerofi"
-    keep_alive true
-    process_type :interactive
-  end
+          python3 -c '
+          import os
+          import textwrap
 
-  test do
-    system bin/"aerofi", "--version"
-  end
-end
-EOF
+          tag = os.environ["TAG"]
+          repo = os.environ["REPO"]
+          arm64_sha = os.environ["ARM64_SHA"]
+          x86_sha = os.environ["X86_SHA"]
+
+          formula = f"""class Aerofi < Formula
+            desc "Lightweight, keyboard- and mouse-driven script launcher for macOS"
+            homepage "https://github.com/{repo}"
+            license "MIT"
+
+            if Hardware::CPU.arm?
+              url "https://github.com/{repo}/releases/download/{tag}/aerofi-mac-arm64.tar.gz"
+              sha256 "{arm64_sha}"
+            else
+              url "https://github.com/{repo}/releases/download/{tag}/aerofi-mac-x86_64.tar.gz"
+              sha256 "{x86_sha}"
+            end
+
+            def install
+              bin.install "aerofi"
+            end
+
+            service do
+              run opt_bin/"aerofi"
+              keep_alive true
+              process_type :interactive
+            end
+
+            test do
+              system bin/"aerofi", "--version"
+            end
+          end
+          """
+
+          clean_formula = textwrap.dedent(formula).strip() + "\n"
+
+          with open("homebrew-aerofi/Formula/aerofi.rb", "w") as f:
+              f.write(clean_formula)
+          '
 
       - name: Commit and push changes
         run: |
@@ -131,5 +152,5 @@ EOF
             echo "No changes in formula to commit."
           else
             git commit -m "chore: bump aerofi to ${GITHUB_REF#refs/tags/}"
-            git push origin main
+            git push origin HEAD:main
           fi
