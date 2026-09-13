@@ -1061,7 +1061,7 @@ impl Launcher {
                 GuiCommand::Flush => {}
                 GuiCommand::SetPrompt(p) => prompt = Some(p.clone()),
                 GuiCommand::SetMessage(m) => message = Some(m.clone()),
-                GuiCommand::EnableMarkup => {} // future
+                GuiCommand::EnableMarkup => markup_rows = true,
                 GuiCommand::NoCustom(v) => no_custom = *v,
                 GuiCommand::KeepSelection(s) => keep_selection = Some(s.clone()),
                 GuiCommand::SetColumns(n) => columns = Some(*n),
