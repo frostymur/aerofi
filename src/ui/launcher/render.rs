@@ -1262,12 +1262,12 @@ impl Launcher {
         for global_ix in start_ix..end_ix {
             let item = &self.all[self.filtered[global_ix]];
             let is_selected = global_ix == self.selected;
-            row = row.child(div().flex_1().child(self.render_grid_cell(
-                item,
-                is_selected,
-                global_ix,
-                cx,
-            )));
+            row = row.child(
+                div()
+                    .flex_1()
+                    .overflow_hidden()
+                    .child(self.render_grid_cell(item, is_selected, global_ix, cx)),
+            );
         }
         // Pad incomplete last row to keep column alignment.
         for _ in end_ix..(start_ix + cols) {
@@ -1368,7 +1368,8 @@ impl Launcher {
             .px(px(pad_h))
             .rounded(px(el.corner_radius))
             .cursor(CursorStyle::PointingHand)
-            .bg(cell_bg);
+            .bg(cell_bg)
+            .overflow_hidden();
 
         if is_selected {
             cell_div = cell_div
