@@ -42,9 +42,10 @@ Compare to alternatives:
 |---------|--------|---------|--------|
 | Memory | ~40 MB | 250 MB | ~75 MB |
 | Open Source | ✅ | ❌ | ❌ |
+| Config as Code | ✅ Plain TOML (dotfiles) | ❌ GUI only | ❌ GUI only |
 | Raycast Scripts | ✅ | ✅ | ❌ |
 | C ABI Plugins | ✅ | ❌ | ❌ |
-| Cost | Free | $12/mo | $42 |
+| Cost | Free | Free / $12/mo | Free / $42 |
 | Hotkey Latency | <2ms | ~5ms | ~3ms |
 
 ## Examples
@@ -93,8 +94,11 @@ You can port rofi scripts to aerofi with minimal changes.
 ### Homebrew (Recommended)
 Install aerofi and start it as a native macOS background service:
 ```bash
-brew install frostymur/aerofi/aerofi
-brew services start frostymur/aerofi/aerofi
+brew tap frostymur/aerofi
+brew install aerofi
+
+# Start as a background service (starts automatically at login)
+brew services start aerofi
 ```
 
 ### Cargo
