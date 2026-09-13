@@ -60,6 +60,10 @@ pub struct Launcher {
     /// Active GUI-mode script session (stdin/stdout pipe to child).
     /// Wrapped in Arc<Mutex<>> so it can be shared with async tasks.
     pub(super) gui_session: Option<Arc<Mutex<GuiSession>>>,
+    /// Manager for dynamic `.dylib` plugins.
+    pub(super) plugin_manager: crate::core::plugin_manager::PluginManager,
+    /// Number of base items (apps/scripts/builtins). Plugin items are appended after this.
+    pub(super) base_count: usize,
 }
 
 impl Launcher {
@@ -72,6 +76,7 @@ impl Launcher {
         let filtered = (0..all.len()).collect();
         let widget_registry = WidgetRegistry::from_theme(&theme.widgets);
         let button_hotkeys = widget_registry.button_hotkeys();
+        let base_count = all.len();
         Self {
             all,
             filtered,
@@ -89,6 +94,8 @@ impl Launcher {
             widget_registry,
             button_hotkeys,
             gui_session: None,
+            plugin_manager: crate::core::plugin_manager::PluginManager::load_all(),
+            base_count,
         }
     }
 
@@ -417,8 +424,66 @@ impl Launcher {
 
     /// Re-run the fuzzy match for the current query and rebuild `filtered`.
     fn refilter(&mut self) {
-        self.search
-            .search(&self.query, &self.all, &self.history, &mut self.filtered);
+        // Clear any previous plugin items
+        self.all.truncate(self.base_count);
+        
+        if let Some((plugin, remainder)) = self.plugin_manager.match_prefix(&self.query) {
+            let results = plugin.query(remainder);
+            
+            // Convert C ABI results to Rust Targets
+            let items = if results.count == 0 || results.items.is_null() {
+                &[]
+            } else {
+                unsafe { std::slice::from_raw_parts(results.items, results.count) }
+            };
+            
+            for item in items {
+                let name = if item.title.is_null() {
+                    gpui::SharedString::from("")
+                } else {
+                    let c_str = unsafe { std::ffi::CStr::from_ptr(item.title) };
+                    gpui::SharedString::from(c_str.to_string_lossy().into_owned())
+                };
+                
+                let subtitle = if item.subtitle.is_null() {
+                    None
+                } else {
+                    let c_str = unsafe { std::ffi::CStr::from_ptr(item.subtitle) };
+                    Some(gpui::SharedString::from(c_str.to_string_lossy().into_owned()))
+                };
+                
+                let icon = if item.icon.is_null() {
+                    None
+                } else {
+                    let c_str = unsafe { std::ffi::CStr::from_ptr(item.icon) };
+                    Some(gpui::SharedString::from(c_str.to_string_lossy().into_owned()))
+                };
+                
+                let plugin_id = if item.id.is_null() {
+                    gpui::SharedString::from("")
+                } else {
+                    let c_str = unsafe { std::ffi::CStr::from_ptr(item.id) };
+                    gpui::SharedString::from(c_str.to_string_lossy().into_owned())
+                };
+                
+                self.all.push(Target::PluginItem {
+                    name,
+                    subtitle,
+                    icon,
+                    plugin_id,
+                    plugin_name: gpui::SharedString::from(plugin.name.clone()),
+                });
+            }
+            
+            plugin.free_results(results);
+            
+            // For plugins, we don't fuzzy sort. We show exactly what the plugin returned in order.
+            self.filtered = (self.base_count..self.all.len()).collect();
+        } else {
+            self.search
+                .search(&self.query, &self.all[..self.base_count], &self.history, &mut self.filtered);
+        }
+        
         if self.selected >= self.filtered.len() {
             self.selected = 0;
         }
@@ -508,6 +573,15 @@ impl Launcher {
                 self.history.record_launch(identifier);
                 LauncherAction::Hide
             }
+            Target::PluginItem { plugin_name, plugin_id, .. } => {
+                // For plugins, we call activate via the plugin manager.
+                // We'll return an action that handles this.
+                LauncherAction::ActivatePlugin {
+                    plugin_name: plugin_name.to_string(),
+                    plugin_id: plugin_id.to_string(),
+                    action_code: 0,
+                }
+            }
         }
     }
 
@@ -540,6 +614,13 @@ impl Launcher {
                 }
             }
             Target::Builtin { .. } | Target::App { .. } => LauncherAction::None,
+            Target::PluginItem { plugin_name, plugin_id, .. } => {
+                LauncherAction::ActivatePlugin {
+                    plugin_name: plugin_name.to_string(),
+                    plugin_id: plugin_id.to_string(),
+                    action_code: 0,
+                }
+            }
         }
     }
 
@@ -597,6 +678,15 @@ impl Launcher {
                 let view = cx.entity();
                 crate::ui::execute::execute_script(cx, view, theme, target, args);
                 cx.notify();
+            }
+            LauncherAction::ActivatePlugin { plugin_name, plugin_id, action_code } => {
+                if let Some(plugin) = self.plugin_manager.plugins.iter().find(|p| p.name == plugin_name) {
+                    if plugin.activate(&plugin_id, action_code) {
+                        self.on_hide();
+                        cx.notify();
+                        crate::ui::window::hide();
+                    }
+                }
             }
         }
     }
@@ -685,8 +775,10 @@ impl Launcher {
         let mut targets = crate::core::scanner::scan_all(&config);
         crate::sys::icons::extract_all(&mut targets);
         self.app_config = config;
+        self.base_count = targets.len();
         self.all = targets;
         self.search = SearchIndex::new(&self.app_config.aliases);
+        self.plugin_manager = crate::core::plugin_manager::PluginManager::load_all();
         self.widget_registry = WidgetRegistry::from_theme(&theme.widgets);
         self.button_hotkeys = self.widget_registry.button_hotkeys();
         self.theme = theme;
@@ -710,8 +802,8 @@ impl Launcher {
     pub(super) fn open_target_in_editor(item: &Target, editor: &str) {
         let path = match item {
             Target::Script { path, .. } => path.clone(),
-            // Applications and built-in actions have no source to edit.
-            Target::App { .. } | Target::Builtin { .. } => return,
+            // Applications, plugins, and built-in actions have no source to edit.
+            Target::App { .. } | Target::Builtin { .. } | Target::PluginItem { .. } => return,
         };
         let name = item.name().to_string();
         let path_str = path.to_string_lossy();

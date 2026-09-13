@@ -1,0 +1,10 @@
+[package]
+name = "plugin-web-search"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+aerofi-plugin-api = { path = "../../../aerofi-plugin-api" }

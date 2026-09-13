@@ -24,6 +24,12 @@ pub enum LauncherAction {
     },
     /// Start a GUI-mode interactive script session.
     StartGuiSession(Target, Vec<String>),
+    /// Activate a dynamic plugin item.
+    ActivatePlugin {
+        plugin_name: String,
+        plugin_id: String,
+        action_code: u32,
+    },
 }
 
 /// State of the launcher UI.

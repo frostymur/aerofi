@@ -1281,7 +1281,15 @@ impl Launcher {
                 img(path).w(icon_size).h(icon_size).rounded_sm().into_any()
             } else {
                 let fallback = item.icon().unwrap_or("•");
-                if fallback.starts_with('/') || fallback.starts_with('~') {
+                let is_image = fallback.starts_with('/')
+                    || fallback.starts_with('~')
+                    || fallback.starts_with("./")
+                    || fallback.ends_with(".png")
+                    || fallback.ends_with(".jpg")
+                    || fallback.ends_with(".jpeg")
+                    || fallback.ends_with(".webp")
+                    || fallback.ends_with(".tiff");
+                if is_image {
                     let p = expand_tilde_path(fallback);
                     img(std::path::PathBuf::from(p))
                         .w(icon_size)
