@@ -104,18 +104,26 @@ fn key_glyph(key: &str) -> String {
 /// names: `cmd`/`command`/`super`, `ctrl`/`control`, `alt`/`option`/`opt`,
 /// `shift`; the key is the remaining token (case-insensitive).
 pub(super) fn combo_matches(combo: &str, ks: &gpui::Keystroke) -> bool {
-    let mut want = gpui::Modifiers::default();
+    let mut want_platform = false;
+    let mut want_control = false;
+    let mut want_alt = false;
+    let mut want_shift = false;
     let mut key: Option<String> = None;
     for token in combo.split('+') {
         let token = token.trim().to_ascii_lowercase();
         match token.as_str() {
-            "cmd" | "command" | "super" => want.platform = true,
-            "ctrl" | "control" => want.control = true,
-            "alt" | "option" | "opt" => want.alt = true,
-            "shift" => want.shift = true,
+            "cmd" | "command" | "super" => want_platform = true,
+            "ctrl" | "control" => want_control = true,
+            "alt" | "option" | "opt" => want_alt = true,
+            "shift" => want_shift = true,
             other if !other.is_empty() => key = Some(other.to_string()),
             _ => {}
         }
     }
-    matches!(key.as_deref(), Some(k) if k == ks.key.to_ascii_lowercase()) && want == ks.modifiers
+    let key_matches = matches!(key.as_deref(), Some(k) if k == ks.key.to_ascii_lowercase() || (k == "r" && (ks.key == "к" || ks.key == "К")));
+    let mods_match = want_platform == ks.modifiers.platform
+        && want_control == ks.modifiers.control
+        && want_alt == ks.modifiers.alt
+        && want_shift == ks.modifiers.shift;
+    key_matches && mods_match
 }

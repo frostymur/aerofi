@@ -802,7 +802,21 @@ impl Launcher {
         self.query.clear();
         self.refilter();
         self.selected = 0;
-        println!("aerofi: configuration reloaded");
+        println!(
+            "aerofi: configuration reloaded (theme: {})",
+            self.app_config.theme
+        );
+    }
+
+    /// Check if the keystroke triggers configuration reload.
+    fn is_reload_keystroke(&self, ks: &gpui::Keystroke) -> bool {
+        if let Some(custom) = &self.app_config.general.reload_hotkey {
+            combo_matches(custom, ks)
+        } else {
+            let cmd = ks.modifiers.platform;
+            let ctrl = ks.modifiers.control;
+            (cmd || ctrl) && (ks.key.eq_ignore_ascii_case("r") || ks.key == "к" || ks.key == "К")
+        }
     }
 
     /// Execute an action triggered by a custom button widget. If rendered
