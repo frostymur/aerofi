@@ -135,21 +135,31 @@ Control commands start with `\0` (null byte) and use `\x1f` (unit separator) to 
 | `\0multi-select` | `true` \| `false` | Enables item multi-selection with `Tab` |
 | `\0message` | `<text>` | Displays a status hint bar at the bottom |
 | `\0flush` | none | Frame delimiter: tells aerofi to render buffered items immediately |
-| `\0active` | `<index_or_id>` | Highlights a specific item row |
+| `\0active` | `<indices>` | Highlights specific item row(s) (comma-separated indices) |
 | `\0urgent` | `<index_or_id>` | Marks an item with urgent status color |
 | `\0reload` | `true` | Immediately reloads aerofi configuration, theme, and targets |
+| `\0columns` | `<number>` | Dynamically sets grid column count (e.g. 1, 2, 4) |
+| `\0loading` | `true` \| `false` | Toggles async loading indicator |
+| `\0live-search` | `true` \| `false` | Streams search queries to script stdin for server-side search |
+| `\0preview` | `<text>` | Updates preview pane with custom text or markdown |
+| `\0preview-file`| `<path>` | Displays a file preview in the preview pane |
+| `\0no-custom` | `true` \| `false` | Restricts selection to existing items only |
 
 #### 2. Row Items & Metadata
 Rows are printed one per line. Metadata fields can be attached using `\0` delimiters:
 
 ```
-Title Text\0icon\x1femoji:🎨\x1finfo\x1fBadge\x1fmeta\x1ffull text search index
+Title Text\0id\x1fitem-1\0icon\x1femoji:🎨\0info\x1fBadge\0meta\x1ffull text search index
 ```
 
+- `id\x1f<id>`: Unique item identifier returned in selection events.
 - `icon\x1f<spec>`: Row icon (`emoji:🚀`, `file:///path/to/icon.png`, or `system-icon:Finder`).
 - `info\x1f<text>`: Secondary badge text aligned on the right.
 - `meta\x1f<text>`: Invisible search string. aerofi's fuzzy matcher indexes this string in addition to the visible row text.
 - `nonselectable\x1ftrue`: Makes the row a static header or separator that cannot be focused.
+- `urgent\x1ftrue`: Renders the item with urgent accent color.
+- `active\x1ftrue`: Pre-selects / highlights this row.
+- `disabled\x1ftrue`: Greys out the row and prevents selection.
 
 ---
 
