@@ -385,13 +385,16 @@ impl Target {
         // Annotations live in the comment lines at the beginning of the script.
         for line in content.lines().take(50) {
             let trimmed = line.trim();
-            // Skip shebang or empty lines
-            if trimmed.is_empty() || trimmed.starts_with("#!") {
+            // Skip shebang, empty lines, or multi-line comment boundaries
+            if trimmed.is_empty() || trimmed.starts_with("#!") || trimmed == "\"\"\"" || trimmed == "'''" || trimmed == "/*" || trimmed == "*/" {
                 continue;
             }
-            // Keep only `# ...` comment lines.
-            let Some(rest) = trimmed.strip_prefix('#') else {
-                // If we encounter a non-comment line, stop scanning annotations
+            // Keep only comment lines (`#`, `//`, or `--`).
+            let rest = if let Some(r) = trimmed.strip_prefix('#') { r }
+            else if let Some(r) = trimmed.strip_prefix("//") { r }
+            else if let Some(r) = trimmed.strip_prefix("--") { r }
+            else {
+                // If we encounter actual code, stop scanning annotations
                 break;
             };
             let comment = rest.trim_start();
