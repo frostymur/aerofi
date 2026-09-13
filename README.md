@@ -14,13 +14,12 @@
 
 <br />
 
-[Features](#-key-features) •
-[Installation](#-installation) •
-[Quick Start](#-quick-start) •
-[Customization](docs/customization.md) •
-[Scripting](docs/scripts.md) •
-[Native Plugins](docs/plugins.md) •
-[Architecture](ARCHITECTURE.md)
+[Why aerofi?](#why-aerofi) •
+[Key Features](#key-features) •
+[Widgets & Theming](#-declarative-widgets--deep-customization) •
+[Interactive Scripts](#️-interactive-gui-scripts--bidirectional-ipc) •
+[Installation](#installation) •
+[Shortcuts](#️-default-shortcuts)
 
 </div>
 
@@ -48,36 +47,92 @@ Compare to alternatives:
 | Cost | Free | Free / $12/mo | Free / $42 |
 | Hotkey Latency | <2ms | ~5ms | ~3ms |
 
-## Examples
+## Examples & Ready-to-Use Scripts
 
-Ready-to-use scripts in `examples/scripts/`:
+Real-world scripts available in [`examples/scripts/`](examples/scripts/):
 
-- **clipboard-history.sh** — Browse clipboard history
-- **calculator.sh** — Quick math calculations
-- **emoji-picker.sh** — Search and copy emojis
-- **git-branch.sh** — Switch git branches
+- **[`clipboard.py`](examples/scripts/clipboard.py)** — Interactive clipboard manager with syntax highlighting, multi-select (`Tab`), and item deletion (`Ctrl+D`)
+- **[`theme_switcher.py`](examples/scripts/theme_switcher.py)** — Interactive GUI theme previewer with live swatches and instant config updating
+- **[`full-output.sh`](examples/scripts/full-output.sh)** — Markdown viewer rendering formatted GitHub Flavored Markdown inside the launcher
+- **[`compact.sh`](examples/scripts/compact.sh)** — Progress tracking with non-blocking floating toast status indicators
+- **[`silent.sh`](examples/scripts/silent.sh)** — Background automation with completion notification toasts
 
-Copy any of these to `~/.config/aerofi/scripts/` and they work immediately.
+Copy any script to `~/.config/aerofi/scripts/` to use it immediately.
 
 ## Key Features
 
 **Performance**
 - ⚡ Sub-2ms hotkey latency (GPU-accelerated via Metal)
-- 🪶 ~40 MB memory (vs 250 MB Raycast)
+- 🪶 ~40 MB memory footprint (vs 250 MB Raycast)
 
 **Compatibility**
-- 📜 Raycast script commands work out-of-the-box
-- 🔑 Zero-friction Carbon hotkey (no Accessibility permissions)
+- 📜 Raycast script commands work out-of-the-box (`@raycast.*` and `@aerofi.*`)
+- 🔑 Zero-friction Carbon hotkey (no Accessibility permissions required)
 
-**Flexibility**
-- 6 execution modes: silent, compact, inline, fullOutput, pipe, gui
-- 🎨 Deep TOML theming (colors, fonts, layouts)
-- 🔌 C ABI plugins (Rust, C, C++, Swift)
+**Flexibility & Customization**
+- 6 execution modes: `silent`, `compact`, `inline`, `fullOutput`, `pipe`, and interactive `gui`
+- 🧩 Declarative widget engine (custom headers, footers, action buttons, status pills)
+- 🎨 Deep TOML theming (frosted glass blur, fonts, `$palette` tokens, custom layouts)
+- 🔌 Native C ABI plugins (Rust, C, C++, Swift)
 
 **Developer-Friendly**
 - 💻 Open source (MIT license)
 - 📚 Full documentation & examples
 - 🚀 Active development
+
+---
+
+## 🧩 Declarative Widgets & Deep Customization
+
+aerofi is completely customizable via transparent, human-readable TOML files in `~/.config/aerofi/`:
+
+- **Declarative Widget System**: Compose custom headers, footers, status pills, and action strips directly in `theme.toml` using `box`, `text`, `icon`, `image`, `spacer`, `divider`, and `button` widgets.
+- **Layout Control**: Freely rearrange the UI hierarchy in `[mainbox]` (e.g. place widgets above `InputBar`, between elements, or below `ListView`).
+- **macOS Glassmorphism**: Native translucent frosted glass blur, opacity, border radii, shadows, and reusable `$palette` color tokens.
+
+```toml
+# Example: Adding a custom header and action footer in theme.toml
+[mainbox]
+children = ["header_bar", "InputBar", "ListView", "footer_bar"]
+
+[widgets.header_bar]
+type = "box"
+orientation = "horizontal"
+gap = 8.0
+children = ["header_title", "spacer", "status_badge"]
+
+[widgets.header_title]
+type = "text"
+text = "aerofi"
+color = "$accent"
+weight = "bold"
+```
+
+> 📖 Read the [Customization Guide](docs/customization.md) and explore [`examples/theme.toml`](examples/theme.toml) for complete references.
+
+---
+
+## 🖥️ Interactive GUI Scripts & Bidirectional IPC
+
+Turn any Bash, Python, Node.js, or Swift script into a dynamic macOS mini-app with `@aerofi.mode gui`:
+
+- **Bidirectional Streaming**: Your script outputs items via `stdout` and receives keyboard events (`Enter`, `Tab`, `Ctrl+D`, custom keys) via `stdin` in real-time.
+- **Pango Markup Formatting**: Full support for rich colors, bold text, and badges (`<span foreground="#7aa2f7" weight="bold">Title</span>`).
+- **Multi-Selection & Actions**: Interactive multi-select with `Tab`, batch deletion with `Ctrl+D`, and custom keybindings.
+- **Instant Live Updates**: Update lists, badges, and search prompts dynamically without restarting the script.
+
+```bash
+#!/usr/bin/env bash
+# @aerofi.title Theme Switcher
+# @aerofi.mode gui
+# @aerofi.icon 🎨
+
+echo -e "\0prompt\x1fSelect a theme:\n\0markup-rows\x1ftrue\n\0flush"
+echo -e "<b>Tokyo Night</b>\0icon\x1femoji:🌃\x1finfo\x1fActive"
+echo -e "<b>Gruvbox Dark</b>\0icon\x1femoji:🌲\x1finfo\x1fCommunity"
+```
+
+> 📖 Read the [Scripting & GUI Protocol Guide](docs/scripts.md) and check out [`examples/scripts/`](examples/scripts/) for working implementations.
 
 ## For rofi Users
 
