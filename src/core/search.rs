@@ -58,11 +58,11 @@ impl SearchIndex {
     ///   added to the best fuzzy score before ranking.
     ///
     /// Ties keep the original order.
-    pub fn filter_and_rank(
+    pub fn search(
         &mut self,
-        history: &History,
-        targets: &[Target],
         query: &str,
+        targets: &[Target],
+        history: &History,
         out_filtered: &mut Vec<usize>,
     ) {
         // Reuse all scratch buffers to avoid heap allocations every keystroke.
@@ -100,7 +100,23 @@ impl SearchIndex {
         }
         self.scored_buf
             .sort_unstable_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
+        out_filtered.clear();
         out_filtered.extend(self.scored_buf.iter().map(|&(_, i)| i));
+    }
+
+    /// Rank `targets` against `query`, boosted by the frecency scores
+    /// from `history`, and return all matching ones as a ready-to-render
+    /// `Vec<Target>`, best match first.
+    #[allow(dead_code)]
+    pub fn filter_and_rank(
+        &mut self,
+        history: &History,
+        targets: &[Target],
+        query: &str,
+    ) -> Vec<Target> {
+        let mut indices = Vec::new();
+        self.search(query, targets, history, &mut indices);
+        indices.iter().map(|&i| targets[i].clone()).collect()
     }
 }
 
@@ -146,7 +162,7 @@ mod tests {
         query: &str,
     ) -> Vec<Target> {
         let mut results = Vec::new();
-        idx.filter_and_rank(history, targets, query, &mut results);
+        idx.search(query, targets, history, &mut results);
         results.into_iter().map(|i| targets[i].clone()).collect()
     }
 

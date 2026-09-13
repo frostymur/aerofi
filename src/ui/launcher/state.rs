@@ -23,7 +23,7 @@ pub struct Launcher {
     /// Every indexed target, kept in name-sorted order (the "unfiltered" order).
     pub(super) all: Vec<Target>,
     /// The ranked results for the current query (best first), capped at
-    /// `max_results`.
+    /// `max_results`. Stores indices into `all`.
     pub(super) filtered: Vec<usize>,
     /// Current filter query.
     pub(super) query: String,
@@ -418,7 +418,7 @@ impl Launcher {
     /// Re-run the fuzzy match for the current query and rebuild `filtered`.
     fn refilter(&mut self) {
         self.search
-            .filter_and_rank(&self.history, &self.all, &self.query, &mut self.filtered);
+            .search(&self.query, &self.all, &self.history, &mut self.filtered);
         if self.selected >= self.filtered.len() {
             self.selected = 0;
         }
