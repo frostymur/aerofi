@@ -1,5 +1,5 @@
 use aerofi_plugin_api::{AerofiPlugin, PluginItem, PluginMetadata, PluginResults};
-use std::ffi::{c_char, CStr, CString};
+use std::ffi::{CStr, CString, c_char};
 use std::process::Command;
 use std::ptr;
 
@@ -13,6 +13,11 @@ static PLUGIN: AerofiPlugin = AerofiPlugin {
     destroy,
 };
 
+/// Returns the static pointer to the `AerofiPlugin` C ABI interface.
+///
+/// # Safety
+/// This function is safe to call across FFI boundaries. The returned pointer
+/// references a static, immutable `AerofiPlugin` struct valid for the lifetime of the process.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn aerofi_plugin_init() -> *const AerofiPlugin {
     &PLUGIN
@@ -25,7 +30,9 @@ unsafe extern "C" fn init() -> bool {
 unsafe extern "C" fn get_metadata() -> PluginMetadata {
     PluginMetadata {
         name: CString::new("web-search").unwrap().into_raw(),
-        description: CString::new("Quick web search via browser").unwrap().into_raw(),
+        description: CString::new("Quick web search via browser")
+            .unwrap()
+            .into_raw(),
         prefix: CString::new("g ").unwrap().into_raw(),
     }
 }
@@ -80,11 +87,17 @@ unsafe extern "C" fn query(query_ptr: *const c_char) -> PluginResults {
         } else {
             format!("https://{}", q_trimmed)
         };
-        
+
         items.push(PluginItem {
-            id: CString::new(format!("url:{}", target_url)).unwrap().into_raw(),
-            title: CString::new(format!("Open {}", q_trimmed)).unwrap().into_raw(),
-            subtitle: CString::new(format!("Open {} in your default browser", target_url)).unwrap().into_raw(),
+            id: CString::new(format!("url:{}", target_url))
+                .unwrap()
+                .into_raw(),
+            title: CString::new(format!("Open {}", q_trimmed))
+                .unwrap()
+                .into_raw(),
+            subtitle: CString::new(format!("Open {} in your default browser", target_url))
+                .unwrap()
+                .into_raw(),
             icon: CString::new("🌐").unwrap().into_raw(),
         });
     }
@@ -138,7 +151,8 @@ unsafe extern "C" fn free_results(results: PluginResults) {
         return;
     }
 
-    let slice = unsafe { std::slice::from_raw_parts_mut(results.items as *mut PluginItem, results.count) };
+    let slice =
+        unsafe { std::slice::from_raw_parts_mut(results.items as *mut PluginItem, results.count) };
     for item in &mut *slice {
         if !item.id.is_null() {
             drop(unsafe { CString::from_raw(item.id as *mut c_char) });

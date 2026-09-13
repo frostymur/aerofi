@@ -47,24 +47,24 @@ pub struct PluginMetadata {
 pub struct AerofiPlugin {
     /// Must be set to 1.
     pub api_version: u32,
-    
+
     /// Called once when the plugin is loaded.
     /// Return `true` on success.
     pub init: unsafe extern "C" fn() -> bool,
-    
+
     /// Called when the plugin is unloaded or the application exits.
     pub destroy: unsafe extern "C" fn(),
-    
+
     /// Retrieve the plugin's metadata.
     pub get_metadata: unsafe extern "C" fn() -> PluginMetadata,
-    
+
     /// Query the plugin for results.
     /// The plugin allocates the `PluginResults` and its contents.
     pub query: unsafe extern "C" fn(query: *const c_char) -> PluginResults,
-    
+
     /// Free the memory of the `PluginResults` previously returned by `query`.
     pub free_results: unsafe extern "C" fn(results: PluginResults),
-    
+
     /// Called when the user activates an item.
     /// `id` is the `PluginItem::id` that was activated.
     /// `action_code` is 0 for Enter, 1 for Cmd+Enter, etc.
