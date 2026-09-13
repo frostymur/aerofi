@@ -65,10 +65,10 @@ fn is_shell_script(path: &Path, metadata: &std::fs::Metadata) -> bool {
         return true;
     }
     let extension = path.extension().and_then(|e| e.to_str());
-    match extension {
-        Some("sh" | "bash" | "zsh" | "py" | "rb" | "js" | "applescript" | "scpt") => true,
-        _ => false,
-    }
+    matches!(
+        extension,
+        Some("sh" | "bash" | "zsh" | "py" | "rb" | "js" | "applescript" | "scpt")
+    )
 }
 
 /// Scan the standard application directories (`/Applications`,
