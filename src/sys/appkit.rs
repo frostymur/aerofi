@@ -108,6 +108,71 @@ pub fn set_borderless_style(window: &Window, corner_radius: f32) {
     ns_window.makeFirstResponder(Some(&*ns_view));
 }
 
+/// Dynamically update the corner radius of the window's layer (e.g. on theme reload).
+pub fn set_corner_radius(corner_radius: f32) {
+    let ptr = NS_WINDOW.load(Ordering::SeqCst);
+    if ptr.is_null() {
+        return;
+    }
+    unsafe {
+        use objc2::msg_send;
+        use objc2::runtime::AnyObject;
+        let ns_window = &*(ptr as *const NSWindow);
+        let content_view: *mut AnyObject = msg_send![ns_window, contentView];
+        if !content_view.is_null() {
+            let layer: *mut AnyObject = msg_send![content_view, layer];
+            if !layer.is_null() {
+                let _: () = msg_send![layer, setCornerRadius: corner_radius as f64];
+            }
+        }
+    }
+}
+
+/// Center the NSWindow on the active screen, deferred via GCD so it fires
+/// after GPUI has finished processing the current frame (including any
+/// pending `window.resize()` call).  Calling `[NSWindow center]` synchronously
+/// during render would see the old frame size because GPUI queues the resize
+/// for after the render pass.
+pub fn center_window() {
+    let ptr = NS_WINDOW.load(Ordering::SeqCst);
+    if ptr.is_null() {
+        return;
+    }
+    // GCD trampoline — dispatch_async on the main queue defers this until
+    // after the current run-loop iteration (i.e. after GPUI's resize fires).
+    extern "C" fn do_center(ctx: *mut std::ffi::c_void) {
+        let ptr = ctx as usize;
+        if ptr == 0 {
+            return;
+        }
+        unsafe {
+            use objc2::msg_send;
+            use objc2_app_kit::NSWindow;
+            let ns_window = &*(ptr as *const NSWindow);
+            let _: () = msg_send![ns_window, center];
+        }
+    }
+
+    unsafe extern "C" {
+        // `dispatch_get_main_queue()` is a C inline function with no linker
+        // symbol; `_dispatch_main_q` is the underlying dispatch_queue_t object.
+        static _dispatch_main_q: std::ffi::c_void;
+        fn dispatch_async_f(
+            queue: *const std::ffi::c_void,
+            context: *mut std::ffi::c_void,
+            work: extern "C" fn(*mut std::ffi::c_void),
+        );
+    }
+
+    unsafe {
+        dispatch_async_f(
+            &raw const _dispatch_main_q,
+            ptr,
+            do_center,
+        );
+    }
+}
+
 /// Run aerofi as a background accessory: no Dock icon, no Cmd-Tab entry,
 /// like Raycast/Alfred. Must be called after GPUI's own
 /// `applicationDidFinishLaunching` (which forces the Regular policy), i.e.

@@ -64,6 +64,9 @@ pub struct Launcher {
     pub(super) plugin_manager: crate::core::plugin_manager::PluginManager,
     /// Number of base items (apps/scripts/builtins). Plugin items are appended after this.
     pub(super) base_count: usize,
+    /// Set to `true` after a config/theme reload so the next `render()` call
+    /// re-centers the window *after* `window.resize()` has been applied.
+    pub(super) needs_center: bool,
 }
 
 impl Launcher {
@@ -96,6 +99,7 @@ impl Launcher {
             gui_session: None,
             plugin_manager: crate::core::plugin_manager::PluginManager::load_all(),
             base_count,
+            needs_center: false,
         }
     }
 
@@ -799,6 +803,10 @@ impl Launcher {
         self.widget_registry = WidgetRegistry::from_theme(&theme.widgets);
         self.button_hotkeys = self.widget_registry.button_hotkeys();
         self.theme = theme;
+        crate::sys::appkit::set_corner_radius(self.theme.window.corner_radius);
+        // Defer centering to the next render() call so it fires *after*
+        // window.resize() applies the new theme dimensions.
+        self.needs_center = true;
         self.query.clear();
         self.refilter();
         self.selected = 0;
@@ -1535,6 +1543,15 @@ impl Launcher {
             && let Ok(mut s) = session.lock()
         {
             s.kill();
+        }
+        // Clear sticky_metatags so the GUI script's layout overrides (e.g.
+        // `@aerofi.columns 1`) don't linger after the script exits.
+        // Without this, a 4-column grid theme would render as a 1-column list
+        // after closing a gui-mode script that declared columns = 1.
+        self.sticky_metatags = None;
+        let new_config = crate::core::config::AppConfig::load();
+        if new_config.theme != self.app_config.theme {
+            self.reload();
         }
         self.state = LauncherState::Search;
     }

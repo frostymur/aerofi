@@ -61,6 +61,13 @@ impl Render for Launcher {
         };
         window.resize(size(px(t.window.width), px(target_height)));
 
+        // Re-center the window after a theme reload (deferred from reload() so
+        // it fires in the same frame as the window.resize() call above).
+        if self.needs_center {
+            self.needs_center = false;
+            crate::sys::appkit::center_window();
+        }
+
         // Inner content: the actual launcher widgets or full page views.
         let inner = if let LauncherState::FullOutput { title } = &self.state {
             self.render_full_output(cx, title)
