@@ -1,5 +1,9 @@
 [workspace]
-members = ["aerofi-plugin-api"]
+members = [
+  "aerofi-plugin-api",
+  "examples/plugins/web_search",
+  "examples/plugins/file_search",
+]
 
 [package]
 name = "aerofi"
