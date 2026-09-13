@@ -365,7 +365,7 @@ impl Target {
             Self::Script { .. } => "Script",
             Self::App { .. } => "Application",
             Self::Builtin { .. } => "Aerofi",
-            Self::PluginItem { plugin_name, .. } => {
+            Self::PluginItem { .. } => {
                 // Return a static string representation of the plugin name if possible,
                 // but since we need &'static str and plugin_name is dynamic, we just return "Plugin"
                 "Plugin"

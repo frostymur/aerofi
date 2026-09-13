@@ -71,20 +71,36 @@ unsafe extern "C" fn query(query_ptr: *const c_char) -> PluginResults {
     };
     let ddg_icon = CString::new("🦆").unwrap();
 
-    let items = vec![
-        PluginItem {
-            id: google_id.into_raw(),
-            title: google_title.into_raw(),
-            subtitle: google_sub.into_raw(),
-            icon: google_icon.into_raw(),
-        },
-        PluginItem {
-            id: ddg_id.into_raw(),
-            title: ddg_title.into_raw(),
-            subtitle: ddg_sub.into_raw(),
-            icon: ddg_icon.into_raw(),
-        },
-    ];
+    let mut items = vec![];
+
+    // If it looks like a URL (contains a dot, no spaces), add an option to open it directly
+    if !q_trimmed.is_empty() && !q_trimmed.contains(' ') && q_trimmed.contains('.') {
+        let target_url = if q_trimmed.starts_with("http://") || q_trimmed.starts_with("https://") {
+            q_trimmed.to_string()
+        } else {
+            format!("https://{}", q_trimmed)
+        };
+        
+        items.push(PluginItem {
+            id: CString::new(format!("url:{}", target_url)).unwrap().into_raw(),
+            title: CString::new(format!("Open {}", q_trimmed)).unwrap().into_raw(),
+            subtitle: CString::new(format!("Open {} in your default browser", target_url)).unwrap().into_raw(),
+            icon: CString::new("🌐").unwrap().into_raw(),
+        });
+    }
+
+    items.push(PluginItem {
+        id: google_id.into_raw(),
+        title: google_title.into_raw(),
+        subtitle: google_sub.into_raw(),
+        icon: google_icon.into_raw(),
+    });
+    items.push(PluginItem {
+        id: ddg_id.into_raw(),
+        title: ddg_title.into_raw(),
+        subtitle: ddg_sub.into_raw(),
+        icon: ddg_icon.into_raw(),
+    });
 
     let count = items.len();
     let boxed_slice = items.into_boxed_slice();
@@ -103,7 +119,9 @@ unsafe extern "C" fn activate(id_ptr: *const c_char, _action_code: u32) -> bool 
 
     let id = unsafe { CStr::from_ptr(id_ptr) }.to_string_lossy();
 
-    let url = if let Some(q) = id.strip_prefix("google:") {
+    let url = if let Some(u) = id.strip_prefix("url:") {
+        u.to_string()
+    } else if let Some(q) = id.strip_prefix("google:") {
         format!("https://www.google.com/search?q={}", url_encode(q))
     } else if let Some(q) = id.strip_prefix("ddg:") {
         format!("https://duckduckgo.com/?q={}", url_encode(q))

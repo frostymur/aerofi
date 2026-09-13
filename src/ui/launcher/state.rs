@@ -431,7 +431,11 @@ impl Launcher {
             let results = plugin.query(remainder);
             
             // Convert C ABI results to Rust Targets
-            let items = unsafe { std::slice::from_raw_parts(results.items, results.count) };
+            let items = if results.count == 0 || results.items.is_null() {
+                &[]
+            } else {
+                unsafe { std::slice::from_raw_parts(results.items, results.count) }
+            };
             
             for item in items {
                 let name = if item.title.is_null() {

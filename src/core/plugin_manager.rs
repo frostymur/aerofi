@@ -6,6 +6,7 @@ use libloading::{Library, Symbol};
 use aerofi_plugin_api::{AerofiPlugin, PluginResults};
 
 /// Wraps a single loaded `.dylib` plugin.
+#[allow(dead_code)]
 pub struct LoadedPlugin {
     /// Keep the library loaded as long as the plugin lives.
     _lib: Library,
