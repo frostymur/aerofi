@@ -626,7 +626,7 @@ impl Default for ThemeConfig {
     fn default() -> Self {
         Self {
             name: "Dark Transparent".to_string(),
-            author: Some("AeroFi".to_string()),
+            author: Some("aerofi".to_string()),
             font: FontConfig::default(),
             window: WindowConfig::default(),
             mainbox: ContainerConfig::default(),
@@ -864,7 +864,7 @@ mod tests {
     fn example_tokyo_night_theme_is_valid() {
         let content = r##"
 name    = "Tokyo Night"
-author  = "AeroFi"
+author  = "aerofi"
 [font]
 family = "SF Pro Text"
 size = 17.0
@@ -950,7 +950,7 @@ accent = "#7aa2f7"
     fn example_horizon_theme_is_valid() {
         let content = r##"
 name   = "Horizon"
-author = "AeroFi"
+author = "aerofi"
 [font]
 family = "SF Pro Text"
 size = 14.0

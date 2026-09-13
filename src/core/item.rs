@@ -152,7 +152,7 @@ pub enum BuiltinAction {
     ReloadConfig,
 }
 
-/// AeroFi-specific script metatags parsed from `# @aerofi.*` annotations.
+/// aerofi-specific script metatags parsed from `# @aerofi.*` annotations.
 /// Committed when the script is executed; stay active until the launcher
 /// is hidden. Selecting the script never applies them.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -188,7 +188,7 @@ pub enum Target {
         icon: Option<SharedString>,
         /// Parsed Raycast metadata tags.
         metadata: Arc<RaycastMetadata>,
-        /// AeroFi metatags (`@aerofi.*`), if present.
+        /// aerofi metatags (`@aerofi.*`), if present.
         metatags: ScriptMetatags,
         /// Cached output for `inline` mode scripts (displayed as subtitle in the list).
         /// `None` means the script hasn't run yet or isn't inline mode.
@@ -270,7 +270,7 @@ impl Target {
         }
     }
 
-    /// AeroFi metatags for scripts. Returns `None` for apps and built-ins.
+    /// aerofi metatags for scripts. Returns `None` for apps and built-ins.
     pub fn metatags(&self) -> Option<&ScriptMetatags> {
         match self {
             Self::Script { metatags, .. } => Some(metatags),
@@ -396,7 +396,7 @@ impl Target {
             };
             let comment = rest.trim_start();
 
-            // `@aerofi.*` annotations (AeroFi-specific metatags).
+            // `@aerofi.*` annotations (aerofi-specific metatags).
             if let Some(annotation) = comment.strip_prefix("@aerofi.") {
                 if let Some((field, value)) = annotation.split_once(|c: char| c.is_whitespace()) {
                     let value = value.trim();

@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-AeroFi Glamorous Clipboard Manager Script
-Powered by clipy CLI (https://crates.io/crates/clipy) and AeroFi GUI mode with Pango markup.
+aerofi Glamorous Clipboard Manager Script
+Powered by clipy CLI (https://crates.io/crates/clipy) and aerofi GUI mode with Pango markup.
 
 Features:
 - Live clipboard history powered by the clipy daemon and SQLite database.
 - Rich Pango formatting with auto-detection of URLs, Hex Colors, Code, JSON, Emails, and Multiline text.
-- Full-text fuzzy search via AeroFi meta tags.
+- Full-text fuzzy search via aerofi meta tags.
 - Multi-selection support (Tab) to copy multiple snippets combined.
 - Delete action support (Ctrl+D) to remove entries from history.
 """
@@ -369,7 +369,7 @@ def emit_gui_frame(clipy_bin, entries, message_override=None):
         icon, pango, type_hint = format_pango_entry(content)
         info_badge = f"{time_str} • {type_hint}"
 
-        # Clean meta string for AeroFi fuzzy matching
+        # Clean meta string for aerofi fuzzy matching
         meta_clean = content.replace("\n", " ").strip()[:500]
         # Avoid control characters in fields
         meta_clean = meta_clean.replace("\0", " ").replace("\x1f", " ")
@@ -381,7 +381,7 @@ def emit_gui_frame(clipy_bin, entries, message_override=None):
 
 
 def parse_event_line(line):
-    """Parse a structured AeroFi GUI event line."""
+    """Parse a structured aerofi GUI event line."""
     line = line.lstrip("\x00").rstrip("\r\n")
     fields = line.split("\x1f")
     if not fields or fields[0] != "event":
@@ -462,7 +462,7 @@ def main():
     while True:
         raw_line = sys.stdin.buffer.readline()
         if not raw_line:
-            # Stdin EOF: AeroFi closed or script terminated
+            # Stdin EOF: aerofi closed or script terminated
             break
 
         line = raw_line.decode("utf-8", errors="replace")
