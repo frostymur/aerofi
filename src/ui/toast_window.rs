@@ -1,9 +1,9 @@
 use gpui::{
     App, Bounds, Context, Entity, Render, WindowBounds, WindowKind, WindowOptions, div, prelude::*,
-    px, rgb, rgba,
+    px, rgba,
 };
 
-use crate::core::theme::{ThemeConfig, parse_hex_color, parse_hex_color_alpha};
+use crate::core::theme::{ThemeConfig, parse_hex_color_alpha};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ToastState {

@@ -2,11 +2,11 @@
 //! view-building helpers (inputbar, listview, grid, full-output, markdown).
 
 use gpui::{
-    Context, CursorStyle, Render, Window, div, img, prelude::*, px, rgb, rgba, size, uniform_list,
+    Context, CursorStyle, Render, Window, div, img, prelude::*, px, rgba, size, uniform_list,
 };
 
 use crate::core::item::Target;
-use crate::core::theme::{BuiltinWidget, Widget, parse_hex_color, parse_hex_color_alpha};
+use crate::core::theme::{BuiltinWidget, Widget, parse_hex_color_alpha};
 
 use super::helpers::{apply_md_style, expand_tilde_path, format_combo, is_primary_click};
 use super::state::Launcher;

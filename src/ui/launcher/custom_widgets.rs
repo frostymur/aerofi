@@ -4,7 +4,7 @@
 //! recurse via `render_custom_widget`. Unknown ids are silently skipped
 //! (a warning was already emitted during registry construction).
 
-use gpui::{Context, CursorStyle, div, img, prelude::*, px, rgb, rgba};
+use gpui::{Context, CursorStyle, div, img, prelude::*, px, rgb};
 
 use crate::core::item::Target;
 use crate::core::theme::{WidgetDef, parse_hex_color, parse_hex_color_alpha};
