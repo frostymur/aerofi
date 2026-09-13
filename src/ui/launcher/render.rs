@@ -1329,6 +1329,7 @@ impl Launcher {
                         .justify_center()
                         .w(icon_size)
                         .h(icon_size)
+                        .text_size(icon_size)
                         .text_color(rgba(Self::color(
                             t.inputbar
                                 .icon_color
@@ -1357,6 +1358,7 @@ impl Launcher {
         let pad_h = el.padding.first().copied().unwrap_or(8.0);
 
         let mut cell_div = div()
+            .w_full()
             .flex()
             .flex_col()
             .items_center()
@@ -1381,6 +1383,9 @@ impl Launcher {
         Self::with_item_mouse_handlers(
             cell_div.child(icon_element).child(
                 div()
+                    .w_full()
+                    .flex()
+                    .justify_center()
                     .text_color(name_color)
                     .text_size(px((t.font.size - 1.5).max(11.0)))
                     .line_clamp(1)
