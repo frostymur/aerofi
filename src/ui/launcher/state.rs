@@ -1211,11 +1211,13 @@ impl Launcher {
                 self.gui_jump_to_edge(false);
                 LauncherAction::None
             }
-            ("left", false, false, false, false) => {
+            ("left", false, false, false, false)
+            | ("b", false, true, false, false) => {
                 self.gui_move_selection(-1);
                 LauncherAction::None
             }
-            ("right", false, false, false, false) => {
+            ("right", false, false, false, false)
+            | ("f", false, true, false, false) => {
                 self.gui_move_selection(1);
                 LauncherAction::None
             }
