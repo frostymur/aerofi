@@ -25,9 +25,6 @@ theme = "default"
 toggle_hotkey = "opt+space"
 # Maximum number of results shown in the launcher list.
 max_results = 20
-# Editor command to open scripts for editing (opens in a new Terminal window).
-# Examples: "vim", "nvim", "code --wait"
-editor = "vim"
 
 [sources]
 # Which target sources the launcher indexes.
@@ -76,9 +73,6 @@ pub struct GeneralConfig {
     pub toggle_hotkey: String,
     /// Maximum number of results shown in the launcher list.
     pub max_results: usize,
-    /// Editor command used to open scripts for editing (e.g. "vim", "nvim",
-    /// "code"). Opened in a new Terminal.app window.
-    pub editor: String,
 }
 
 impl Default for GeneralConfig {
@@ -86,7 +80,6 @@ impl Default for GeneralConfig {
         Self {
             toggle_hotkey: "opt+space".to_string(),
             max_results: 20,
-            editor: "vim".to_string(),
         }
     }
 }
@@ -325,7 +318,6 @@ mod tests {
         assert_eq!(config.theme, "tokyo-night");
         assert_eq!(config.general.toggle_hotkey, "opt+space");
         assert_eq!(config.general.max_results, 20);
-        assert_eq!(config.general.editor, "nvim");
         assert!(config.sources.apps);
         assert!(config.sources.scripts);
         assert_eq!(config.scripts.dirs.len(), 2);

@@ -351,11 +351,6 @@ impl Launcher {
                 }
                 action
             }
-            ("e", true) => {
-                self.open_in_editor();
-                self.reset();
-                LauncherAction::Hide
-            }
             ("backspace", false) => {
                 self.backspace();
                 LauncherAction::None
@@ -810,52 +805,6 @@ impl Launcher {
         println!("aerofi: configuration reloaded");
     }
 
-    /// Open the highlighted script in the configured editor.
-    /// Applications have no source to edit, so this is a no-op for them.
-    fn open_in_editor(&mut self) {
-        if let Some(item) = self.selected_item().cloned() {
-            let editor = self.app_config.general.editor.clone();
-            Self::open_target_in_editor(&item, &editor);
-        }
-    }
-
-    /// Open a specific script target in the configured editor, launched in a
-    /// new Terminal.app window.
-    pub(super) fn open_target_in_editor(item: &Target, editor: &str) {
-        let path = match item {
-            Target::Script { path, .. } => path.clone(),
-            // Applications, plugins, and built-in actions have no source to edit.
-            Target::App { .. } | Target::Builtin { .. } | Target::PluginItem { .. } => return,
-        };
-        let name = item.name().to_string();
-        let path_str = path.to_string_lossy();
-        // Build the shell command: "cd <dir> && <editor> <file>"
-        let dir = path
-            .parent()
-            .map(|p| p.to_string_lossy().to_string())
-            .unwrap_or_default();
-        let shell_cmd = if dir.is_empty() {
-            format!("{editor} {path_str}")
-        } else {
-            format!("cd {dir} && {editor} {path_str}")
-        };
-        // Use osascript to open a new Terminal.app window with the command.
-        let script = format!(
-            "tell application \"Terminal\"\n  activate\n  do script \"{}\"\nend tell",
-            shell_cmd.replace('\\', "\\\\").replace('"', "\\\"")
-        );
-        match std::process::Command::new("osascript")
-            .args(["-e", &script])
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-        {
-            Ok(_) => {}
-            Err(e) => eprintln!("aerofi: failed to open {name} in {editor}: {e}"),
-        }
-    }
-
     /// Execute an action triggered by a custom button widget. If rendered
     /// inside a list item row, `row_item` is provided to allow contextual
     /// actions like "run", "edit", or "copy".
@@ -876,13 +825,7 @@ impl Launcher {
             }
             return;
         }
-        if trimmed.eq_ignore_ascii_case("edit") {
-            if let Some(item) = row_item {
-                let editor = self.app_config.general.editor.clone();
-                Self::open_target_in_editor(item, &editor);
-            }
-            return;
-        }
+
         if trimmed.eq_ignore_ascii_case("copy") {
             if let Some(item) = row_item {
                 cx.write_to_clipboard(gpui::ClipboardItem::new_string(item.name().to_string()));

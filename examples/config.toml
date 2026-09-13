@@ -31,12 +31,6 @@ toggle_hotkey = "opt+space"
 # Default: 20
 max_results = 20
 
-# Command to open scripts for editing. Opens in a new Terminal window.
-# Type: String
-# Default: "vim"
-# Examples: "vim", "nvim", "code --wait", "zed"
-editor = "nvim"
-
 
 # ------------------------------------------------------------------------------
 # [sources] - Search Sources Indexing Toggles
