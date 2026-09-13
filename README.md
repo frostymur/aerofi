@@ -9,7 +9,7 @@
 [![Platform](https://img.shields.io/badge/platform-macOS%2013%2B-lightgrey?style=flat-square&logo=apple)](https://apple.com)
 [![Language](https://img.shields.io/badge/language-Rust%202024-orange?style=flat-square&logo=rust)](https://www.rust-lang.org)
 [![Memory](https://img.shields.io/badge/memory-~40MB%20RSS-brightgreen?style=flat-square)](ARCHITECTURE.md)
-[![Latency](https://img.shields.io/badge/latency-%3C5ms-blueviolet?style=flat-square)](ARCHITECTURE.md)
+[![Latency](https://img.shields.io/badge/latency-%3C2ms-blueviolet?style=flat-square)](ARCHITECTURE.md)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 
 <br />
@@ -41,7 +41,7 @@
 When recording the showcase GIF for aerofi, follow this ~12-second sequence:
 
 1. **Scene 1 (0:00 - 0:03) — Instant Hotkey Launch & Fuzzy Search**:
-   - Press `Option+Space`: aerofi pops up instantly (<5ms) with frosted glass blur over a sleek desktop/editor background.
+   - Press `Option+Space`: aerofi pops up instantly (<2ms) with frosted glass blur over a sleek desktop/editor background.
    - Type `term` or `saf`: demonstrate zero-allocation sub-millisecond fuzzy filtering with instant item selection.
 2. **Scene 2 (0:03 - 0:06) — Live Theming (Tokyo Night ⇄ Gruvbox)**:
    - Highlight the crisp Tokyo Night theme (deep indigo, neon blue/cyan accents).
@@ -60,7 +60,7 @@ When recording the showcase GIF for aerofi, follow this ~12-second sequence:
 
 ## ✨ Key Features
 
-- ⚡ **Sub-5ms Hotkey Latency**: Built directly on [GPUI](https://github.com/zed-industries/zed) (the GPU-accelerated UI framework behind Zed) rendering natively at 120 FPS via Metal.
+- ⚡ **Sub-2ms Hotkey Latency**: Built directly on [GPUI](https://github.com/zed-industries/zed) (the GPU-accelerated UI framework behind Zed) rendering natively at 120 FPS via Metal (~1–2ms warm path on Apple Silicon).
 - 🪶 **Minimal Memory Footprint**: Strictly constrained memory budget—**~40 MB RSS idle, ~50 MB active**. Automatically frees GPU framebuffers when hidden.
 - 🔑 **Zero-Friction Global Hotkey**: Uses native macOS Carbon FFI (`RegisterEventHotKey`) by default. **Requires no invasive Accessibility permissions** to install and run.
 - 📜 **Full Raycast Script Compatibility**: Drop any existing Raycast script command into your scripts folder—aerofi natively parses `@raycast.title`, `@raycast.mode`, `@raycast.argument*`, and metadata annotations.
