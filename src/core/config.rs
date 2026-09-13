@@ -316,4 +316,23 @@ mod tests {
             vec![PathBuf::from("~/.config/aerofi/scripts")]
         );
     }
+
+    #[test]
+    fn reference_config_file_is_valid() {
+        let content = include_str!("../../examples/config.toml");
+        let config: AppConfig =
+            toml::from_str(content).expect("examples/config.toml should parse cleanly");
+        assert_eq!(config.theme, "tokyo-night");
+        assert_eq!(config.general.toggle_hotkey, "opt+space");
+        assert_eq!(config.general.max_results, 20);
+        assert_eq!(config.general.editor, "nvim");
+        assert!(config.sources.apps);
+        assert!(config.sources.scripts);
+        assert_eq!(config.scripts.dirs.len(), 2);
+        assert_eq!(config.apps.ignored.len(), 5);
+        assert_eq!(config.aliases.len(), 4);
+        assert_eq!(config.shortcuts.len(), 3);
+        assert_eq!(config.global_shortcuts.len(), 2);
+        assert_eq!(config.custom_keys.len(), 3);
+    }
 }

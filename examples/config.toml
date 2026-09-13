@@ -1,0 +1,142 @@
+# ==============================================================================
+# aerofi - Complete Configuration Reference (config.toml)
+# ==============================================================================
+# Location: ~/.config/aerofi/config.toml (or $XDG_CONFIG_HOME/aerofi/config.toml)
+# Reload: Press Cmd+R in aerofi or trigger "Reload Configuration"
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# Active Theme
+# ------------------------------------------------------------------------------
+# Type: String
+# Default: "default"
+# Matches a theme file located at ~/.config/aerofi/themes/{theme}.toml
+# Built-in fallback palettes: "default", "tokyo-night", "gruvbox"
+theme = "tokyo-night"
+
+
+# ------------------------------------------------------------------------------
+# [general] - Global Application Behaviour
+# ------------------------------------------------------------------------------
+[general]
+# Global hotkey to toggle aerofi launcher visibility.
+# Type: String
+# Modifiers: "opt" (or "alt"), "cmd", "ctrl", "shift"
+# Examples: "opt+space", "cmd+space", "ctrl+shift+p", "cmd+shift+space"
+# Uses macOS Carbon FFI (RegisterEventHotKey) - requires zero Accessibility permissions.
+toggle_hotkey = "opt+space"
+
+# Maximum number of search results displayed in the list view.
+# Type: Integer (usize)
+# Default: 20
+max_results = 20
+
+# Command to open scripts for editing. Opens in a new Terminal window.
+# Type: String
+# Default: "vim"
+# Examples: "vim", "nvim", "code --wait", "zed"
+editor = "nvim"
+
+
+# ------------------------------------------------------------------------------
+# [sources] - Search Sources Indexing Toggles
+# ------------------------------------------------------------------------------
+[sources]
+# Index macOS Application bundles (/Applications, /System/Applications, ~/Applications).
+# Type: Boolean
+# Default: true
+apps = true
+
+# Index launchable scripts from configured script folders.
+# Type: Boolean
+# Default: true
+scripts = true
+
+# Index macOS System Settings panes (reserved for a later release).
+# Type: Boolean
+# Default: true
+system_settings = true
+
+
+# ------------------------------------------------------------------------------
+# [scripts] - Script Directories
+# ------------------------------------------------------------------------------
+[scripts]
+# List of directories scanned recursively for executable scripts.
+# Type: Array of Strings (PathBuf)
+# Default: ["~/.config/aerofi/scripts"]
+# Leading "~" is expanded to the user's home directory.
+dirs = [
+    "~/.config/aerofi/scripts",
+    "~/scripts"
+]
+
+
+# ------------------------------------------------------------------------------
+# [apps] - Application Filtering
+# ------------------------------------------------------------------------------
+[apps]
+# List of application names to exclude from the launcher index.
+# Type: Array of Strings
+# Supports glob patterns:
+#   "*" matches any sequence of characters
+#   "?" matches any single character
+#   Plain string performs an exact name match
+ignored = [
+    "Uninstall*",
+    "Installer",
+    "QuickTime Player",
+    "*Helper",
+    "Captive Network Assistant"
+]
+
+
+# ------------------------------------------------------------------------------
+# [aliases] - Immediate Launch Aliases
+# ------------------------------------------------------------------------------
+# Maps shorthand keywords to target names.
+# Type: Key-Value Table (String -> String)
+# Typing an alias finds the target; typing the alias EXACTLY runs the target
+# immediately without needing to press Enter.
+[aliases]
+"rc" = "Reload Configuration"
+"cb" = "Clipboard History"
+"term" = "Ghostty"
+"browser" = "Safari"
+
+
+# ------------------------------------------------------------------------------
+# [shortcuts] - In-Launcher Hotkeys
+# ------------------------------------------------------------------------------
+# Key combinations that trigger a target immediately while aerofi is open.
+# Type: Key-Value Table (String -> String)
+# Modifiers: "cmd", "ctrl", "alt" (or "opt"), "shift"
+[shortcuts]
+"cmd+r" = "Reload Configuration"
+"cmd+," = "Open Configuration"
+"cmd+t" = "Theme Switcher"
+
+
+# ------------------------------------------------------------------------------
+# [global_shortcuts] - System-Wide Quick Actions
+# ------------------------------------------------------------------------------
+# Global hotkeys registered directly via Carbon FFI.
+# Type: Key-Value Table (String -> String)
+# Runs the named target directly from anywhere without opening the launcher window.
+# Conflicting shortcuts are skipped with a warning at startup.
+[global_shortcuts]
+"opt+c" = "Clipboard History"
+"opt+t" = "Theme Switcher"
+
+
+# ------------------------------------------------------------------------------
+# [custom_keys] - GUI Mode Custom Keybindings
+# ------------------------------------------------------------------------------
+# Maps custom key combos to action return codes (retv: 10..28) in interactive GUI mode.
+# Type: Key-Value Table (String -> String)
+# Supported keys: "kb-custom-1" through "kb-custom-19"
+# See docs/scripts.md for the bidirectional GUI event specification.
+[custom_keys]
+"kb-custom-1" = "alt+1"
+"kb-custom-2" = "alt+2"
+"kb-custom-3" = "ctrl+d"

@@ -947,6 +947,19 @@ accent = "#7aa2f7"
     }
 
     #[test]
+    fn reference_theme_file_is_valid() {
+        let content = include_str!("../../examples/theme.toml");
+        let mut t: ThemeConfig =
+            toml::from_str(content).expect("examples/theme.toml should parse cleanly");
+        assert_eq!(t.name, "Complete Reference Theme");
+        t.resolve_colors();
+        assert_eq!(t.window.background, "#1a1b26f0");
+        assert_eq!(t.widgets.len(), 10);
+        let registry = crate::core::widget::WidgetRegistry::from_theme(&t.widgets);
+        assert!(registry.validate().is_ok());
+    }
+
+    #[test]
     fn example_horizon_theme_is_valid() {
         let content = r##"
 name   = "Horizon"
