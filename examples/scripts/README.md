@@ -1,6 +1,23 @@
 # aerofi Script Examples
 
-This directory contains ready-to-use and customizable scripts for aerofi.
+This directory contains ready-to-use and reference scripts for aerofi.
+
+---
+
+## 🚀 Execution Mode Examples
+
+Clean, minimal examples demonstrating all 6 aerofi script execution modes:
+
+| Script | Mode | Description | Behavior |
+|---|---|---|---|
+| **[`silent.sh`](silent.sh)** | `silent` | Detached background job | Launcher closes immediately; floating toast notifies upon completion. |
+| **[`compact.sh`](compact.sh)** | `compact` | Progress updates | Floating toast indicator displays real-time single-line status messages. |
+| **[`inline.sh`](inline.sh)** | `inline` | Subtitle widget in list | Prints status directly into launcher row subtitle; auto-refreshes via `@aerofi.refreshTime`. |
+| **[`full-output.sh`](full-output.sh)** | `fullOutput` | Rich Markdown reader | Renders formatted GitHub Flavored Markdown (tables, headings, alerts, code). |
+| **[`pipe.sh`](pipe.sh)** | `pipe` | Clipboard pipe | Captures stdout and automatically copies it directly to macOS clipboard (`pbcopy`). |
+| **[`gui.sh`](gui.sh)** | `gui` | Interactive UI | Bidirectional Rofi-compatible IPC session over stdin/stdout with live Pango markup. |
+
+---
 
 ## 🎨 Theme Switcher (`theme_switcher.sh` / `theme_switcher.py`)
 

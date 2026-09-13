@@ -701,6 +701,29 @@ echo "Theme switcher..."
     }
 
     #[test]
+    fn mode_example_scripts_parse_cleanly() {
+        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let scripts = [
+            ("silent.sh", ScriptMode::Silent),
+            ("compact.sh", ScriptMode::Compact),
+            ("inline.sh", ScriptMode::Inline),
+            ("full-output.sh", ScriptMode::FullOutput),
+            ("pipe.sh", ScriptMode::Pipe),
+            ("gui.sh", ScriptMode::Gui),
+        ];
+
+        for (filename, expected_mode) in scripts {
+            let path = manifest_dir.join("examples/scripts").join(filename);
+            let target = Target::script_from_file(&path)
+                .unwrap_or_else(|| panic!("failed to parse {}", path.display()));
+            let Target::Script { mode, .. } = target else {
+                panic!("expected Target::Script for {}", filename);
+            };
+            assert_eq!(mode, expected_mode, "mode mismatch for {}", filename);
+        }
+    }
+
+    #[test]
     fn parses_all_script_modes() {
         assert_eq!(ScriptMode::parse("silent"), ScriptMode::Silent);
         assert_eq!(ScriptMode::parse("fullOutput"), ScriptMode::FullOutput);
