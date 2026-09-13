@@ -8,7 +8,6 @@
 #![allow(dead_code)]
 
 use std::collections::HashMap;
-use std::fs;
 
 use serde::Deserialize;
 
@@ -734,56 +733,129 @@ fn resolve_opt(value: &mut Option<String>, colors: &HashMap<String, String>) {
 /// touching the filesystem. Any other name is resolved to
 /// `~/.config/aerofi/themes/{name}.toml`; if the file is missing or
 /// unparseable, a warning is printed and the default theme is returned.
+fn resolve_theme_file(rel_path: &str) -> Option<std::path::PathBuf> {
+    let dot_config_path = dirs::home_dir().map(|h| {
+        h.join(".config")
+            .join("aerofi")
+            .join("themes")
+            .join(rel_path)
+    });
+
+    let app_support_path =
+        dirs::config_dir().map(|c| c.join("aerofi").join("themes").join(rel_path));
+
+    match (&dot_config_path, &app_support_path) {
+        (Some(p), _) if p.is_file() => Some(p.clone()),
+        (_, Some(p)) if p.is_file() => Some(p.clone()),
+        (Some(p), _) => Some(p.clone()),
+        (_, Some(p)) => Some(p.clone()),
+        _ => None,
+    }
+}
+
+fn merge_toml(base: &mut toml::Table, override_table: toml::Table) {
+    for (k, v) in override_table {
+        match (base.get_mut(&k), v) {
+            (Some(toml::Value::Table(base_table)), toml::Value::Table(over_table)) => {
+                merge_toml(base_table, over_table);
+            }
+            (Some(_), new_val) => {
+                base.insert(k, new_val);
+            }
+            (None, new_val) => {
+                base.insert(k, new_val);
+            }
+        }
+    }
+}
+
+fn load_theme_table(
+    rel_path: &str,
+    visited: &mut std::collections::HashSet<String>,
+) -> Option<toml::Table> {
+    let normalized = rel_path.to_string();
+    if visited.contains(&normalized) {
+        eprintln!(
+            "aerofi: warning: cyclic theme import detected: {}",
+            normalized
+        );
+        return Some(toml::Table::new());
+    }
+    visited.insert(normalized.clone());
+
+    let path = resolve_theme_file(rel_path)?;
+
+    let contents = match std::fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(err) => {
+            eprintln!(
+                "aerofi: warning: failed to read theme {}: {err}",
+                path.display()
+            );
+            return Some(toml::Table::new());
+        }
+    };
+
+    let mut current_table = match toml::from_str::<toml::Table>(&contents) {
+        Ok(t) => t,
+        Err(err) => {
+            eprintln!(
+                "aerofi: warning: failed to parse theme {}: {err}",
+                path.display()
+            );
+            return Some(toml::Table::new());
+        }
+    };
+
+    let mut merged = toml::Table::new();
+    if let Some(toml::Value::Array(imports)) = current_table.remove("imports") {
+        for import_val in imports {
+            if let toml::Value::String(import_path) = import_val {
+                if let Some(imported_table) = load_theme_table(&import_path, visited) {
+                    merge_toml(&mut merged, imported_table);
+                }
+            } else {
+                eprintln!(
+                    "aerofi: warning: non-string value in imports array in {}",
+                    path.display()
+                );
+            }
+        }
+    }
+
+    merge_toml(&mut merged, current_table);
+
+    Some(merged)
+}
+
 pub fn load_theme(theme_name: &str) -> ThemeConfig {
     if theme_name == "default" {
         return ThemeConfig::default();
     }
 
     let file_name = format!("{theme_name}.toml");
+    let mut visited = std::collections::HashSet::new();
 
-    // Check ~/.config/aerofi/themes/{name}.toml first (standard per config.rs).
-    let dot_config_path = dirs::home_dir().map(|h| {
-        h.join(".config")
-            .join("aerofi")
-            .join("themes")
-            .join(&file_name)
-    });
-
-    // Fallback to dirs::config_dir() (~/Library/Application Support/aerofi/themes/ on macOS).
-    let app_support_path =
-        dirs::config_dir().map(|c| c.join("aerofi").join("themes").join(&file_name));
-
-    let path = match (&dot_config_path, &app_support_path) {
-        (Some(p), _) if p.is_file() => p.clone(),
-        (_, Some(p)) if p.is_file() => p.clone(),
-        (Some(p), _) => p.clone(),
-        (_, Some(p)) => p.clone(),
+    let merged_table = match load_theme_table(&file_name, &mut visited) {
+        Some(t) if !t.is_empty() => t,
         _ => {
-            eprintln!("aerofi: warning: cannot determine config dir, using default theme");
-            return ThemeConfig::default();
-        }
-    };
-
-    let contents = match fs::read_to_string(&path) {
-        Ok(c) => c,
-        Err(err) => {
             eprintln!(
-                "aerofi: warning: failed to read theme {}: {err}; using default",
-                path.display()
+                "aerofi: warning: cannot determine config dir or load theme, using default theme"
             );
             return ThemeConfig::default();
         }
     };
 
-    match toml::from_str::<ThemeConfig>(&contents) {
+    let merged_val = toml::Value::Table(merged_table);
+    match merged_val.try_into::<ThemeConfig>() {
         Ok(mut theme) => {
             theme.resolve_colors();
             theme
         }
         Err(err) => {
             eprintln!(
-                "aerofi: warning: failed to parse theme {}: {err}; using default",
-                path.display()
+                "aerofi: warning: failed to deserialize theme {}: {err}; using default",
+                file_name
             );
             ThemeConfig::default()
         }
@@ -1401,5 +1473,76 @@ orientation = "horizontal"
         } else {
             panic!("expected Button widget");
         }
+    }
+
+    #[test]
+    fn test_merge_toml_deep_merge() {
+        let mut base: toml::Table = toml::from_str(
+            r##"
+            [window]
+            width = 500
+            
+            [colors]
+            background = "#000000"
+        "##,
+        )
+        .unwrap();
+
+        let override_table: toml::Table = toml::from_str(
+            r##"
+            [window]
+            height = 300
+            
+            [colors]
+            background = "#ffffff"
+            foreground = "#aaaaaa"
+        "##,
+        )
+        .unwrap();
+
+        super::merge_toml(&mut base, override_table);
+
+        let expected: toml::Table = toml::from_str(
+            r##"
+            [window]
+            width = 500
+            height = 300
+            
+            [colors]
+            background = "#ffffff"
+            foreground = "#aaaaaa"
+        "##,
+        )
+        .unwrap();
+
+        assert_eq!(base, expected);
+    }
+
+    #[test]
+    fn test_merge_toml_array_replacement() {
+        let mut base: toml::Table = toml::from_str(
+            r##"
+            children = ["inputbar", "listview"]
+        "##,
+        )
+        .unwrap();
+
+        let override_table: toml::Table = toml::from_str(
+            r##"
+            children = ["inputbar"]
+        "##,
+        )
+        .unwrap();
+
+        super::merge_toml(&mut base, override_table);
+
+        let expected: toml::Table = toml::from_str(
+            r##"
+            children = ["inputbar"]
+        "##,
+        )
+        .unwrap();
+
+        assert_eq!(base, expected);
     }
 }
