@@ -14,6 +14,11 @@ static PLUGIN: AerofiPlugin = AerofiPlugin {
     destroy,
 };
 
+/// Returns the static pointer to the `AerofiPlugin` C ABI interface.
+///
+/// # Safety
+/// This function is safe to call across FFI boundaries. The returned pointer
+/// references a static, immutable `AerofiPlugin` struct valid for the lifetime of the process.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn aerofi_plugin_init() -> *const AerofiPlugin {
     &PLUGIN
