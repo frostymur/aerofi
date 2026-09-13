@@ -41,21 +41,34 @@ unsafe extern "C" fn query(query_ptr: *const c_char) -> PluginResults {
     let q = unsafe { CStr::from_ptr(query_ptr) }.to_string_lossy();
     let q_trimmed = q.trim();
 
-    if q_trimmed.is_empty() {
-        return PluginResults {
-            items: ptr::null(),
-            count: 0,
-        };
-    }
-
-    let google_title = CString::new(format!("Search Google for '{}'", q_trimmed)).unwrap();
-    let google_sub = CString::new("Opens Google Search in your default browser").unwrap();
-    let google_id = CString::new(format!("google:{}", q_trimmed)).unwrap();
+    let (google_title, google_sub, google_id) = if q_trimmed.is_empty() {
+        (
+            CString::new("Search Google…").unwrap(),
+            CString::new("Type query to search Google").unwrap(),
+            CString::new("google:").unwrap(),
+        )
+    } else {
+        (
+            CString::new(format!("Search Google for '{}'", q_trimmed)).unwrap(),
+            CString::new("Opens Google Search in your default browser").unwrap(),
+            CString::new(format!("google:{}", q_trimmed)).unwrap(),
+        )
+    };
     let google_icon = CString::new("🔍").unwrap();
 
-    let ddg_title = CString::new(format!("Search DuckDuckGo for '{}'", q_trimmed)).unwrap();
-    let ddg_sub = CString::new("Opens DuckDuckGo Search in your default browser").unwrap();
-    let ddg_id = CString::new(format!("ddg:{}", q_trimmed)).unwrap();
+    let (ddg_title, ddg_sub, ddg_id) = if q_trimmed.is_empty() {
+        (
+            CString::new("Search DuckDuckGo…").unwrap(),
+            CString::new("Type query to search DuckDuckGo").unwrap(),
+            CString::new("ddg:").unwrap(),
+        )
+    } else {
+        (
+            CString::new(format!("Search DuckDuckGo for '{}'", q_trimmed)).unwrap(),
+            CString::new("Opens DuckDuckGo Search in your default browser").unwrap(),
+            CString::new(format!("ddg:{}", q_trimmed)).unwrap(),
+        )
+    };
     let ddg_icon = CString::new("🦆").unwrap();
 
     let items = vec![

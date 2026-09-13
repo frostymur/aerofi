@@ -1,10 +1,9 @@
-use std::ffi::{CStr, CString, c_char};
+use std::ffi::{CStr, CString};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use libloading::{Library, Symbol};
-use gpui::SharedString;
 
-use aerofi_plugin_api::{AerofiPlugin, PluginItem, PluginResults};
+use aerofi_plugin_api::{AerofiPlugin, PluginResults};
 
 /// Wraps a single loaded `.dylib` plugin.
 pub struct LoadedPlugin {
@@ -109,24 +108,34 @@ impl PluginManager {
     /// Scan the plugins directory and load all `.dylib` files.
     pub fn load_all() -> Self {
         let mut manager = Self::new();
+        let mut candidate_dirs = Vec::new();
         
-        let Some(config_dir) = dirs::config_dir() else {
-            return manager;
-        };
+        if let Some(home) = dirs::home_dir() {
+            candidate_dirs.push(home.join(".config").join("aerofi").join("plugins"));
+        }
+        if let Some(config_dir) = dirs::config_dir() {
+            let p = config_dir.join("aerofi").join("plugins");
+            if !candidate_dirs.contains(&p) {
+                candidate_dirs.push(p);
+            }
+        }
         
-        let plugins_dir = config_dir.join("aerofi").join("plugins");
-        
-        if let Ok(entries) = std::fs::read_dir(&plugins_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.extension().and_then(|e| e.to_str()) == Some("dylib") {
-                    match LoadedPlugin::load(&path) {
-                        Ok(plugin) => {
-                            println!("aerofi: loaded plugin '{}' from {}", plugin.name, path.display());
-                            manager.plugins.push(Arc::new(plugin));
-                        }
-                        Err(e) => {
-                            eprintln!("aerofi: failed to load plugin from {}: {}", path.display(), e);
+        let mut loaded_names = std::collections::HashSet::new();
+        for dir in candidate_dirs {
+            if let Ok(entries) = std::fs::read_dir(&dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.extension().and_then(|e| e.to_str()) == Some("dylib") {
+                        match LoadedPlugin::load(&path) {
+                            Ok(plugin) => {
+                                if loaded_names.insert(plugin.name.clone()) {
+                                    println!("aerofi: loaded plugin '{}' (prefix: '{}') from {}", plugin.name, plugin.prefix, path.display());
+                                    manager.plugins.push(Arc::new(plugin));
+                                }
+                            }
+                            Err(e) => {
+                                eprintln!("aerofi: failed to load plugin from {}: {}", path.display(), e);
+                            }
                         }
                     }
                 }

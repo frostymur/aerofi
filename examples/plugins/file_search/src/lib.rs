@@ -43,9 +43,19 @@ unsafe extern "C" fn query(query_ptr: *const c_char) -> PluginResults {
     let q_trimmed = q.trim();
 
     if q_trimmed.is_empty() {
+        let item = PluginItem {
+            id: CString::new("").unwrap().into_raw(),
+            title: CString::new("Search files with Spotlight…").unwrap().into_raw(),
+            subtitle: CString::new("Type filename to search (e.g. f notes)").unwrap().into_raw(),
+            icon: CString::new("📁").unwrap().into_raw(),
+        };
+        let items = vec![item];
+        let count = items.len();
+        let boxed_slice = items.into_boxed_slice();
+        let items_ptr = Box::into_raw(boxed_slice) as *const PluginItem;
         return PluginResults {
-            items: ptr::null(),
-            count: 0,
+            items: items_ptr,
+            count,
         };
     }
 
@@ -119,6 +129,9 @@ unsafe extern "C" fn activate(id_ptr: *const c_char, action_code: u32) -> bool {
     }
 
     let path_str = unsafe { CStr::from_ptr(id_ptr) }.to_string_lossy();
+    if path_str.is_empty() {
+        return false;
+    }
 
     if action_code == 1 {
         // Reveal in Finder if action_code is 1 (e.g. Shift+Enter / Alt+Enter)
