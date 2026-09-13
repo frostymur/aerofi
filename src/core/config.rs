@@ -245,6 +245,18 @@ impl AppConfig {
                 first.display()
             );
         }
+
+        if let Some(parent) = config_path.parent() {
+            let themes_dir = parent.join("themes");
+            if !themes_dir.exists() {
+                let _ = fs::create_dir_all(&themes_dir);
+            }
+            let plugins_dir = parent.join("plugins");
+            if !plugins_dir.exists() {
+                let _ = fs::create_dir_all(&plugins_dir);
+            }
+        }
+
         config
     }
 }
