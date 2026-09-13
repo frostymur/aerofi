@@ -147,9 +147,27 @@ pub fn center_window() {
         }
         unsafe {
             use objc2::msg_send;
+            use objc2::runtime::AnyObject;
             use objc2_app_kit::NSWindow;
+            use objc2_foundation::{NSPoint, NSRect};
+
             let ns_window = &*(ptr as *const NSWindow);
-            let _: () = msg_send![ns_window, center];
+            let mut screen: *mut AnyObject = msg_send![ns_window, screen];
+            if screen.is_null() {
+                screen = msg_send![objc2::class!(NSScreen), mainScreen];
+            }
+            if !screen.is_null() {
+                let screen_frame: NSRect = msg_send![screen, frame];
+                let window_frame: NSRect = msg_send![ns_window, frame];
+                let new_x = screen_frame.origin.x
+                    + (screen_frame.size.width - window_frame.size.width) / 2.0;
+                let new_y = screen_frame.origin.y
+                    + (screen_frame.size.height - window_frame.size.height) / 2.0;
+                let new_origin = NSPoint::new(new_x, new_y);
+                let _: () = msg_send![ns_window, setFrameOrigin: new_origin];
+            } else {
+                let _: () = msg_send![ns_window, center];
+            }
         }
     }
 
