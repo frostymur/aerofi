@@ -65,30 +65,37 @@ Annotations are placed inside comments (`#`) at the top of your script:
 
 ## ⚡ Execution Modes
 
-aerofi provides six dedicated execution modes tailored for different workflows:
+aerofi provides six dedicated execution modes tailored for different workflows. Each mode has a minimalist reference script in `examples/scripts/`:
 
 ### 1. `silent`
 Runs the script detached in the background. The aerofi search window closes immediately. A compact floating toast appears in the corner of your screen indicating execution status.
+- **Example Script**: [examples/scripts/silent.sh](file:///Users/timuriskakov/projects/aerofi/examples/scripts/silent.sh)
 - **Ideal for**: Triggering background automations, toggling system settings, running backup jobs.
 
 ### 2. `compact`
 Displays a minimalist floating indicator on screen while the script runs, streaming single-line output updates until finished.
+- **Example Script**: [examples/scripts/compact.sh](file:///Users/timuriskakov/projects/aerofi/examples/scripts/compact.sh)
 - **Ideal for**: Fast actions that take 1–3 seconds and report brief progress.
 
 ### 3. `inline`
 The script runs in the background and its output is displayed directly as a subtitle inside the aerofi launcher list.
-- **Ideal for**: Live status widgets (e.g. current Spotify track, active Git branch, weather, battery health). When combined with `@raycast.refreshTime 5m`, aerofi automatically refreshes the output periodically.
+- **Example Script**: [examples/scripts/inline.sh](file:///Users/timuriskakov/projects/aerofi/examples/scripts/inline.sh)
+- **Ideal for**: Live status widgets (e.g. current Spotify track, active Git branch, weather, battery health). When combined with `@aerofi.refreshTime 10s`, aerofi automatically refreshes the output periodically.
 
 ### 4. `fullOutput`
 Executes the command and renders stdout in aerofi's built-in rich markdown and ANSI terminal viewer. Supports headings, syntax-highlighted code blocks, blockquotes, and lists.
+- **Example Script**: [examples/scripts/full-output.sh](file:///Users/timuriskakov/projects/aerofi/examples/scripts/full-output.sh)
 - **Ideal for**: Viewing documentation, API responses, logs, or curl outputs.
 
 ### 5. `pipe`
 Executes the command, captures its stdout, and immediately copies the result to your macOS system clipboard (`pbcopy`).
+- **Example Script**: [examples/scripts/pipe.sh](file:///Users/timuriskakov/projects/aerofi/examples/scripts/pipe.sh)
 - **Ideal for**: UUID generators, password generators, timestamp formatters, base64 encoders.
 
 ### 6. `gui`
 Enables aerofi's **two-way interactive GUI mode**. Maintains a persistent, bidirectional process pipeline (`stdin`/`stdout`) between aerofi and your script, turning aerofi into a custom interactive UI (like Rofi or dmenu, but with rich styling).
+- **Example Script**: [examples/scripts/gui.sh](file:///Users/timuriskakov/projects/aerofi/examples/scripts/gui.sh)
+- **Comprehensive Examples**: [theme_switcher.sh](file:///Users/timuriskakov/projects/aerofi/examples/scripts/theme_switcher.sh), [clipboard.sh](file:///Users/timuriskakov/projects/aerofi/examples/scripts/clipboard.sh)
 
 ---
 
