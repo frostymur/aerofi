@@ -3,7 +3,7 @@
 ## Philosophy
 
 aerofi exists to prove that a launcher can be genuinely light — the
-validated baseline (~24 MB active, ~0.1% idle CPU) is the product's whole
+validated baseline (~50 MB active, ~0.1% idle CPU) is the product's whole
 pitch against Electron/Qt/WebView alternatives. Any contribution that
 regresses that baseline without a clear justification will be rejected
 regardless of how useful the feature is. See `ARCHITECTURE.md` for the
@@ -14,19 +14,20 @@ full rationale and the current numbers to protect.
 ```bash
 git clone <repo>
 cd aerofi
-cargo build
-pre-commit install
+cargo test --all-targets
 ```
 
-Single crate, simple build: `cargo build` compiles everything, `cargo run`
-starts the app (aerofi daemon listens for Alt+Space).
+All 100+ tests should pass on macOS. There are no platform-independent
+stubs — macOS is the only supported target.
 
-## Branching & workflow
+## Architectural discipline
 
-- `main` is always releasable and protected — no direct pushes.
-- Trunk-based: branch as `feature/<slug>` or `fix/<slug>` off `main`, open
-  a PR, squash-merge.
-- Any PR that touches the workspace layout, the IPC protocol, or the
+- Every new dependency requires justification. Never pull in a crate that
+  brings its own runtime (tokio, smol, etc.) — `gpui` has its own async
+  executor.
+- No second-process architectures. Everything runs in the single `aerofi`
+  binary.
+- Any change that touches windowing, the metal rendering pipeline, or the
   hotkey backend should be preceded by a short discussion in an issue and
   land with architectural documentation in `ARCHITECTURE.md`, not just code.
 
@@ -44,7 +45,7 @@ Examples:
 ```
 feat(hotkey): add opt-in NSEvent backend for reliable-mode
 fix(indexer): recognize @raycast.argument* tags
-perf(daemon): drop idle RSS by lazily loading nucleo index
+perf(search): drop idle RSS by lazily loading nucleo index
 ```
 
 `perf` commits should include the before/after RSS number in the body.
