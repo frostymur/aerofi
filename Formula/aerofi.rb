@@ -1,8 +1,8 @@
 class Aerofi < Formula
   desc "Lightweight, keyboard- and mouse-driven script launcher for macOS"
   homepage "https://github.com/frostymur/aerofi"
-  url "https://github.com/frostymur/aerofi/archive/refs/tags/v0.1.2.tar.gz"
-  sha256 "6c881a0d2c5ce1232df364f374000e2b2347cfc5419d4e1155c743d083b84852"
+  url "https://github.com/frostymur/aerofi/archive/refs/tags/v0.1.3.tar.gz"
+  sha256 "abfc8993be3a13db8f88ff5ddd11f98cc591fa7b08fe6661938d116fe34205e3"
   license "MIT"
   head "https://github.com/frostymur/aerofi.git", branch: "main"
 
