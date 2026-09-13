@@ -16,9 +16,9 @@ Any file with executable permissions (`chmod +x`) or a valid shebang line (e.g. 
 
 ---
 
-## 🏷️ Raycast Script Command Compatibility
+## 🏷️ Script Metadata Annotations (`@aerofi.*` & `@raycast.*`)
 
-aerofi is fully compatible with Raycast Script Command metadata headers. You can drop existing Raycast scripts into `~/.config/aerofi/scripts/` and they will work seamlessly out of the box.
+aerofi supports both native `@aerofi.*` annotations and `@raycast.*` metadata headers interchangeably. You can write `@aerofi.*` for your native aerofi scripts, or drop existing Raycast scripts into `~/.config/aerofi/scripts/` without modifying their headers!
 
 ### Supported Metadata Annotations
 
@@ -28,31 +28,38 @@ Annotations are placed inside comments (`#`) at the top of your script:
 #!/usr/bin/env bash
 
 # Required parameters:
-# @raycast.schemaVersion 1
-# @raycast.title Search GitHub Repos
-# @raycast.mode fullOutput
+# @aerofi.schemaVersion 1
+# @aerofi.title Search GitHub Repos
+# @aerofi.mode fullOutput
 
 # Optional parameters:
-# @raycast.icon 🐙
-# @raycast.packageName Developer Tools
-# @raycast.argument1 { "type": "text", "placeholder": "Repository name" }
-# @raycast.needsConfirmation false
-# @raycast.refreshTime 10m
+# @aerofi.icon 🐙
+# @aerofi.packageName Developer Tools
+# @aerofi.argument1 { "type": "text", "placeholder": "Repository name" }
+# @aerofi.needsConfirmation false
+# @aerofi.refreshTime 10m
 ```
+
+> [!TIP]
+> Both `@aerofi.<field>` and `@raycast.<field>` are recognized identically. If both are defined, `@aerofi.<field>` takes precedence.
 
 ### Metadata Reference
 
-| Annotation | Description | Example |
+| Annotation (`@aerofi.*` or `@raycast.*`) | Description | Example |
 |---|---|---|
-| `@raycast.title` | The display title in the search results | `@raycast.title Quick Note` |
-| `@raycast.mode` | Execution mode (see below) | `@raycast.mode silent` |
-| `@raycast.icon` | Emoji or system icon identifier | `@raycast.icon 🚀` |
-| `@raycast.packageName` | Category/namespace displayed as subtitle | `@raycast.packageName Git` |
-| `@raycast.argument[1-3]` | Interactive argument prompt specification | `{"type": "text", "placeholder": "URL"}` |
-| `@raycast.refreshTime` | Periodic background refresh interval | `5m`, `1h` (for `inline` mode) |
-| `@raycast.needsConfirmation` | Prompt for confirmation before running | `true` or `false` |
-| `@aerofi.show_search` | aerofi-specific: toggle search bar in GUI mode | `@aerofi.show_search false` |
-| `@aerofi.columns` | aerofi-specific: override list column count | `@aerofi.columns 2` |
+| `title` | The display title in the search results | `@aerofi.title Quick Note` |
+| `mode` | Execution mode (see below) | `@aerofi.mode silent` |
+| `icon` | Emoji or system icon identifier | `@aerofi.icon 🚀` |
+| `iconDark` | Optional dark mode icon identifier | `@aerofi.iconDark 🌟` |
+| `packageName` | Category/namespace displayed as subtitle | `@aerofi.packageName Git` |
+| `argument[1-3]` | Interactive argument prompt specification | `{"type": "text", "placeholder": "URL"}` |
+| `refreshTime` | Periodic background refresh interval | `5m`, `1h` (for `inline` mode) |
+| `needsConfirmation` | Prompt for confirmation before running | `true` or `false` |
+| `description` | Script description | `@aerofi.description Interactive theme preview` |
+| `author` | Author name | `@aerofi.author Your Name` |
+| `authorURL` | Author website URL | `@aerofi.authorURL https://github.com/...` |
+| `show_search` | Toggle search bar in GUI mode (default `true`) | `@aerofi.show_search false` |
+| `columns` | Override list column count (default `1`) | `@aerofi.columns 2` |
 
 ---
 
@@ -175,9 +182,19 @@ Fields in `GuiEvent`:
 
 ---
 
-## 🌟 Reference Implementation: Clipboard Manager
+## 🌟 Reference Implementations
 
-Check out the complete reference implementation in:
+### 1. 🎨 Theme Switcher (`theme_switcher.sh` / `theme_switcher.py`)
+- [examples/scripts/theme_switcher.sh](file:///Users/timuriskakov/projects/aerofi/examples/scripts/theme_switcher.sh)
+- [examples/scripts/theme_switcher.py](file:///Users/timuriskakov/projects/aerofi/examples/scripts/theme_switcher.py)
+
+Uses native `@aerofi.*` metadata tags to build an interactive theme previewer:
+- Scans installed themes in `~/.config/aerofi/themes/` and built-in themes.
+- Renders live visual color swatches using Pango markup (`<span foreground="#HEX">■</span>`).
+- Displays a `✓ Active` badge for the current theme.
+- Pressing `Enter` updates `~/.config/aerofi/config.toml` and posts a system notification.
+
+### 2. 📋 Clipboard Manager (`clipboard.sh` / `clipboard.py`)
 - [examples/scripts/clipboard.sh](file:///Users/timuriskakov/projects/aerofi/examples/scripts/clipboard.sh)
 - [examples/scripts/clipboard.py](file:///Users/timuriskakov/projects/aerofi/examples/scripts/clipboard.py)
 
