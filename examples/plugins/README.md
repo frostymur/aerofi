@@ -1,6 +1,6 @@
-# Example AeroFi Native Plugins (Modi)
+# Example aerofi Native Plugins (Modi)
 
-This directory contains reference implementations of dynamic C ABI plugins for AeroFi:
+This directory contains reference implementations of dynamic C ABI plugins for aerofi:
 
 1. **`web_search`**:
    - **Trigger prefix:** `g ` (e.g. `g rust async`)

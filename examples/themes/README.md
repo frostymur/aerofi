@@ -1,6 +1,6 @@
-# AeroFi Themes
+# aerofi Themes
 
-This directory contains curated example themes for AeroFi.
+This directory contains curated example themes for aerofi.
 
 ## 🎨 Available Themes
 
@@ -24,7 +24,7 @@ A warm, vintage retro-groove theme designed for optimal contrast and eye comfort
 
 ## 🚀 Installation & Usage
 
-### 1. Copy Themes to your AeroFi configuration
+### 1. Copy Themes to your aerofi configuration
 
 ```bash
 mkdir -p ~/.config/aerofi/themes
@@ -51,13 +51,13 @@ theme = "default"
 ```
 
 ### 3. Apply Changes
-Restart AeroFi or trigger **Reload Configuration** (`Cmd+R` or search in launcher).
+Restart aerofi or trigger **Reload Configuration** (`Cmd+R` or search in launcher).
 
 ---
 
 ## 🛠️ Theme Anatomy & Customization
 
-AeroFi themes are written in standard TOML. Every section is customizable:
+aerofi themes are written in standard TOML. Every section is customizable:
 
 ```toml
 name = "My Custom Theme"

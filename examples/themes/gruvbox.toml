@@ -1,8 +1,8 @@
-# Gruvbox Dark Theme for AeroFi
-# Retro groove color scheme for a warm, vintage visual experience
+# Gruvbox Dark Theme for aerofi
+# A warm, retro-groove theme with high contrast and soothing earth tones.
 
-name = "Gruvbox Dark"
-author = "AeroFi"
+name   = "Gruvbox Dark"
+author = "aerofi"
 
 [font]
 family = "SF Pro Text"

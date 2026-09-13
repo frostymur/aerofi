@@ -1,8 +1,8 @@
-# Tokyo Night Theme for AeroFi
+# Tokyo Night Theme for aerofi
 # Inspired by Tokyo Night for Neovim/Alacritty/VSCode
 
 name = "Tokyo Night"
-author = "AeroFi"
+author = "aerofi"
 
 [font]
 family = "SF Pro Text"

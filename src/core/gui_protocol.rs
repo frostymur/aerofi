@@ -1,6 +1,6 @@
 //! Rofi-compatible GUI script protocol parser.
 //!
-//! Scripts running in `gui` mode communicate with AeroFi through
+//! Scripts running in `gui` mode communicate with aerofi through
 //! structured stdout lines.  Control commands start with `\0` and use
 //! `\x1f` (ASCII unit-separator) to delimit key/value pairs.  Data rows
 //! are plain text optionally followed by `\0`-delimited metadata fields.
@@ -147,7 +147,7 @@ pub enum GuiEvent {
 }
 
 impl GuiEvent {
-    /// Format event according to the structured AeroFi GUI event protocol.
+    /// Format event according to the structured aerofi GUI event protocol.
     pub fn to_event_line(&self) -> String {
         match self {
             GuiEvent::Select {
