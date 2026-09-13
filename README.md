@@ -60,14 +60,11 @@
 Install aerofi and start it as a background service:
 
 ```bash
-# Tap repository
-brew tap frostymur/aerofi https://github.com/frostymur/aerofi
-
 # Install aerofi
-brew install aerofi
+brew install frostymur/aerofi/aerofi
 
 # Start aerofi as a background service (starts automatically on login)
-brew services start aerofi
+brew services start frostymur/aerofi/aerofi
 ```
 
 To stop the background service:
