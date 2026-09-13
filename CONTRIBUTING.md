@@ -67,6 +67,18 @@ We adhere to [Semantic Versioning (SemVer)](https://semver.org/) via git tags `v
 
 Release notes are generated from Conventional Commits since the last tag. Releases are cut from `main` only.
 
+We use [`cargo-release`](https://github.com/crate-ci/cargo-release) to automate version bumping, tagging, and pushing:
+
+```bash
+# To install cargo-release:
+cargo install cargo-release
+
+# To bump version, commit, tag, and push (e.g. for a patch release):
+cargo release patch --execute
+```
+
+This will automatically bump `Cargo.toml`, create the commit `chore(core): bump version to <version>`, create the tag `v<version>`, and push them. The GitHub Actions release pipeline handles the rest.
+
 ## Testing
 
 - `core/` (metadata parser, `item.rs`): unit-test against fixture scripts —

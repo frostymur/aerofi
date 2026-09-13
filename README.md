@@ -62,6 +62,23 @@ brew install aerofi
 brew services start aerofi
 ```
 
+### Prebuilt Binary (Direct Download)
+Download the latest prebuilt binary from [GitHub Releases](https://github.com/frostymur/aerofi/releases/latest):
+
+- **Apple Silicon (M1–M6)**: [`aerofi-mac-arm64.tar.gz`](https://github.com/frostymur/aerofi/releases/latest/download/aerofi-mac-arm64.tar.gz)
+- **Intel Mac (x86_64)**: [`aerofi-mac-x86_64.tar.gz`](https://github.com/frostymur/aerofi/releases/latest/download/aerofi-mac-x86_64.tar.gz)
+
+Unpack and place in your `$PATH` (e.g. `/usr/local/bin` or `~/.local/bin`):
+```bash
+# Example for Apple Silicon:
+curl -L -o aerofi.tar.gz https://github.com/frostymur/aerofi/releases/latest/download/aerofi-mac-arm64.tar.gz
+tar -xzf aerofi.tar.gz
+sudo mv aerofi /usr/local/bin/
+
+# Run aerofi:
+aerofi &
+```
+
 ### Cargo
 ```bash
 cargo install aerofi
