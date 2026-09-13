@@ -426,17 +426,17 @@ impl Launcher {
     fn refilter(&mut self) {
         // Clear any previous plugin items
         self.all.truncate(self.base_count);
-        
+
         if let Some((plugin, remainder)) = self.plugin_manager.match_prefix(&self.query) {
             let results = plugin.query(remainder);
-            
+
             // Convert C ABI results to Rust Targets
             let items = if results.count == 0 || results.items.is_null() {
                 &[]
             } else {
                 unsafe { std::slice::from_raw_parts(results.items, results.count) }
             };
-            
+
             for item in items {
                 let name = if item.title.is_null() {
                     gpui::SharedString::from("")
@@ -444,28 +444,32 @@ impl Launcher {
                     let c_str = unsafe { std::ffi::CStr::from_ptr(item.title) };
                     gpui::SharedString::from(c_str.to_string_lossy().into_owned())
                 };
-                
+
                 let subtitle = if item.subtitle.is_null() {
                     None
                 } else {
                     let c_str = unsafe { std::ffi::CStr::from_ptr(item.subtitle) };
-                    Some(gpui::SharedString::from(c_str.to_string_lossy().into_owned()))
+                    Some(gpui::SharedString::from(
+                        c_str.to_string_lossy().into_owned(),
+                    ))
                 };
-                
+
                 let icon = if item.icon.is_null() {
                     None
                 } else {
                     let c_str = unsafe { std::ffi::CStr::from_ptr(item.icon) };
-                    Some(gpui::SharedString::from(c_str.to_string_lossy().into_owned()))
+                    Some(gpui::SharedString::from(
+                        c_str.to_string_lossy().into_owned(),
+                    ))
                 };
-                
+
                 let plugin_id = if item.id.is_null() {
                     gpui::SharedString::from("")
                 } else {
                     let c_str = unsafe { std::ffi::CStr::from_ptr(item.id) };
                     gpui::SharedString::from(c_str.to_string_lossy().into_owned())
                 };
-                
+
                 self.all.push(Target::PluginItem {
                     name,
                     subtitle,
@@ -474,16 +478,20 @@ impl Launcher {
                     plugin_name: gpui::SharedString::from(plugin.name.clone()),
                 });
             }
-            
+
             plugin.free_results(results);
-            
+
             // For plugins, we don't fuzzy sort. We show exactly what the plugin returned in order.
             self.filtered = (self.base_count..self.all.len()).collect();
         } else {
-            self.search
-                .search(&self.query, &self.all[..self.base_count], &self.history, &mut self.filtered);
+            self.search.search(
+                &self.query,
+                &self.all[..self.base_count],
+                &self.history,
+                &mut self.filtered,
+            );
         }
-        
+
         if self.selected >= self.filtered.len() {
             self.selected = 0;
         }
@@ -573,7 +581,11 @@ impl Launcher {
                 self.history.record_launch(identifier);
                 LauncherAction::Hide
             }
-            Target::PluginItem { plugin_name, plugin_id, .. } => {
+            Target::PluginItem {
+                plugin_name,
+                plugin_id,
+                ..
+            } => {
                 // For plugins, we call activate via the plugin manager.
                 // We'll return an action that handles this.
                 LauncherAction::ActivatePlugin {
@@ -614,13 +626,15 @@ impl Launcher {
                 }
             }
             Target::Builtin { .. } | Target::App { .. } => LauncherAction::None,
-            Target::PluginItem { plugin_name, plugin_id, .. } => {
-                LauncherAction::ActivatePlugin {
-                    plugin_name: plugin_name.to_string(),
-                    plugin_id: plugin_id.to_string(),
-                    action_code: 0,
-                }
-            }
+            Target::PluginItem {
+                plugin_name,
+                plugin_id,
+                ..
+            } => LauncherAction::ActivatePlugin {
+                plugin_name: plugin_name.to_string(),
+                plugin_id: plugin_id.to_string(),
+                action_code: 0,
+            },
         }
     }
 
@@ -679,13 +693,21 @@ impl Launcher {
                 crate::ui::execute::execute_script(cx, view, theme, target, args);
                 cx.notify();
             }
-            LauncherAction::ActivatePlugin { plugin_name, plugin_id, action_code } => {
-                if let Some(plugin) = self.plugin_manager.plugins.iter().find(|p| p.name == plugin_name) {
-                    if plugin.activate(&plugin_id, action_code) {
-                        self.on_hide();
-                        cx.notify();
-                        crate::ui::window::hide();
-                    }
+            LauncherAction::ActivatePlugin {
+                plugin_name,
+                plugin_id,
+                action_code,
+            } => {
+                if let Some(plugin) = self
+                    .plugin_manager
+                    .plugins
+                    .iter()
+                    .find(|p| p.name == plugin_name)
+                    && plugin.activate(&plugin_id, action_code)
+                {
+                    self.on_hide();
+                    cx.notify();
+                    crate::ui::window::hide();
                 }
             }
         }

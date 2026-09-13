@@ -1,5 +1,5 @@
 use aerofi_plugin_api::{AerofiPlugin, PluginItem, PluginMetadata, PluginResults};
-use std::ffi::{c_char, CStr, CString};
+use std::ffi::{CStr, CString, c_char};
 use std::path::Path;
 use std::process::Command;
 use std::ptr;
@@ -26,7 +26,9 @@ unsafe extern "C" fn init() -> bool {
 unsafe extern "C" fn get_metadata() -> PluginMetadata {
     PluginMetadata {
         name: CString::new("file-search").unwrap().into_raw(),
-        description: CString::new("Fast macOS Spotlight file search").unwrap().into_raw(),
+        description: CString::new("Fast macOS Spotlight file search")
+            .unwrap()
+            .into_raw(),
         prefix: CString::new("f ").unwrap().into_raw(),
     }
 }
@@ -45,8 +47,12 @@ unsafe extern "C" fn query(query_ptr: *const c_char) -> PluginResults {
     if q_trimmed.is_empty() {
         let item = PluginItem {
             id: CString::new("").unwrap().into_raw(),
-            title: CString::new("Search files with Spotlight…").unwrap().into_raw(),
-            subtitle: CString::new("Type filename to search (e.g. f notes)").unwrap().into_raw(),
+            title: CString::new("Search files with Spotlight…")
+                .unwrap()
+                .into_raw(),
+            subtitle: CString::new("Type filename to search (e.g. f notes)")
+                .unwrap()
+                .into_raw(),
             icon: CString::new("📁").unwrap().into_raw(),
         };
         let items = vec![item];
@@ -60,13 +66,14 @@ unsafe extern "C" fn query(query_ptr: *const c_char) -> PluginResults {
     }
 
     // Query Spotlight using `mdfind`
-    let output = match Command::new("mdfind")
-        .arg("-name")
-        .arg(q_trimmed)
-        .output()
-    {
+    let output = match Command::new("mdfind").arg("-name").arg(q_trimmed).output() {
         Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stdout).to_string(),
-        _ => return PluginResults { items: ptr::null(), count: 0 },
+        _ => {
+            return PluginResults {
+                items: ptr::null(),
+                count: 0,
+            };
+        }
     };
 
     let mut plugin_items = Vec::new();
@@ -135,7 +142,10 @@ unsafe extern "C" fn activate(id_ptr: *const c_char, action_code: u32) -> bool {
 
     if action_code == 1 {
         // Reveal in Finder if action_code is 1 (e.g. Shift+Enter / Alt+Enter)
-        let _ = Command::new("open").arg("-R").arg(path_str.as_ref()).spawn();
+        let _ = Command::new("open")
+            .arg("-R")
+            .arg(path_str.as_ref())
+            .spawn();
     } else {
         // Open file normally
         let _ = Command::new("open").arg(path_str.as_ref()).spawn();
@@ -149,7 +159,8 @@ unsafe extern "C" fn free_results(results: PluginResults) {
         return;
     }
 
-    let slice = unsafe { std::slice::from_raw_parts_mut(results.items as *mut PluginItem, results.count) };
+    let slice =
+        unsafe { std::slice::from_raw_parts_mut(results.items as *mut PluginItem, results.count) };
     for item in &mut *slice {
         if !item.id.is_null() {
             drop(unsafe { CString::from_raw(item.id as *mut c_char) });
