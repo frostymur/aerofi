@@ -16,18 +16,14 @@ This directory contains reference implementations of dynamic C ABI plugins for A
 
 ## Building and Installing
 
-To compile the example plugins into dynamic libraries (`.dylib`):
+Run from the repository root:
 
 ```bash
 cargo build --package plugin-web-search --package plugin-file-search --release
-```
 
-To install them into your AeroFi plugins directory:
-
-```bash
 mkdir -p ~/.config/aerofi/plugins
 cp target/release/libplugin_web_search.dylib ~/.config/aerofi/plugins/
 cp target/release/libplugin_file_search.dylib ~/.config/aerofi/plugins/
 ```
 
-Then reload AeroFi with `cmd+r` (or restart the app) to start using `g ` and `f `!
+*(Note: If you are inside `examples/plugins/`, the compiled libraries are in `../../target/release/`)*
