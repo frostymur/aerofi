@@ -137,6 +137,7 @@ Control commands start with `\0` (null byte) and use `\x1f` (unit separator) to 
 | `\0flush` | none | Frame delimiter: tells aerofi to render buffered items immediately |
 | `\0active` | `<index_or_id>` | Highlights a specific item row |
 | `\0urgent` | `<index_or_id>` | Marks an item with urgent status color |
+| `\0reload` | `true` | Immediately reloads aerofi configuration, theme, and targets |
 
 #### 2. Row Items & Metadata
 Rows are printed one per line. Metadata fields can be attached using `\0` delimiters:

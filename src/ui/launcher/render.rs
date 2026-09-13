@@ -61,6 +61,13 @@ impl Render for Launcher {
         };
         window.resize(size(px(t.window.width), px(target_height)));
 
+        // Re-center the window after a theme reload (deferred from reload() so
+        // it fires in the same frame as the window.resize() call above).
+        if self.needs_center {
+            self.needs_center = false;
+            crate::sys::appkit::center_window();
+        }
+
         // Inner content: the actual launcher widgets or full page views.
         let inner = if let LauncherState::FullOutput { title } = &self.state {
             self.render_full_output(cx, title)
@@ -609,19 +616,25 @@ impl Launcher {
                                 }
 
                                 if let Some(info) = &row.info {
-                                    let badge_col =
-                                        rgba(Self::color(&t.listview.category_badge.color));
-                                    row_div = row_div.child(
-                                        div()
-                                            .px_2()
-                                            .py(px(2.0))
-                                            .rounded_sm()
-                                            .border_1()
-                                            .border_color(badge_col)
-                                            .text_color(badge_col)
-                                            .text_size(px(t.font.size * 0.75))
-                                            .child(info.clone()),
-                                    );
+                                    let info_color = rgba(Self::color(
+                                        el.description_color.as_deref().unwrap_or(&el.text_color),
+                                    ));
+                                    let info_el = div()
+                                        .text_color(info_color)
+                                        .text_size(px(t.font.size * 0.82))
+                                        .flex_shrink_0();
+                                    let info_el = if markup_rows_val {
+                                        let (plain, highlights) =
+                                            crate::core::pango::parse_pango(info);
+                                        let mut st = gpui::StyledText::new(plain);
+                                        if !highlights.is_empty() {
+                                            st = st.with_highlights(highlights);
+                                        }
+                                        info_el.child(st)
+                                    } else {
+                                        info_el.child(info.clone())
+                                    };
+                                    row_div = row_div.child(info_el);
                                 }
 
                                 row_div
@@ -722,19 +735,25 @@ impl Launcher {
                                 }
 
                                 if let Some(info) = &row.info {
-                                    let badge_col =
-                                        rgba(Self::color(&t.listview.category_badge.color));
-                                    row_div = row_div.child(
-                                        div()
-                                            .px_2()
-                                            .py(px(2.0))
-                                            .rounded_sm()
-                                            .border_1()
-                                            .border_color(badge_col)
-                                            .text_color(badge_col)
-                                            .text_size(px(t.font.size * 0.75))
-                                            .child(info.clone()),
-                                    );
+                                    let info_color = rgba(Self::color(
+                                        el.description_color.as_deref().unwrap_or(&el.text_color),
+                                    ));
+                                    let info_el = div()
+                                        .text_color(info_color)
+                                        .text_size(px(t.font.size * 0.82))
+                                        .flex_shrink_0();
+                                    let info_el = if markup_rows_val {
+                                        let (plain, highlights) =
+                                            crate::core::pango::parse_pango(info);
+                                        let mut st = gpui::StyledText::new(plain);
+                                        if !highlights.is_empty() {
+                                            st = st.with_highlights(highlights);
+                                        }
+                                        info_el.child(st)
+                                    } else {
+                                        info_el.child(info.clone())
+                                    };
+                                    row_div = row_div.child(info_el);
                                 }
 
                                 row_div.into_any()
@@ -799,12 +818,14 @@ impl Launcher {
     /// Render the icon element for a GUI-mode row.
     fn render_gui_row_icon(icon_size: gpui::Pixels, icon: &Option<String>) -> gpui::AnyElement {
         if let Some(icon_str) = icon {
-            let is_image = icon_str.starts_with('/')
-                || icon_str.starts_with('~')
-                || icon_str.ends_with(".png")
-                || icon_str.ends_with(".jpg");
+            // Strip the "emoji:" prefix used by scripts to hint the type
+            let display = icon_str.strip_prefix("emoji:").unwrap_or(icon_str.as_str());
+            let is_image = display.starts_with('/')
+                || display.starts_with('~')
+                || display.ends_with(".png")
+                || display.ends_with(".jpg");
             if is_image {
-                let resolved = expand_tilde_path(icon_str);
+                let resolved = expand_tilde_path(display);
                 img(std::path::PathBuf::from(resolved))
                     .w(icon_size)
                     .h(icon_size)
@@ -816,7 +837,7 @@ impl Launcher {
                     .flex()
                     .items_center()
                     .justify_center()
-                    .child(icon_str.clone())
+                    .child(display.to_string())
                     .into_any()
             }
         } else {
@@ -1237,7 +1258,7 @@ impl Launcher {
         let start_ix = row_ix * cols;
         let end_ix = (start_ix + cols).min(self.filtered.len());
 
-        let mut row = div().flex().gap(spacing).w_full();
+        let mut row = div().flex().gap(spacing).w_full().pb(spacing);
         for global_ix in start_ix..end_ix {
             let item = &self.all[self.filtered[global_ix]];
             let is_selected = global_ix == self.selected;
@@ -1271,13 +1292,18 @@ impl Launcher {
                 rgba(Self::color(&el.selected.background)),
                 rgba(Self::color(&el.selected.text_color)),
             )
+        } else if el.background != "transparent" {
+            (
+                rgba(Self::color(&el.background)),
+                rgba(Self::color(&el.text_color)),
+            )
         } else {
             (rgba(0x00000000), rgba(Self::color(&el.text_color)))
         };
 
         let icon_size = px(el.icon_size);
         let icon_element = if el.show_icons {
-            if let Some(path) = item.icon_path() {
+            let inner = if let Some(path) = item.icon_path() {
                 img(path).w(icon_size).h(icon_size).rounded_sm().into_any()
             } else {
                 let fallback = item.icon().unwrap_or("•");
@@ -1298,7 +1324,11 @@ impl Launcher {
                         .into_any()
                 } else {
                     div()
+                        .flex()
+                        .items_center()
+                        .justify_center()
                         .w(icon_size)
+                        .h(icon_size)
                         .text_color(rgba(Self::color(
                             t.inputbar
                                 .icon_color
@@ -1308,30 +1338,55 @@ impl Launcher {
                         .child(fallback.to_string())
                         .into_any()
                 }
-            }
+            };
+            // Fixed-size wrapper ensures uniform cell height regardless of icon type.
+            div()
+                .w(icon_size)
+                .h(icon_size)
+                .flex()
+                .items_center()
+                .justify_center()
+                .flex_shrink_0()
+                .child(inner)
+                .into_any()
         } else {
             div().into_any()
         };
 
+        let pad_v = el.padding.get(1).copied().unwrap_or(10.0);
         let pad_h = el.padding.first().copied().unwrap_or(8.0);
 
+        let mut cell_div = div()
+            .flex()
+            .flex_col()
+            .items_center()
+            .justify_center()
+            .gap(px(6.0))
+            .py(px(pad_v))
+            .px(px(pad_h))
+            .rounded(px(el.corner_radius))
+            .cursor(CursorStyle::PointingHand)
+            .bg(cell_bg);
+
+        if is_selected {
+            cell_div = cell_div
+                .border_1()
+                .border_color(rgba(Self::color(&t.status_colors.accent)));
+        } else if el.background != "transparent" {
+            cell_div = cell_div
+                .border_1()
+                .border_color(rgba(Self::color(&t.window.border_color)));
+        }
+
         Self::with_item_mouse_handlers(
-            div()
-                .flex()
-                .flex_col()
-                .items_center()
-                .gap_1()
-                .p(px(pad_h))
-                .rounded(px(el.corner_radius))
-                .cursor(CursorStyle::PointingHand)
-                .bg(cell_bg)
-                .child(icon_element)
-                .child(
-                    div()
-                        .text_color(name_color)
-                        .text_size(px(t.font.size - 1.0))
-                        .child(item.name().to_string()),
-                ),
+            cell_div.child(icon_element).child(
+                div()
+                    .text_color(name_color)
+                    .text_size(px((t.font.size - 1.5).max(11.0)))
+                    .line_clamp(1)
+                    .overflow_hidden()
+                    .child(item.name().to_string()),
+            ),
             format!("cell-{filtered_ix}"),
             filtered_ix,
             cx,

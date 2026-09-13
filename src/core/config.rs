@@ -73,6 +73,8 @@ pub struct GeneralConfig {
     pub toggle_hotkey: String,
     /// Maximum number of results shown in the launcher list.
     pub max_results: usize,
+    /// Hotkey used to reload configuration inside the launcher (default "cmd+r").
+    pub reload_hotkey: Option<String>,
 }
 
 impl Default for GeneralConfig {
@@ -80,6 +82,7 @@ impl Default for GeneralConfig {
         Self {
             toggle_hotkey: "opt+space".to_string(),
             max_results: 20,
+            reload_hotkey: None,
         }
     }
 }

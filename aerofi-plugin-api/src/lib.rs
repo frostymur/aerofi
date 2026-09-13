@@ -73,3 +73,9 @@ pub struct AerofiPlugin {
     /// spawned on a separate thread.
     pub activate: unsafe extern "C" fn(id: *const c_char, action_code: u32) -> bool,
 }
+
+/// Special action constants that can be returned or used by plugins.
+pub mod actions {
+    /// Special item ID that triggers an immediate configuration and theme reload in aerofi.
+    pub const RELOAD_CONFIG: &str = "aerofi:reload";
+}

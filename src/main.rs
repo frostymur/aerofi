@@ -106,7 +106,7 @@ fn main() {
         // `detach()` keeps the observer alive for the app's lifetime without
         // requiring us to hold the `Subscription` handle.
         let view_clone = view.clone();
-        cx.observe_keystrokes(move |event, _window, cx| {
+        cx.intercept_keystrokes(move |event, _window, cx| {
             if !ui::window::is_visible() {
                 return;
             }
