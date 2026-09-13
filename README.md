@@ -40,7 +40,7 @@ Compare to alternatives:
 
 | Feature | aerofi | Raycast | Alfred |
 |---------|--------|---------|--------|
-| Memory | ~40 MB | 250 MB | 200 MB |
+| Memory | ~40 MB | 250 MB | ~75 MB |
 | Open Source | ✅ | ❌ | ❌ |
 | Raycast Scripts | ✅ | ✅ | ❌ |
 | C ABI Plugins | ✅ | ❌ | ❌ |
