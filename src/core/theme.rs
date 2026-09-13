@@ -925,6 +925,28 @@ accent = "#7aa2f7"
     }
 
     #[test]
+    fn example_tokyo_night_file_is_valid() {
+        let content = include_str!("../../examples/themes/tokyo-night.toml");
+        let mut t: ThemeConfig =
+            toml::from_str(content).expect("examples/themes/tokyo-night.toml should parse cleanly");
+        assert_eq!(t.name, "Tokyo Night");
+        t.resolve_colors();
+        assert_eq!(t.window.background, "#1a1b26f0");
+        assert_eq!(t.status_colors.accent, "#7aa2f7");
+    }
+
+    #[test]
+    fn example_gruvbox_file_is_valid() {
+        let content = include_str!("../../examples/themes/gruvbox.toml");
+        let mut t: ThemeConfig =
+            toml::from_str(content).expect("examples/themes/gruvbox.toml should parse cleanly");
+        assert_eq!(t.name, "Gruvbox Dark");
+        t.resolve_colors();
+        assert_eq!(t.window.background, "#282828f2");
+        assert_eq!(t.status_colors.accent, "#fabd2f");
+    }
+
+    #[test]
     fn example_horizon_theme_is_valid() {
         let content = r##"
 name   = "Horizon"
