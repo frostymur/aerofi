@@ -9,6 +9,19 @@
 name   = "Complete Reference Theme"
 author = "aerofi"
 
+# ------------------------------------------------------------------------------
+# imports - Modular Theme Splitting (Optional)
+# ------------------------------------------------------------------------------
+# Relative paths from ~/.config/aerofi/themes/ to import base themes or mixins.
+# Tables are recursively deep-merged; arrays (children, layout) are replaced.
+# Type: Array of Strings (Optional)
+#
+# imports = [
+#     "colors/tokyo-night.toml",
+#     "layouts/compact.toml",
+# ]
+
+
 
 # ------------------------------------------------------------------------------
 # [font] - Typography Settings

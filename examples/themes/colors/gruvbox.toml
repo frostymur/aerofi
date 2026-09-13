@@ -1,0 +1,35 @@
+# ==============================================================================
+# Gruvbox Dark Color Palette (Mixin)
+# ==============================================================================
+# Location: ~/.config/aerofi/themes/colors/gruvbox.toml
+# Import via: imports = ["colors/gruvbox.toml"]
+# ==============================================================================
+
+[colors]
+bg       = "#282828f2"
+surface  = "#3c3836"
+surface2 = "#504945"
+border   = "#665c5480"
+text     = "#ebdbb2"
+subtle   = "#928374"
+accent   = "#fabd2f"
+orange   = "#fe8019"
+green    = "#b8bb26"
+urgent   = "#fb4934"
+aqua     = "#8ec07c"
+purple   = "#d3869b"
+
+[status_colors]
+urgent_background     = "$urgent"
+urgent_text           = "#282828"
+urgent_row_background = "#fb493422"
+active_background     = "$green"
+active_text           = "#282828"
+active_row_background = "#b8bb2622"
+accent                = "$accent"
+muted                 = "$subtle"
+
+[toast]
+running_dot = "$accent"
+success_dot = "$green"
+error_dot   = "$urgent"

@@ -1,0 +1,35 @@
+# ==============================================================================
+# Tokyo Night Color Palette (Mixin)
+# ==============================================================================
+# Location: ~/.config/aerofi/themes/colors/tokyo-night.toml
+# Import via: imports = ["colors/tokyo-night.toml"]
+# ==============================================================================
+
+[colors]
+bg       = "#1a1b26f0"
+surface  = "#24283b"
+surface2 = "#414868"
+border   = "#41486880"
+text     = "#c0caf5"
+subtle   = "#565f89"
+accent   = "#7aa2f7"
+green    = "#9ece6a"
+urgent   = "#f7768e"
+orange   = "#ff9e64"
+purple   = "#bb9af7"
+cyan     = "#7dcfff"
+
+[status_colors]
+urgent_background     = "$urgent"
+urgent_text           = "#ffffff"
+urgent_row_background = "#f7768e22"
+active_background     = "$green"
+active_text           = "#1a1b26"
+active_row_background = "#9ece6a22"
+accent                = "$accent"
+muted                 = "$subtle"
+
+[toast]
+running_dot = "$accent"
+success_dot = "$green"
+error_dot   = "$urgent"

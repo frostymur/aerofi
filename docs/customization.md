@@ -16,6 +16,7 @@ aerofi is configured via transparent, human-readable TOML files located in `~/.c
   - [Aliases & Shortcuts](#aliases--shortcuts)
   - [Custom Keys (GUI Mode)](#custom-keys-gui-mode)
 - [🎨 Theming Engine (`theme.toml`)](#-theming-engine-themetoml)
+  - [Modular Themes & Imports (`imports`)](#modular-themes--imports-imports--)
   - [Font & Typography](#font--typography)
   - [Window & Frosted Glassmorphism](#window--frosted-glassmorphism)
   - [Layout Hierarchy (`[mainbox]`)](#layout-hierarchy-mainbox)
@@ -154,6 +155,31 @@ toggle = "opt+space"
 ## 🎨 Theming Engine (`theme.toml`)
 
 aerofi themes are defined in standard TOML under `~/.config/aerofi/themes/{theme}.toml`.
+
+### Modular Themes & Imports (`imports = [...]`)
+
+aerofi allows you to cleanly separate colors, window geometry, and widget hierarchies across multiple files using the top-level `imports` array:
+
+```toml
+name = "My Custom Theme"
+
+# Import reusable color palette and layout mixins
+imports = [
+    "colors/tokyo-night.toml",
+    "layouts/compact.toml",
+]
+
+# Override only specific values for this theme:
+[window]
+width = 660.0
+```
+
+#### Key Rules:
+1. **Path Resolution**: Paths in `imports` are resolved relative to `~/.config/aerofi/themes/` (with automatic fallback to `$XDG_CONFIG_HOME/aerofi/themes/` or macOS Application Support).
+2. **Recursive Deep Merge**: Tables (such as `[window]`, `[font]`, `[inputbar]`, `[colors]`, and custom `[widgets]`) are merged recursively.
+3. **Exclusive Override for Arrays**: Non-table items (such as `children = [...]` in `[mainbox]`, `layout = [...]` in `[element]`, and `fallback = [...]` in `[font]`) are completely replaced by the importing file instead of being concatenated. What you declare in your file is exactly what gets rendered.
+4. **Order of Precedence**: Imports are evaluated in order from first to last; the importing file itself has the highest priority and overrides imported values.
+5. **Cycle Detection**: Circular references (e.g. A imports B and B imports A) are automatically detected and safely skipped with a warning.
 
 ### Font & Typography
 ```toml
