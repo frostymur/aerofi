@@ -167,6 +167,6 @@ muted = "$subtle"
 ## 📖 Complete Theme Reference & Custom Widgets
 
 For a complete reference showcasing **all layout options (`[mainbox]`), element slots (`[element.layout]`), and custom UI widgets (`[widgets.<id>]`)**:
-👉 **See [reference.toml](file:///Users/timuriskakov/projects/aerofi/examples/themes/reference.toml) / [examples/theme.toml](file:///Users/timuriskakov/projects/aerofi/examples/theme.toml)**
+👉 **See [reference.toml](reference.toml) / [examples/theme.toml](../theme.toml)**
 👉 **Read the complete [Customization Guide](../../docs/customization.md)**
 

@@ -19,24 +19,24 @@ Clean, minimal examples demonstrating all 6 aerofi script execution modes:
 
 ---
 
-## 🎨 Theme Switcher (`theme_switcher.sh` / `theme_switcher.py`)
+## 🎨 Theme Switcher (`theme_switcher.py`)
 
 An interactive theme previewer and switcher for aerofi using the bidirectional `gui` protocol and native `@aerofi.*` metadata tags.
 
 ### ✨ Highlights
-- **Live Color Swatches**: Renders visual palette previews using Pango markup with auto-resolved `$accent` and `$bg` colors.
-- **Active Theme Indicator**: Shows a `✓ Active` badge next to your currently selected theme.
-- **Automatic Theme Discovery**: Scans `~/.config/aerofi/themes/` and built-in palettes.
-- **Instant Activation**: Selecting a theme updates `~/.config/aerofi/config.toml` and sends a desktop notification.
+- **Live Color Swatches**: Renders each palette (bg / surface / text / accent) as colour swatches via Pango markup, with `$alias` references resolved from the theme's `[colors]` table.
+- **Active Theme Indicator**: Marks the current theme with the launcher's native `ACTIVE` badge (`active\x1ftrue` row field).
+- **Automatic Theme Discovery**: Scans `~/.config/aerofi/themes/*.toml` plus the built-in default.
+- **Instant Activation**: Selecting a theme updates `~/.config/aerofi/config.toml` and sends `\0reload` so the launcher re-themes live.
 
 ```bash
-cp examples/scripts/theme_switcher.sh examples/scripts/theme_switcher.py ~/.config/aerofi/scripts/
-chmod +x ~/.config/aerofi/scripts/theme_switcher.*
+cp examples/scripts/theme_switcher.py ~/.config/aerofi/scripts/
+chmod +x ~/.config/aerofi/scripts/theme_switcher.py
 ```
 
 ---
 
-## 📋 Clipboard History Manager (`clipboard.sh` / `clipboard.py`)
+## 📋 Clipboard History Manager (`clipboard.py`)
 
 A glamorous, fully functional clipboard history manager for aerofi powered by the [`clipy`](https://crates.io/crates/clipy) minimal clipboard history CLI and aerofi's interactive `gui` mode.
 
@@ -68,12 +68,12 @@ cargo install clipy
 
 #### 2. Install the script into aerofi
 
-Copy `clipboard.sh` and `clipboard.py` into your aerofi scripts directory:
+Copy `clipboard.py` into your aerofi scripts directory:
 
 ```bash
 mkdir -p ~/.config/aerofi/scripts
-cp examples/scripts/clipboard.sh examples/scripts/clipboard.py ~/.config/aerofi/scripts/
-chmod +x ~/.config/aerofi/scripts/clipboard.sh ~/.config/aerofi/scripts/clipboard.py
+cp examples/scripts/clipboard.py ~/.config/aerofi/scripts/
+chmod +x ~/.config/aerofi/scripts/clipboard.py
 ```
 
 #### 3. Open aerofi and Launch
@@ -89,7 +89,7 @@ chmod +x ~/.config/aerofi/scripts/clipboard.sh ~/.config/aerofi/scripts/clipboar
 | Key | Action |
 |---|---|
 | `Type query` | Real-time fuzzy filter across clipboard entries |
-| `Enter` | Copy selected item(s) to system clipboard and close launcher |
+| `Enter` | Copy selected item(s) to system clipboard and exit to the search list |
 | `Tab` | Toggle multi-selection checkbox on items |
 | `Ctrl+D` | Delete currently highlighted item from history |
 | `Esc` | Exit clipboard manager |
@@ -104,6 +104,6 @@ The clipboard manager demonstrates several powerful features of the aerofi GUI p
 - `\0prompt\x1f<text>`: Customizes the search bar placeholder text.
 - `\0markup-rows\x1ftrue`: Enables inline Pango markup parsing for rich text and colors in list rows.
 - `\0multi-select\x1ftrue`: Enables multi-item selection with checkboxes via `Tab`.
-- `\0message\x1f<text>`: Displays a status bar hint at the bottom or top of the launcher.
+- `\0message\x1f<text>`: Displays a status hint in a banner just below the search bar.
 - `\0flush`: Explicit frame delimiter for zero-latency burst rendering.
 - `\0event\x1fselect...` and `\0event\x1faction...`: Structured stdin events sent from aerofi back to the script upon user interactions.

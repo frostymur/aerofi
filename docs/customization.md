@@ -50,8 +50,8 @@ On first launch, aerofi automatically creates the following layout under `~/.con
 ## 📄 Complete Reference Files
 
 For copy-pasteable reference files documenting **every single parameter and type**, see:
-- ⚙️ **[examples/config.toml](file:///Users/timuriskakov/projects/aerofi/examples/config.toml)** — Complete configuration reference.
-- 🎨 **[examples/theme.toml](file:///Users/timuriskakov/projects/aerofi/examples/theme.toml)** — Complete theme reference featuring custom layouts and widgets.
+- ⚙️ **[examples/config.toml](../examples/config.toml)** — Complete configuration reference.
+- 🎨 **[examples/theme.toml](../examples/theme.toml)** — Complete theme reference featuring custom layouts and widgets.
 
 ---
 
