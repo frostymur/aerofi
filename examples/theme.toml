@@ -37,10 +37,6 @@ family = "SF Pro Text"
 # Default: 15.0
 size = 15.0
 
-# Base font weight: "thin", "light", "normal", "medium", "semibold", "bold", "extrabold", "black"
-# Type: String (Optional)
-weight = "normal"
-
 # Fallback fonts used when primary font misses glyphs or symbols.
 # Type: Array of Strings (Optional)
 fallback = ["SF Pro", "SF Mono", "Helvetica Neue", "Arial"]
@@ -235,9 +231,8 @@ icon_size = 22.0
 # Type: Array of Strings (Optional)
 # Available slot identifiers:
 #   "icon"           - App or script icon
-#   "name"           - Primary title text
+#   "name"           - Primary title text (subtitle / description renders here)
 #   "spacer"         - Expanding flexible space
-#   "description"    - Subtitle / package name / inline output
 #   "category_badge" - Right-aligned category pill
 #   "alias_badge"    - Shorthand alias badge
 #   "shortcut"       - Bound key combination (e.g. ⌘R)
@@ -245,7 +240,6 @@ layout = [
     "icon",
     "name",
     "spacer",
-    "description",
     "category_badge",
     "shortcut"
 ]
