@@ -44,6 +44,9 @@ pub struct Launcher {
     pub(super) state: LauncherState,
     /// Scroll state for fullOutput mode.
     pub(super) full_output_scroll: UniformListScrollHandle,
+    /// Scroll state for the GUI-mode rows list (kept separate from the
+    /// search list so each mode's scroll position is independent).
+    pub(super) gui_rows_scroll: UniformListScrollHandle,
     /// Parsed markdown blocks of the current full-output result (empty
     /// while not showing one; cleared on hide to release the memory).
     pub(super) full_output_blocks: Vec<crate::core::markdown::MdBlock>,
@@ -94,6 +97,7 @@ impl Launcher {
             theme,
             state: LauncherState::Search,
             full_output_scroll: UniformListScrollHandle::new(),
+            gui_rows_scroll: UniformListScrollHandle::new(),
             full_output_blocks: Vec::new(),
             sticky_metatags: None,
             widget_registry,
@@ -1415,7 +1419,7 @@ impl Launcher {
 
     /// Move the selection cursor within the filtered GUI rows.
     fn gui_move_selection(&mut self, delta: isize) {
-        if let LauncherState::GuiMode {
+        let new_selected = if let LauncherState::GuiMode {
             filtered_rows,
             selected,
             ..
@@ -1426,11 +1430,17 @@ impl Launcher {
             }
             let len = filtered_rows.len() as isize;
             *selected = (*selected as isize + delta).clamp(0, len - 1) as usize;
-        }
+            *selected
+        } else {
+            return;
+        };
+        // Keep the selected row in view as the user navigates with the arrows.
+        self.gui_rows_scroll
+            .scroll_to_item(new_selected, ScrollStrategy::Nearest);
     }
 
     fn gui_jump_to_edge(&mut self, top: bool) {
-        if let LauncherState::GuiMode {
+        let new_selected = if let LauncherState::GuiMode {
             filtered_rows,
             selected,
             ..
@@ -1439,12 +1449,13 @@ impl Launcher {
             if filtered_rows.is_empty() {
                 return;
             }
-            if top {
-                *selected = 0;
-            } else {
-                *selected = filtered_rows.len() - 1;
-            }
-        }
+            *selected = if top { 0 } else { filtered_rows.len() - 1 };
+            *selected
+        } else {
+            return;
+        };
+        self.gui_rows_scroll
+            .scroll_to_item(new_selected, ScrollStrategy::Nearest);
     }
 
     /// Toggle selection of the currently focused row if multi-select is enabled.

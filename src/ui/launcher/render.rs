@@ -764,7 +764,8 @@ impl Launcher {
                 }),
             )
             .flex_1()
-            .w_full();
+            .w_full()
+            .track_scroll(&self.gui_rows_scroll);
 
             list_container = list_container.child(list);
         }

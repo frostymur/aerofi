@@ -318,6 +318,14 @@ fn deferred(l: &Launcher) -> Option<(usize, ScrollStrategy)> {
         .map(|d| (d.item_index, d.strategy))
 }
 
+fn gui_deferred(l: &Launcher) -> Option<(usize, ScrollStrategy)> {
+    l.gui_rows_scroll
+        .0
+        .borrow()
+        .deferred_scroll_to_item
+        .map(|d| (d.item_index, d.strategy))
+}
+
 #[test]
 fn arrow_key_defers_scroll_to_selected_item() {
     let mut l = Launcher::new(
@@ -328,6 +336,47 @@ fn arrow_key_defers_scroll_to_selected_item() {
     );
     l.handle_keystroke(&key("down"), None);
     assert_eq!(deferred(&l), Some((1, ScrollStrategy::Nearest)));
+}
+
+#[test]
+fn gui_arrow_key_defers_scroll_to_selected_row() {
+    let mut l = Launcher::new(
+        Vec::new(),
+        ThemeConfig::default(),
+        AppConfig::default(),
+        History::test_new(PathBuf::new(), Vec::new()),
+    );
+    l.state = LauncherState::GuiMode {
+        title: "Clipboard".to_string(),
+        rows: (0..5)
+            .map(|i| crate::core::gui_protocol::GuiRow::new(format!("item {i}")))
+            .collect(),
+        filtered_rows: (0..5).collect(),
+        prompt: None,
+        message: None,
+        no_custom: false,
+        selected: 0,
+        columns: None,
+        query: String::new(),
+        loading: false,
+        live_search: false,
+        active_indices: Vec::new(),
+        data: None,
+        preview_blocks: None,
+        multi_select: false,
+        toggled_indices: std::collections::HashSet::new(),
+        markup_rows: false,
+    };
+
+    for _ in 0..4 {
+        l.handle_keystroke(&key("down"), None);
+    }
+
+    assert_eq!(
+        gui_deferred(&l),
+        Some((4, ScrollStrategy::Nearest)),
+        "GUI arrow key must scroll the rows list to the selected row"
+    );
 }
 
 #[test]
