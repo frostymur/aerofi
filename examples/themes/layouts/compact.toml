@@ -3,21 +3,22 @@
 # ==============================================================================
 # Location: ~/.config/aerofi/themes/layouts/compact.toml
 # Import via: imports = ["layouts/compact.toml"]
+# Shared single-column list geometry used by tokyo-night and gruvbox.
 # ==============================================================================
 
 [font]
 family = "SF Pro Text"
-size = 14.0
+size = 15.0
 fallback = ["SF Pro", "Helvetica Neue", "Arial"]
 
 [window]
-width = 640.0
-height = 420.0
-padding = 14.0
+width = 680.0
+height = 450.0
+padding = 16.0
 background = "$bg"
 blur = true
 background_opacity = 0.94
-corner_radius = 14.0
+corner_radius = 16.0
 border_width = 1.0
 border_color = "$border"
 
@@ -26,20 +27,20 @@ orientation = "vertical"
 children = ["InputBar", "ListView"]
 
 [inputbar]
-height = 42.0
-padding = [8.0, 12.0]
-margin = [0.0, 0.0, 8.0, 0.0]
+height = 46.0
+padding = [10.0, 14.0]
+margin = [0.0, 0.0, 10.0, 0.0]
 background = "$surface"
 text_color = "$text"
 placeholder = "Search apps, scripts, or commands…"
 placeholder_color = "$subtle"
-corner_radius = 8.0
+corner_radius = 10.0
 icon = "❯"
 icon_color = "$accent"
 
 [listview]
 columns = 1
-spacing = 3.0
+spacing = 4.0
 scrollbar = false
 empty_text = "No matching results"
 empty_text_color = "$subtle"
@@ -53,13 +54,13 @@ show = true
 color = "$accent"
 
 [element]
-padding = [6.0, 10.0]
-corner_radius = 6.0
+padding = [8.0, 12.0]
+corner_radius = 8.0
 background = "transparent"
 text_color = "$text"
 description_color = "$subtle"
 show_icons = true
-icon_size = 20.0
+icon_size = 22.0
 
 [element.selected]
 background = "$surface2"

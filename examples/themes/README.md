@@ -28,14 +28,15 @@ A compact 4-column icon tile grid layout styled with the Tokyo Night palette.
 
 ---
 
-### 4. 🧩 Modular Themes & Mixins
-aerofi supports splitting themes into reusable, mix-and-match files using the top-level `imports = [...]` array:
+### 4. 🧩 Modular Themes, Mixins & Widgets
+**Every bundled theme is modular** — a thin file that composes reusable mixins via the top-level `imports = [...]` array. The building blocks:
 
 - **`colors/tokyo-night.toml`**: Standalone Tokyo Night palette and status color definitions.
 - **`colors/gruvbox.toml`**: Standalone Gruvbox Dark palette and status color definitions.
-- **`layouts/compact.toml`**: Reusable compact list layout geometry and styling.
+- **`layouts/compact.toml`**: Reusable single-column list layout geometry and styling.
 - **`layouts/grid.toml`**: Reusable 4-column tile grid layout geometry.
-- **`tokyo-night-modular.toml`**: Example composing `colors/tokyo-night.toml` and `layouts/compact.toml` in just a few lines!
+- **`widgets/header-bar.toml`**: A header bar (logo + brand) as reusable custom widgets.
+- **`widgets/footer-bar.toml`**: A footer bar (hint + quick-action buttons) as reusable custom widgets.
 
 ---
 
@@ -62,9 +63,9 @@ theme = "tokyo-night"
 theme = "gruvbox"
 ```
 
-#### To use Tokyo Night Modular:
+#### To use Tokyo Night Grid:
 ```toml
-theme = "tokyo-night-modular"
+theme = "tokyo-night-grid"
 ```
 
 #### To use the built-in default theme:
@@ -106,6 +107,26 @@ width = 680.0
 
 [colors]
 accent = "#bb9af7" # Change accent to Tokyo Night violet
+```
+
+### Adding a Widget Mixin
+
+Widget mixins define reusable `[widgets.<id>]` blocks. Import one, then reference its
+root widget id in `[mainbox] children` (or a Box's `children`):
+
+```toml
+name = "Tokyo Night + Header"
+
+imports = [
+    "colors/tokyo-night.toml",
+    "layouts/compact.toml",
+    "widgets/header-bar.toml",
+]
+
+# The layout mixin sets children = ["InputBar", "ListView"]; override it to
+# slot the imported widget in (arrays are replaced, not merged).
+[mainbox]
+children = ["header_bar", "InputBar", "ListView"]
 ```
 
 ---
@@ -179,6 +200,6 @@ muted = "$subtle"
 ## 📖 Complete Theme Reference & Custom Widgets
 
 For a complete reference showcasing **all layout options (`[mainbox]`), element slots (`[element.layout]`), and custom UI widgets (`[widgets.<id>]`)**:
-👉 **See [reference.toml](reference.toml) / [examples/theme.toml](../theme.toml)**
+👉 **See [examples/theme.toml](../theme.toml)**
 👉 **Read the complete [Customization Guide](../../docs/customization.md)**
 

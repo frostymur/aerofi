@@ -1,100 +1,11 @@
 # Gruvbox Dark Theme for aerofi
-# A warm, retro-groove theme with high contrast and soothing earth tones.
+# A warm, retro-groove theme composed from the Gruvbox palette and the
+# compact list layout.
 
 name   = "Gruvbox Dark"
 author = "aerofi"
 
-[font]
-family = "SF Pro Text"
-size = 15.0
-fallback = ["SF Pro", "Helvetica Neue", "Arial"]
-
-[window]
-width = 680.0
-height = 450.0
-padding = 16.0
-background = "$bg"
-blur = true
-background_opacity = 0.95
-corner_radius = 16.0
-border_width = 1.0
-border_color = "$border"
-
-[mainbox]
-orientation = "vertical"
-children = ["InputBar", "ListView"]
-
-[inputbar]
-height = 46.0
-padding = [10.0, 14.0]
-margin = [0.0, 0.0, 10.0, 0.0]
-background = "$surface"
-text_color = "$text"
-placeholder = "Search apps, scripts, or commands…"
-placeholder_color = "$subtle"
-corner_radius = 10.0
-icon = "❯"
-icon_color = "$accent"
-
-[listview]
-columns = 1
-spacing = 4.0
-scrollbar = false
-empty_text = "No matching results"
-empty_text_color = "$subtle"
-
-[listview.category_badge]
-show = true
-color = "$subtle"
-
-[listview.alias_badge]
-show = true
-color = "$accent"
-
-[element]
-padding = [8.0, 12.0]
-corner_radius = 8.0
-background = "transparent"
-text_color = "$text"
-description_color = "$subtle"
-show_icons = true
-icon_size = 22.0
-
-[element.selected]
-background = "$surface2"
-text_color = "$text"
-description_color = "$accent"
-
-[element.hover]
-background = "$surface"
-text_color = "$text"
-description_color = "$subtle"
-
-[status_colors]
-urgent_background = "$urgent"
-urgent_text = "#282828"
-urgent_row_background = "#fb493422"
-active_background = "$green"
-active_text = "#282828"
-active_row_background = "#b8bb2622"
-accent = "$accent"
-muted = "$subtle"
-
-[toast]
-running_dot = "$accent"
-success_dot = "$green"
-error_dot = "$urgent"
-
-[colors]
-bg = "#282828f2"
-surface = "#3c3836"
-surface2 = "#504945"
-border = "#665c5480"
-text = "#ebdbb2"
-subtle = "#928374"
-accent = "#fabd2f"
-orange = "#fe8019"
-green = "#b8bb26"
-urgent = "#fb4934"
-aqua = "#8ec07c"
-purple = "#d3869b"
+imports = [
+    "colors/gruvbox.toml",
+    "layouts/compact.toml",
+]

@@ -1,0 +1,55 @@
+# ==============================================================================
+# Footer Bar Widget (Mixin)
+# ==============================================================================
+# Location: ~/.config/aerofi/themes/widgets/footer-bar.toml
+# Import via: imports = ["widgets/footer-bar.toml"]
+# Then reference the root widget id in your theme:
+#   [mainbox]
+#   children = ["InputBar", "ListView", "footer_bar"]
+# ==============================================================================
+
+# A bottom bar with a hint on the left and quick-action buttons on the right.
+[widgets.footer_bar]
+type = "box"
+orientation = "horizontal"
+gap = 8.0
+padding = [8.0, 4.0]
+align = "center"
+children = ["footer_help", "footer_spacer", "reload_btn", "config_btn"]
+
+[widgets.footer_help]
+type = "text"
+text = "↵ open · ⎋ close"
+color = "$subtle"
+font_size = 11.0
+
+[widgets.footer_spacer]
+type = "spacer"
+
+[widgets.reload_btn]
+type = "button"
+text = "Reload"
+icon = "🔄"
+action = "Reload Configuration"
+hotkey = "cmd+r"
+color = "$text"
+background = "$surface"
+hover_background = "$surface2"
+radius = 6.0
+padding = [4.0, 8.0]
+font_size = 11.0
+gap = 4.0
+
+[widgets.config_btn]
+type = "button"
+text = "Themes"
+icon = "🎨"
+action = "Theme Switcher"
+hotkey = "cmd+t"
+color = "$text"
+background = "$surface"
+hover_background = "$surface2"
+radius = 6.0
+padding = [4.0, 8.0]
+font_size = 11.0
+gap = 4.0

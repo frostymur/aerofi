@@ -3,6 +3,7 @@
 # ==============================================================================
 # Location: ~/.config/aerofi/themes/layouts/grid.toml
 # Import via: imports = ["layouts/grid.toml"]
+# Shared 4-column tile grid geometry used by tokyo-night-grid.
 # ==============================================================================
 
 [font]
@@ -11,9 +12,9 @@ size = 12.5
 fallback = ["SF Pro", "Helvetica Neue", "Arial"]
 
 [window]
-width = 560.0
-height = 380.0
-padding = 12.0
+width = 520.0
+height = 360.0
+padding = 10.0
 background = "$bg"
 blur = true
 background_opacity = 0.95
@@ -26,20 +27,20 @@ orientation = "vertical"
 children = ["InputBar", "ListView"]
 
 [inputbar]
-height = 40.0
+height = 36.0
 padding = [8.0, 12.0]
 margin = [0.0, 0.0, 8.0, 0.0]
 background = "$surface"
 text_color = "$text"
 placeholder = "Search apps & scripts…"
 placeholder_color = "$subtle"
-corner_radius = 10.0
+corner_radius = 8.0
 icon = "❯"
 icon_color = "$accent"
 
 [listview]
 columns = 4
-spacing = 8.0
+spacing = 6.0
 scrollbar = false
 empty_text = "No matching results"
 empty_text_color = "$subtle"
@@ -53,13 +54,13 @@ show = true
 color = "$accent"
 
 [element]
-padding = [8.0, 10.0]
-corner_radius = 10.0
+padding = [20.0, 8.0]
+corner_radius = 12.0
 background = "$surface"
 text_color = "$text"
 description_color = "$subtle"
 show_icons = true
-icon_size = 32.0
+icon_size = 36.0
 layout = ["icon", "name"]
 
 [element.selected]

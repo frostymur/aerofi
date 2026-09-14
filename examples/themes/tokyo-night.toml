@@ -1,100 +1,11 @@
 # Tokyo Night Theme for aerofi
-# Inspired by Tokyo Night for Neovim/Alacritty/VSCode
+# Composed from the reusable Tokyo Night palette and the compact list layout.
+# Inspired by Tokyo Night for Neovim/Alacritty/VSCode.
 
-name = "Tokyo Night"
+name   = "Tokyo Night"
 author = "aerofi"
 
-[font]
-family = "SF Pro Text"
-size = 15.0
-fallback = ["SF Pro", "Helvetica Neue", "Arial"]
-
-[window]
-width = 680.0
-height = 450.0
-padding = 16.0
-background = "$bg"
-blur = true
-background_opacity = 0.94
-corner_radius = 16.0
-border_width = 1.0
-border_color = "$border"
-
-[mainbox]
-orientation = "vertical"
-children = ["InputBar", "ListView"]
-
-[inputbar]
-height = 46.0
-padding = [10.0, 14.0]
-margin = [0.0, 0.0, 10.0, 0.0]
-background = "$surface"
-text_color = "$text"
-placeholder = "Search apps, scripts, or commands…"
-placeholder_color = "$subtle"
-corner_radius = 10.0
-icon = "❯"
-icon_color = "$accent"
-
-[listview]
-columns = 1
-spacing = 4.0
-scrollbar = false
-empty_text = "No matching results"
-empty_text_color = "$subtle"
-
-[listview.category_badge]
-show = true
-color = "$subtle"
-
-[listview.alias_badge]
-show = true
-color = "$accent"
-
-[element]
-padding = [8.0, 12.0]
-corner_radius = 8.0
-background = "transparent"
-text_color = "$text"
-description_color = "$subtle"
-show_icons = true
-icon_size = 22.0
-
-[element.selected]
-background = "$surface2"
-text_color = "$text"
-description_color = "$accent"
-
-[element.hover]
-background = "$surface"
-text_color = "$text"
-description_color = "$subtle"
-
-[status_colors]
-urgent_background = "$urgent"
-urgent_text = "#ffffff"
-urgent_row_background = "#f7768e22"
-active_background = "$green"
-active_text = "#1a1b26"
-active_row_background = "#9ece6a22"
-accent = "$accent"
-muted = "$subtle"
-
-[toast]
-running_dot = "$accent"
-success_dot = "$green"
-error_dot = "$urgent"
-
-[colors]
-bg = "#1a1b26f0"
-surface = "#24283b"
-surface2 = "#414868"
-border = "#41486880"
-text = "#c0caf5"
-subtle = "#565f89"
-accent = "#7aa2f7"
-green = "#9ece6a"
-urgent = "#f7768e"
-orange = "#ff9e64"
-purple = "#bb9af7"
-cyan = "#7dcfff"
+imports = [
+    "colors/tokyo-night.toml",
+    "layouts/compact.toml",
+]

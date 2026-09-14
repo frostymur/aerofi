@@ -1,0 +1,34 @@
+# ==============================================================================
+# Header Bar Widget (Mixin)
+# ==============================================================================
+# Location: ~/.config/aerofi/themes/widgets/header-bar.toml
+# Import via: imports = ["widgets/header-bar.toml"]
+# Then reference the root widget id in your theme:
+#   [mainbox]
+#   children = ["header_bar", "InputBar", "ListView"]
+# ==============================================================================
+
+# A slim top bar with the logo, brand title, and a trailing spacer.
+[widgets.header_bar]
+type = "box"
+orientation = "horizontal"
+gap = 8.0
+padding = [4.0, 4.0]
+align = "center"
+children = ["logo_icon", "brand_title", "header_spacer"]
+
+[widgets.logo_icon]
+type = "icon"
+icon = "⚡"
+size = 14.0
+color = "$accent"
+
+[widgets.brand_title]
+type = "text"
+text = "aerofi"
+color = "$subtle"
+font_size = 12.0
+font_weight = "semibold"
+
+[widgets.header_spacer]
+type = "spacer"

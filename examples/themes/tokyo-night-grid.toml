@@ -1,103 +1,16 @@
 # Tokyo Night Grid Theme for aerofi
-# Tokyo Night palette with compact square tile grid layout.
+# Tokyo Night palette with a compact square tile grid layout.
 
 name   = "Tokyo Night Grid"
 author = "aerofi"
 
-[font]
-family  = "SF Pro Text"
-size    = 12.5
-fallback = ["SF Pro", "Helvetica Neue", "Arial"]
+imports = [
+    "colors/tokyo-night.toml",
+    "layouts/grid.toml",
+]
 
-[window]
-width             = 520.0
-height            = 360.0
-padding           = 10.0
-background        = "$bg"
-blur              = true
-background_opacity = 0.95
-corner_radius     = 16.0
-border_width      = 1.0
-border_color      = "$border"
-
-[mainbox]
-orientation = "vertical"
-children    = ["InputBar", "ListView"]
-
-[inputbar]
-height            = 36.0
-padding           = [8.0, 12.0]
-margin            = [0.0, 0.0, 8.0, 0.0]
-background        = "$surface"
-text_color        = "$text"
-placeholder       = "Search apps & scripts…"
-placeholder_color = "$subtle"
-corner_radius     = 8.0
-icon              = "❯"
-icon_color        = "$accent"
-
-[listview]
-# 4-column compact square tile grid
-columns    = 4
-spacing    = 6.0
-scrollbar  = false
-empty_text = "No matching results"
-empty_text_color = "$subtle"
-
-[listview.category_badge]
-show = false
-color   = "$subtle"
-
-[listview.alias_badge]
-show = true
-color   = "$accent"
-
-[element]
-padding          = [20.0, 8.0]
-corner_radius    = 12.0
-background       = "$surface"
-text_color       = "$text"
-description_color = "$subtle"
-show_icons       = true
-icon_size        = 36.0
-
-layout = ["icon", "name"]
-
-[element.selected]
-background        = "$surface2"
-text_color        = "$text"
-description_color = "$accent"
-
-[element.hover]
-background        = "$surface2"
-text_color        = "$text"
-description_color = "$subtle"
-
-[status_colors]
-urgent_background    = "$urgent"
-urgent_text          = "#ffffff"
-urgent_row_background = "#f7768e22"
-active_background    = "$green"
-active_text          = "#1a1b26"
-active_row_background = "#9ece6a22"
-accent               = "$accent"
-muted                = "$subtle"
-
-[toast]
-running_dot = "$accent"
-success_dot = "$green"
-error_dot   = "$urgent"
-
+# The grid variant uses a slightly more opaque background and a distinct tile
+# surface, overriding those two values from the shared Tokyo Night palette.
 [colors]
-bg      = "#1a1b26f4"
-surface = "#24283b"
+bg       = "#1a1b26f4"
 surface2 = "#343b58"
-border  = "#41486880"
-text    = "#c0caf5"
-subtle  = "#565f89"
-accent  = "#7aa2f7"
-green   = "#9ece6a"
-urgent  = "#f7768e"
-orange  = "#ff9e64"
-purple  = "#bb9af7"
-cyan    = "#7dcfff"

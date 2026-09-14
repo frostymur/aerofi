@@ -922,6 +922,49 @@ pub fn parse_hex_color(hex: &str) -> Option<u32> {
 mod tests {
     use super::*;
 
+    /// Base directory of the example themes bundled in the repo.
+    const EXAMPLE_THEMES_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/themes");
+
+    /// Recursively load an example theme, resolving its `imports` relative to
+    /// the examples/themes dir (mirrors the runtime loader).
+    fn load_example_table(
+        rel_path: &str,
+        visited: &mut std::collections::HashSet<String>,
+    ) -> Option<toml::Table> {
+        if visited.contains(rel_path) {
+            return Some(toml::Table::new());
+        }
+        visited.insert(rel_path.to_string());
+        let path = std::path::Path::new(EXAMPLE_THEMES_DIR).join(rel_path);
+        let contents = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("failed to read example theme {}: {e}", path.display()));
+        let mut table = toml::from_str::<toml::Table>(&contents)
+            .unwrap_or_else(|e| panic!("failed to parse example theme {}: {e}", path.display()));
+        let mut merged = toml::Table::new();
+        if let Some(toml::Value::Array(imports)) = table.remove("imports") {
+            for import in imports {
+                if let toml::Value::String(import_path) = import {
+                    if let Some(imported) = load_example_table(&import_path, visited) {
+                        super::merge_toml(&mut merged, imported);
+                    }
+                }
+            }
+        }
+        super::merge_toml(&mut merged, table);
+        Some(merged)
+    }
+
+    /// Load a bundled example theme end-to-end (imports resolved + colors).
+    fn load_example_theme(name: &str) -> ThemeConfig {
+        let table =
+            load_example_table(name, &mut std::collections::HashSet::new()).expect("should load");
+        let mut theme: ThemeConfig = toml::Value::Table(table)
+            .try_into()
+            .expect("should deserialize");
+        theme.resolve_colors();
+        theme
+    }
+
     #[test]
     fn default_theme_has_dark_transparent_palette() {
         let t = ThemeConfig::default();
@@ -998,24 +1041,33 @@ accent = "#7aa2f7"
 
     #[test]
     fn example_tokyo_night_file_is_valid() {
-        let content = include_str!("../../examples/themes/tokyo-night.toml");
-        let mut t: ThemeConfig =
-            toml::from_str(content).expect("examples/themes/tokyo-night.toml should parse cleanly");
+        let t = load_example_theme("tokyo-night.toml");
         assert_eq!(t.name, "Tokyo Night");
-        t.resolve_colors();
         assert_eq!(t.window.background, "#1a1b26f0");
         assert_eq!(t.status_colors.accent, "#7aa2f7");
     }
 
     #[test]
     fn example_gruvbox_file_is_valid() {
-        let content = include_str!("../../examples/themes/gruvbox.toml");
-        let mut t: ThemeConfig =
-            toml::from_str(content).expect("examples/themes/gruvbox.toml should parse cleanly");
+        let t = load_example_theme("gruvbox.toml");
         assert_eq!(t.name, "Gruvbox Dark");
-        t.resolve_colors();
         assert_eq!(t.window.background, "#282828f2");
         assert_eq!(t.status_colors.accent, "#fabd2f");
+    }
+
+    #[test]
+    fn example_tokyo_night_grid_file_is_valid() {
+        // Modular composition + a partial palette override (bg, surface2).
+        let t = load_example_theme("tokyo-night-grid.toml");
+        assert_eq!(t.name, "Tokyo Night Grid");
+        assert_eq!(t.window.width, 520.0);
+        assert_eq!(t.listview.columns, 4);
+        assert_eq!(t.colors.get("bg").map(String::as_str), Some("#1a1b26f4"));
+        assert_eq!(
+            t.colors.get("surface2").map(String::as_str),
+            Some("#343b58")
+        );
+        assert_eq!(t.status_colors.accent, "#7aa2f7");
     }
 
     #[test]
@@ -1566,31 +1618,29 @@ orientation = "horizontal"
     }
 
     #[test]
-    fn test_merge_modular_example() {
-        let colors: toml::Table = toml::from_str(include_str!(
-            "../../examples/themes/colors/tokyo-night.toml"
-        ))
-        .unwrap();
-        let layout: toml::Table =
-            toml::from_str(include_str!("../../examples/themes/layouts/compact.toml")).unwrap();
-        let root: toml::Table = toml::from_str(include_str!(
-            "../../examples/themes/tokyo-night-modular.toml"
-        ))
-        .unwrap();
-
+    fn test_merge_modular_with_widget() {
+        // Compose a theme from palette + layout + a widget mixin, the way a
+        // user theme would. Proves imports merge and the widget tree validates.
+        let mut visited = std::collections::HashSet::new();
         let mut merged = toml::Table::new();
-        super::merge_toml(&mut merged, colors);
-        super::merge_toml(&mut merged, layout);
-        super::merge_toml(&mut merged, root);
+        for file in [
+            "colors/tokyo-night.toml",
+            "layouts/compact.toml",
+            "widgets/header-bar.toml",
+        ] {
+            let table = load_example_table(file, &mut visited).expect("should load");
+            super::merge_toml(&mut merged, table);
+        }
 
         let mut theme: ThemeConfig = toml::Value::Table(merged)
             .try_into()
-            .expect("merged modular theme should deserialize");
+            .expect("merged theme should deserialize");
         theme.resolve_colors();
-        assert_eq!(theme.name, "Tokyo Night Modular");
-        assert_eq!(theme.window.width, 660.0);
-        assert_eq!(theme.window.height, 440.0);
-        assert_eq!(theme.window.background, "#1a1b26f0");
-        assert_eq!(theme.status_colors.accent, "#7aa2f7");
+        assert_eq!(theme.window.width, 680.0);
+        assert_eq!(theme.window.height, 450.0);
+        // header-bar.toml defines 4 widgets (header_bar + 3 children).
+        assert_eq!(theme.widgets.len(), 4);
+        let registry = crate::core::widget::WidgetRegistry::from_theme(&theme.widgets);
+        assert!(registry.validate().is_ok());
     }
 }
