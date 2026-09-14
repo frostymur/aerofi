@@ -1456,6 +1456,11 @@ impl Launcher {
                             row = row.child(self.render_category_badge(item));
                         }
                     }
+                    "alias_badge" => {
+                        if let Some(badge) = self.render_alias_badge(item) {
+                            row = row.child(badge);
+                        }
+                    }
                     custom_id => {
                         if let Some(widget_el) =
                             self.render_custom_widget_for_row(custom_id, filtered_ix, item, cx)
@@ -1469,6 +1474,9 @@ impl Launcher {
             row = row
                 .child(self.render_row_icon(item))
                 .child(self.render_row_name(item, name_color, desc_color));
+            if let Some(alias) = self.render_alias_badge(item) {
+                row = row.child(alias);
+            }
             if t.listview.category_badge.show {
                 row = row.child(self.render_category_badge(item));
             }
@@ -1594,6 +1602,52 @@ impl Launcher {
             badge = badge.border(px(1.0)).border_color(rgba(Self::color(bc)));
         }
         badge.child(item.category_label().to_string()).into_any()
+    }
+
+    /// Render the alias pill badges for a target (all configured aliases that
+    /// point at it). Returns `None` when the badge is disabled or the target
+    /// has no aliases, so the layout slot renders nothing.
+    fn render_alias_badge(&self, item: &Target) -> Option<gpui::AnyElement> {
+        let t = &self.theme;
+        let b = &t.listview.alias_badge;
+        if !b.show {
+            return None;
+        }
+        let aliases = self.alias_labels(item.name());
+        if aliases.is_empty() {
+            return None;
+        }
+        let col = rgba(Self::color(&b.color));
+        let font_sz = px((t.font.size - b.font_size_offset).max(8.0));
+        let mut pills = div().flex().items_center().gap_1();
+        for alias in &aliases {
+            let mut pill = div()
+                .text_size(font_sz)
+                .text_color(col)
+                .child(alias.clone());
+            if b.padding_x > 0.0 {
+                pill = pill.px(px(b.padding_x));
+            }
+            if b.radius > 0.0 {
+                pill = pill.rounded(px(b.radius));
+            }
+            if b.border {
+                let bc = b.border_color.as_deref().unwrap_or(&b.color);
+                pill = pill.border(px(1.0)).border_color(rgba(Self::color(bc)));
+            }
+            pills = pills.child(pill);
+        }
+        Some(pills.into_any())
+    }
+
+    /// All configured aliases that point at the given target's display name.
+    pub(super) fn alias_labels(&self, name: &str) -> Vec<String> {
+        self.app_config
+            .aliases
+            .iter()
+            .filter(|(_, target)| target.as_str() == name)
+            .map(|(alias, _)| alias.clone())
+            .collect()
     }
 
     fn render_shortcut_badge(

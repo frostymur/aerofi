@@ -143,6 +143,32 @@ fn alias_resolves_target_by_exact_query() {
     assert_eq!(l.alias_target(), None);
 }
 
+#[test]
+fn alias_lists_every_alias_pointing_at_target() {
+    let mut app_config = AppConfig::default();
+    app_config
+        .aliases
+        .insert("gh".to_string(), "GitHub".to_string());
+    app_config
+        .aliases
+        .insert("github".to_string(), "GitHub".to_string());
+    app_config
+        .aliases
+        .insert("rc".to_string(), "Reload Configuration".to_string());
+    let l = Launcher::new(
+        vec![item("GitHub"), Target::reload_config(), item("Grep")],
+        ThemeConfig::default(),
+        app_config,
+        History::test_new(PathBuf::new(), Vec::new()),
+    );
+    let gh = l.alias_labels("GitHub");
+    assert!(gh.contains(&"gh".to_string()));
+    assert!(gh.contains(&"github".to_string()));
+    assert_eq!(gh.len(), 2);
+    // A target with no configured aliases yields none.
+    assert!(l.alias_labels("Grep").is_empty());
+}
+
 fn keystroke(key: &str, modifiers: Modifiers) -> Keystroke {
     Keystroke {
         modifiers,
