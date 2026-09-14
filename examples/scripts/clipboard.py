@@ -104,7 +104,9 @@ def load_from_cli(binary: str) -> list[dict]:
     entries = []
     for line in res.stdout.splitlines():
         parts = line.split(None, 3)
-        if len(parts) == 4:
+        # A real line is "<8-hex id>  <N>m ago  <content>"; anything else
+        # (e.g. the "(no clipboard history yet)" placeholder) is skipped.
+        if len(parts) == 4 and re.fullmatch(r"[0-9a-f]{8,64}", parts[0]):
             entries.append({"id": parts[0], "content": parts[3], "updated_at": time.time()})
     return entries
 
@@ -290,7 +292,7 @@ def main() -> None:
                 if rid == "current":
                     cur = pbpaste()
                     if cur:
-                        pieces.append(cur.rstrip("\n"))
+                        pieces.append(cur)
                     continue
                 if rid == "install_cmd":
                     pbcopy("cargo install clipy")
@@ -301,15 +303,18 @@ def main() -> None:
                         res = subprocess.run(
                             [binary, "show", rid], capture_output=True, text=True, timeout=1.0
                         )
+                        # clipy prints the entry header to stderr; stdout
+                        # carries the content verbatim.
                         if res.returncode == 0:
-                            body = res.stdout.split("---\n", 1)
-                            content = body[1] if len(body) > 1 else res.stdout
+                            content = res.stdout.rstrip("\n")
                     except Exception:
                         pass
                 if content is not None:
-                    pieces.append(content.rstrip("\n"))
-            if pieces:
-                pbcopy("\n".join(pieces))
+                    pieces.append(content)
+            if len(pieces) == 1:
+                pbcopy(pieces[0])
+            elif pieces:
+                pbcopy("\n".join(p.rstrip("\n") for p in pieces))
             break
 
         if kind == "custom":

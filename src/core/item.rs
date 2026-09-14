@@ -714,8 +714,7 @@ echo "Theme switcher..."
     fn clipboard_example_script_parses_cleanly() {
         let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let script_path = manifest_dir.join("examples/scripts/clipboard.py");
-        let target =
-            Target::script_from_file(&script_path).expect("clipboard.py should parse");
+        let target = Target::script_from_file(&script_path).expect("clipboard.py should parse");
         let Target::Script {
             name,
             mode,
