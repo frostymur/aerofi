@@ -711,6 +711,29 @@ echo "Theme switcher..."
     }
 
     #[test]
+    fn clipboard_example_script_parses_cleanly() {
+        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let script_path = manifest_dir.join("examples/scripts/clipboard.py");
+        let target =
+            Target::script_from_file(&script_path).expect("clipboard.py should parse");
+        let Target::Script {
+            name,
+            mode,
+            icon,
+            metadata,
+            ..
+        } = target
+        else {
+            panic!("Expected Target::Script");
+        };
+
+        assert_eq!(name.as_ref(), "Clipboard History");
+        assert_eq!(mode, ScriptMode::Gui);
+        assert_eq!(icon.as_deref(), Some("📋"));
+        assert_eq!(metadata.package_name.as_deref(), Some("System"));
+    }
+
+    #[test]
     fn mode_example_scripts_parse_cleanly() {
         let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let scripts = [

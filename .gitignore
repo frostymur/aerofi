@@ -14,5 +14,8 @@ target-baseline/
 *.swp
 *~
 
+# Python
+__pycache__/
+
 # Local config overrides (v0.2 will read config.toml; keep local copies out of git)
 config.local.toml

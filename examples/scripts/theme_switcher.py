@@ -5,269 +5,203 @@
 # @aerofi.mode gui
 # @aerofi.icon 🎨
 # @aerofi.packageName aerofi
-# @aerofi.description Switch and preview themes live in aerofi
+# @aerofi.description Switch the active aerofi theme
 # @aerofi.show_search true
 # @aerofi.columns 1
+
+Interactive theme switcher for aerofi's gui mode. Scans
+~/.config/aerofi/themes/*.toml plus the built-in default, renders each
+palette as colour swatches, and live-reloads the launcher on selection.
 """
 
+import html
 import os
 import re
-import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
-# Built-in themes known to aerofi
-BUILTIN_THEMES = [
-    {
-        "slug": "default",
-        "name": "Dark Transparent (Default)",
-        "author": "aerofi",
-        "accent": "#7aa2f7",
+BUILTIN = {
+    "slug": "default",
+    "name": "Dark Transparent",
+    "colors": {
         "bg": "#1a1b26",
         "surface": "#24283b",
         "text": "#c0caf5",
-        "desc": "Built-in Tokyo Night dark transparent palette",
-    }
-]
+        "accent": "#7aa2f7",
+    },
+}
+
+FALLBACKS = {
+    "bg": "#1a1b26",
+    "surface": "#24283b",
+    "text": "#c0caf5",
+    "accent": "#7aa2f7",
+}
 
 
-def get_config_dir() -> Path:
+def config_dir() -> Path:
     xdg = os.environ.get("XDG_CONFIG_HOME")
-    if xdg:
-        return Path(xdg) / "aerofi"
-    return Path.home() / ".config" / "aerofi"
+    base = Path(xdg) if xdg else Path.home() / ".config"
+    return base / "aerofi"
 
 
-def get_current_theme(config_file: Path) -> str:
-    if not config_file.exists():
-        return "default"
+def current_theme(config_file: Path) -> str:
     try:
-        content = config_file.read_text(encoding="utf-8")
-        match = re.search(r'^\s*theme\s*=\s*"([^"]+)"', content, re.MULTILINE)
-        if match:
-            return match.group(1).strip()
+        with open(config_file, "rb") as fh:
+            cfg = tomllib.load(fh)
+        theme = cfg.get("theme")
+        return str(theme) if isinstance(theme, str) and theme else "default"
     except Exception:
-        pass
-    return "default"
+        return "default"
 
 
-def set_current_theme(config_file: Path, theme_slug: str) -> bool:
+def set_theme(config_file: Path, slug: str) -> bool:
     try:
-        config_dir = config_file.parent
-        config_dir.mkdir(parents=True, exist_ok=True)
-
-        if not config_file.exists():
-            config_file.write_text(f'theme = "{theme_slug}"\n', encoding="utf-8")
-            return True
-
-        content = config_file.read_text(encoding="utf-8")
-        pattern = r'^(\s*theme\s*=\s*)"[^"]+"'
-        if re.search(pattern, content, re.MULTILINE):
-            updated = re.sub(pattern, rf'\g<1>"{theme_slug}"', content, flags=re.MULTILINE)
+        config_file.parent.mkdir(parents=True, exist_ok=True)
+        if config_file.exists():
+            content = config_file.read_text(encoding="utf-8")
         else:
-            updated = f'theme = "{theme_slug}"\n' + content
-
-        config_file.write_text(updated, encoding="utf-8")
+            content = ""
+        pattern = r'^\s*theme\s*=\s*"[^"]*"'
+        if re.search(pattern, content, re.MULTILINE):
+            content = re.sub(pattern, f'theme = "{slug}"', content, flags=re.MULTILINE)
+        else:
+            content = f'theme = "{slug}"\n' + content
+        config_file.write_text(content, encoding="utf-8")
         return True
-    except Exception as err:
-        sys.stderr.write(f"aerofi theme-switcher: error writing config: {err}\n")
+    except Exception:
         return False
 
 
+def resolve(value: str, palette: dict) -> str:
+    seen = set()
+    while value.startswith("$") and value[1:] in palette and value not in seen:
+        seen.add(value)
+        value = palette[value[1:]]
+    return value
+
+
 def parse_theme_file(path: Path) -> dict:
-    slug = path.stem
-    res = {
-        "slug": slug,
-        "name": slug.replace("-", " ").title(),
-        "author": "aerofi",
-        "accent": "#7aa2f7",
-        "bg": "#1a1b26",
-        "surface": "#24283b",
-        "text": "#c0caf5",
-        "desc": f"Theme from {path.name}",
+    theme = {
+        "slug": path.stem,
+        "name": path.stem.replace("-", " ").replace("_", " ").title(),
+        "colors": dict(FALLBACKS),
     }
-
     try:
-        content = path.read_text(encoding="utf-8")
-        name_m = re.search(r'^\s*name\s*=\s*"([^"]+)"', content, re.MULTILINE)
-        if name_m:
-            res["name"] = name_m.group(1).strip()
+        with open(path, "rb") as fh:
+            data = tomllib.load(fh)
+    except Exception:
+        return theme
 
-        author_m = re.search(r'^\s*author\s*=\s*"([^"]+)"', content, re.MULTILINE)
-        if author_m:
-            res["author"] = author_m.group(1).strip()
+    name = data.get("name")
+    if isinstance(name, str) and name.strip():
+        theme["name"] = name.strip()
 
-        # Parse [colors] table for alias resolution
+    palette = data.get("colors")
+    if not isinstance(palette, dict):
         palette = {}
-        colors_section = False
-        for line in content.splitlines():
-            line_str = line.strip()
-            if line_str.startswith("[") and line_str.endswith("]"):
-                colors_section = (line_str.strip("[]").strip() == "colors")
-                continue
-            if colors_section and "=" in line_str:
-                parts = line_str.split("=", 1)
-                k = parts[0].strip()
-                v = parts[1].strip().strip('"').strip("'")
-                palette[k] = v
-
-        # Extract accent color
-        accent_m = re.search(r'^\s*accent\s*=\s*"([^"]+)"', content, re.MULTILINE)
-        if accent_m:
-            raw = accent_m.group(1).strip()
-            res["accent"] = palette.get(raw.lstrip("$"), raw)
-
-        # Extract background color
-        bg_m = re.search(r'^\s*bg\s*=\s*"([^"]+)"', content, re.MULTILINE)
-        if bg_m:
-            raw = bg_m.group(1).strip()
-            res["bg"] = palette.get(raw.lstrip("$"), raw)
-
-        # Extract text color
-        text_m = re.search(r'^\s*text\s*=\s*"([^"]+)"', content, re.MULTILINE)
-        if text_m:
-            raw = text_m.group(1).strip()
-            res["text"] = palette.get(raw.lstrip("$"), raw)
-
-        # Extract surface color
-        surf_m = re.search(r'^\s*surface\s*=\s*"([^"]+)"', content, re.MULTILINE)
-        if surf_m:
-            raw = surf_m.group(1).strip()
-            res["surface"] = palette.get(raw.lstrip("$"), raw)
-
-        # If still aliases or defaults, check palette directly
-        for k in ("accent", "bg", "surface", "text"):
-            if res[k].startswith("$"):
-                var = res[k].lstrip("$")
-                if var in palette:
-                    res[k] = palette[var]
-            elif k in palette and res[k].startswith("$"):
-                res[k] = palette[k]
-    except Exception:
-        pass
-
-    # Normalize hex colors (strip alpha if 8-digit)
-    for k in ("accent", "bg", "surface", "text"):
-        val = res[k]
-        if val.startswith("#") and len(val) == 9:
-            res[k] = val[:7]
-
-    return res
+    for key in ("bg", "surface", "text", "accent"):
+        raw = palette.get(key)
+        if isinstance(raw, str) and raw.strip():
+            theme["colors"][key] = resolve(raw.strip(), palette)
+    return theme
 
 
-def discover_themes(config_dir: Path) -> list[dict]:
-    themes = {}
-    for bt in BUILTIN_THEMES:
-        themes[bt["slug"]] = bt
-
-    themes_dir = config_dir / "themes"
+def discover(config: Path) -> list[dict]:
+    themes = [dict(BUILTIN, colors=dict(BUILTIN["colors"]))]
+    seen = {BUILTIN["slug"]}
+    themes_dir = config / "themes"
     if themes_dir.is_dir():
-        for p in sorted(themes_dir.glob("*.toml")):
-            t = parse_theme_file(p)
-            themes[t["slug"]] = t
-
-    # Also check repo examples if local
-    repo_examples = Path(__file__).resolve().parent.parent / "themes"
-    if repo_examples.is_dir():
-        for p in sorted(repo_examples.glob("*.toml")):
-            if p.stem not in themes:
-                t = parse_theme_file(p)
-                themes[t["slug"]] = t
-
-    return list(themes.values())
+        for path in sorted(themes_dir.glob("*.toml")):
+            if path.stem in seen:
+                continue
+            theme = parse_theme_file(path)
+            if theme["slug"] not in seen:
+                themes.append(theme)
+                seen.add(theme["slug"])
+    return themes
 
 
-def render_pango_row(theme: dict, is_active: bool) -> str:
-    name = theme.get("name", theme["slug"])
-    slug = theme["slug"]
-
-    title_span = f'<b>{name}</b>'
-    slug_span = f' ({slug})'
-
-    if is_active:
-        status = "<b>✓ Active</b>"
-    else:
-        status = f"by {theme.get('author', 'aerofi')}"
-
-    row_text = f"{title_span}{slug_span}"
-    info_field = f"\0info\x1f{status}"
-    meta_field = f"\0meta\x1f{name} {slug} {theme.get('author', '')} {'active current' if is_active else ''}"
-    icon_field = "\0icon\x1femoji:🎨"
-
-    active_field = f"\0active\x1f{'true' if is_active else 'false'}"
-    return f"{row_text}{icon_field}{info_field}{active_field}{meta_field}"
+def swatches(theme: dict) -> str:
+    parts = []
+    for key in ("bg", "surface", "text", "accent"):
+        color = theme["colors"].get(key, FALLBACKS[key])
+        if not re.fullmatch(r"#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?", color):
+            color = FALLBACKS[key]
+        parts.append(f'<span foreground="{color}">■</span>')
+    return "".join(parts)
 
 
-def notify_user(title: str, msg: str):
-    try:
-        script = f'display notification "{msg}" with title "{title}" sound name "Glass"'
-        subprocess.run(["osascript", "-e", script], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    except Exception:
-        pass
+def clean(value: str) -> str:
+    return value.replace("\x00", " ").replace("\x1f", " ").replace("\r", " ").replace("\n", " ")
 
 
-def main():
-    config_dir = get_config_dir()
-    config_file = config_dir / "config.toml"
-    current_theme = get_current_theme(config_file)
-    themes = discover_themes(config_dir)
-
-    # Sort so active theme is at the top, followed by alphabetically sorted themes
-    themes.sort(key=lambda t: (0 if t["slug"] == current_theme else 1, t["name"].lower()))
-
-    # Emit GUI initial frame
-    sys.stdout.write("\0prompt\x1fSearch & select aerofi theme…\n")
-    sys.stdout.write("\0markup-rows\x1ftrue\n")  # enable Pango markup in row text + info fields
-    sys.stdout.write("\0message\x1fPress Enter to activate theme • Instant live reload\n")
-
-    for i, t in enumerate(themes):
-        is_active = (t["slug"] == current_theme)
-        row = render_pango_row(t, is_active)
-        sys.stdout.write(f"{row}\n")
-
-    sys.stdout.write("\0flush\n")
+def emit_frame(themes: list[dict], active_slug: str) -> None:
+    out = [
+        "\0prompt\x1fSearch themes…",
+        "\0no-custom\x1ftrue",
+        "\0markup-rows\x1ftrue",
+        "\0message\x1f↵ Apply theme · instant reload",
+    ]
+    for theme in themes:
+        name = html.escape(theme["name"])
+        slug = theme["slug"]
+        fields = f"{name}\0id\x1f{slug}\0info\x1f{swatches(theme)}\0meta\x1f{clean(theme['name'] + ' ' + slug + ' theme')}"
+        if slug == active_slug:
+            fields += "\0active\x1ftrue"
+        out.append(fields)
+    out.append("\0flush")
+    sys.stdout.write("\n".join(out) + "\n")
     sys.stdout.flush()
 
-    # Listen for selection event on stdin
+
+def parse_event(line: str) -> dict:
+    fields = line.lstrip("\x00").rstrip("\r\n").split("\x1f")
+    if len(fields) < 2 or fields[0] != "event":
+        return {}
+    event = {"type": fields[1]}
+    for field in fields[2:]:
+        if ":" in field:
+            key, value = field.split(":", 1)
+            event[key] = value
+    return event
+
+
+def main() -> None:
+    config = config_dir()
+    config_file = config / "config.toml"
+    active = current_theme(config_file)
+    themes = discover(config)
+    themes.sort(key=lambda t: (t["slug"] != active, t["name"].lower()))
+
+    emit_frame(themes, active)
+
+    by_slug = {t["slug"]: t for t in themes}
+
     while True:
-        line = sys.stdin.readline()
-        if not line:
+        raw = sys.stdin.buffer.readline()
+        if not raw:
             break
+        event = parse_event(raw.decode("utf-8", "replace"))
+        kind = event.get("type")
 
-        line = line.strip()
-        if not line:
-            continue
-
-        # Format: \0event\x1fselect\x1fkey:enter\x1findex:0\x1f...
-        # or plain text if stdin receives return
-        if "select" in line or line.startswith("\0event"):
-            # Extract index
-            index = None
-            for part in line.split("\x1f"):
-                if part.startswith("index:") or part.startswith("index="):
-                    try:
-                        index = int(part.split(":", 1)[1] if ":" in part else part.split("=", 1)[1])
-                    except ValueError:
-                        pass
-
-            if index is not None and 0 <= index < len(themes):
-                selected = themes[index]
-            else:
-                # Default to highlighted or first
-                selected = themes[0]
-
-            # Apply theme
-            selected_slug = selected["slug"]
-            selected_name = selected["name"]
-            if set_current_theme(config_file, selected_slug):
-                sys.stdout.write("\0reload\x1ftrue\n")
-                sys.stdout.write("\0flush\n")
+        if kind == "select":
+            slug = event.get("id", "")
+            theme = by_slug.get(slug)
+            if theme is None:
+                emit_frame(themes, active)
+                continue
+            if theme["slug"] == active:
+                emit_frame(themes, active)
+                continue
+            if set_theme(config_file, theme["slug"]):
+                sys.stdout.write("\0reload\x1ftrue\n\0flush\n")
                 sys.stdout.flush()
-                notify_user(
-                    "aerofi Theme Switcher",
-                    f"Theme changed to '{selected_name}'."
-                )
             break
+
+        # Any other event: keep the frame alive.
+        emit_frame(themes, active)
 
 
 if __name__ == "__main__":
