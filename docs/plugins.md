@@ -21,6 +21,7 @@ aerofi automatically scans and loads all `.dylib` files on startup from:
 
 ```
 ~/.config/aerofi/plugins/
+~/Library/Application Support/aerofi/plugins/   # macOS (also scanned)
 ```
 
 Whenever aerofi starts, it dynamically loads each shared library, checks the API version handshake, and registers the plugin's trigger prefix.
@@ -217,4 +218,4 @@ Explore the ready-to-build examples included in the aerofi repository:
    - Dynamically generates search shortcuts for Google and DuckDuckGo and opens them asynchronously in your default browser.
 2. **Spotlight File Search Plugin** (`examples/plugins/file_search/`):
    - Prefix: `f ` (e.g. `f invoice.pdf`)
-   - Queries macOS Spotlight via `mdfind` and allows opening or revealing in Finder (`Alt+Enter`).
+    - Queries macOS Spotlight via `mdfind` and opens the selected file. (The plugin also implements a reveal-in-Finder action for `action_code == 1`, though the launcher currently only dispatches the open action.)

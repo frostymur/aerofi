@@ -57,7 +57,7 @@ For copy-pasteable reference files documenting **every single parameter and type
 
 ## ⚙️ Application Configuration (`config.toml`)
 
-Path: `~/.config/aerofi/config.toml` (or `$XDG_CONFIG_HOME/aerofi/config.toml`)
+Path: `~/.config/aerofi/config.toml`
 
 ### Quick Reload
 To apply changes without restarting aerofi:
@@ -66,8 +66,8 @@ To apply changes without restarting aerofi:
 
 ### General Options
 ```toml
-# Active theme: resolved to ~/.config/aerofi/themes/{name}.toml
-# Built-in options: "default", "tokyo-night", "gruvbox"
+# Active theme. "default" is built in; any other name is loaded from
+# ~/.config/aerofi/themes/{name}.toml (must exist).
 theme = "tokyo-night"
 
 [general]
@@ -186,7 +186,6 @@ width = 660.0
 [font]
 family = "SF Pro Text"                                    # Font family name
 size = 15.0                                              # Base size in points
-weight = "normal"                                         # "thin", "light", "normal", "medium", "semibold", "bold", "black"
 fallback = ["SF Pro", "SF Mono", "Helvetica Neue", "Arial"] # Fallback glyph fonts
 ```
 
@@ -205,7 +204,7 @@ border_color = "$border"
 
 # Optional background image:
 # background_image = "~/.config/aerofi/themes/wallpaper.jpg"
-# background_position = "cover" # "cover", "left", "right", "center"
+# background_position = "cover" # "cover" (default), "left", "right"
 # image_scale = 1.0
 ```
 
@@ -233,7 +232,7 @@ children = [
 ```toml
 [inputbar]
 height = 46.0
-padding = [10.0, 14.0]               # [top/bottom, left/right]
+padding = [10.0, 14.0]               # [left/right, top/bottom]
 margin = [0.0, 0.0, 8.0, 0.0]        # [top, right, bottom, left]
 background = "$surface"
 text_color = "$text"
@@ -247,7 +246,7 @@ icon_color = "$accent"
 ### Results List & Badges (`[listview]`)
 ```toml
 [listview]
-columns = 1                          # 1 for list, 2 or 3 for grid
+columns = 1                          # 1 for list; any value >1 renders a grid (2, 3, 4, …)
 spacing = 4.0                        # Gap between rows
 scrollbar = false                    # Visible scrollbar
 empty_text = "No matching items"
@@ -263,7 +262,9 @@ radius = 4.0
 padding_x = 6.0
 border = false
 
-# Alias Pill Badge Styling (for items matched via [aliases])
+# Alias Pill Badge Styling — renders one pill per [aliases] entry that
+# points at a target (e.g. "gh" next to "GitHub"). Add the "alias_badge"
+# slot to [element] layout to show it.
 [listview.alias_badge]
 show = true
 color = "$accent"
@@ -286,12 +287,13 @@ show_icons = true
 icon_size = 22.0
 
 # Customize the slot ordering inside each row!
-# Available slots: "icon", "name", "spacer", "description", "category_badge", "alias_badge", "shortcut"
+# Available slots: "icon", "name", "spacer", "category_badge", "alias_badge", "shortcut"
+# (plus any custom widget id defined under [widgets.*])
 layout = [
     "icon",
     "name",
+    "alias_badge",
     "spacer",
-    "description",
     "category_badge",
     "shortcut"
 ]
@@ -359,7 +361,7 @@ Widgets are defined either using table syntax `[widgets.<id>]` or array syntax `
 
 | Type | Description | Key Properties |
 |---|---|---|
-| **`box`** | Container for grouping widgets | `orientation` ("horizontal" / "vertical"), `gap`, `padding`, `align` ("left", "center", "right"), `background`, `radius`, `width`, `height`, `flex`, `children` |
+| **`box`** | Container for grouping widgets | `orientation` ("horizontal" / "vertical"), `gap`, `padding`, `align` ("left", "center", "end"), `background`, `radius`, `width`, `height`, `flex`, `children` |
 | **`text`** | Static typography label | `text`, `color`, `font_size`, `font_weight`, `align` |
 | **`icon`** | Symbol or emoji | `icon`, `size`, `color` |
 | **`image`** | Image asset | `path`, `width`, `height`, `radius` |

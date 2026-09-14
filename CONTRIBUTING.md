@@ -96,8 +96,8 @@ This will automatically bump `Cargo.toml`, create the commit `chore(core): bump 
 
 ## Code style
 
-`cargo fmt` and `cargo clippy --workspace -- -D warnings`, enforced by
-pre-commit and CI. No `unwrap()`/`expect()` outside of tests and `main.rs`
+`cargo fmt` and `cargo clippy --workspace -- -D warnings`, enforced by CI.
+No `unwrap()`/`expect()` outside of tests and `main.rs`
 startup code — the daemon runs unattended in the background and should
 never crash silently.
 
@@ -115,11 +115,12 @@ license. No CLA.
 
 ## Security
 
-aerofi needs no network access for v1 — the daemon only listens on a local
-Unix socket. Do not add outbound network calls (telemetry, update checks,
-etc.) without a dedicated issue discussion first; "no network access
-needed" is a stated design property, not an accident. Report vulnerabilities
-privately via `SECURITY.md`, not as a public issue.
+aerofi needs no network access for v1 — the background scheduler runs as
+in-process threads (no daemons, sockets, or sidecar processes). Do not add
+outbound network calls (telemetry, update checks, etc.) without a dedicated
+issue discussion first; "no network access needed" is a stated design
+property, not an accident. Report vulnerabilities privately via
+`SECURITY.md`, not as a public issue.
 
 ## Governance
 

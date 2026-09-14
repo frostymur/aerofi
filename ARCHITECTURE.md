@@ -4,7 +4,8 @@ This document is the source of truth for how aerofi is shaped and why.
 
 ## System layers
 
-Single-crate (monorepo style), organized by concern:
+The launcher is a single crate (the repo is a Cargo workspace that also holds the
+`aerofi-plugin-api` C ABI crate and the example plugins), organized by concern:
 
 ```
 src/
@@ -15,7 +16,7 @@ src/
 │   ├── execute.rs       # Script execution routing by mode (silent, compact, inline, fullOutput, pipe, gui)
 │   └── launcher/        # Input field, search list, keyboard handlers, custom widgets & GUI mode rendering
 ├── core/                # Data models, config & execution engine (knows nothing about GPUI)
-│   ├── item.rs          # Target (App/Script/Builtin), ScriptMode, metadata parsing
+│   ├── item.rs          # Target (App/Script/Builtin/PluginItem), ScriptMode, metadata parsing
 │   ├── config.rs        # AppConfig loader (~/.config/aerofi/config.toml) & defaults
 │   ├── scanner.rs       # Directory indexing: /Applications* + configured script folders
 │   ├── executor.rs      # Launching targets (open, interpreter commands, pbcopy)
@@ -26,16 +27,19 @@ src/
 │   ├── pango.rs         # Pango markup parsing for rich rows
 │   ├── search.rs        # Zero-allocation Nucleo fuzzy matcher & frecency ranker
 │   ├── theme.rs         # Theme configuration parser, alpha channels & palette resolver
-│   └── widget.rs        # Widget tree definition and validation
+│   ├── widget.rs        # Widget tree definition and validation
+│   ├── scheduler.rs     # refreshTime daemon: re-runs inline scripts on a timer
+│   └── plugin_manager.rs # C ABI plugin loading, prefix routing & lifecycle
 └── sys/                 # System calls (macOS-only)
     ├── carbon.rs        # Carbon RegisterEventHotKey global hotkey bindings
     ├── appkit.rs        # NSWindow/NSApplication FFI (chrome, transparency, show/hide)
     └── icons.rs         # Native macOS .app icon extraction
 ```
 
-**Rationale:** single crate keeps the build simple (one `cargo build`, no
-path-dependency headaches). The layering (core → ui → sys) enforces separation
-of concerns *within* the crate.
+**Rationale:** the launcher itself is a single crate, keeping its build simple;
+the workspace additionally exposes the small `aerofi-plugin-api` crate so
+plugins can be compiled against the C ABI. The layering (core → ui → sys)
+enforces separation of concerns *within* the launcher crate.
 
 ## Validated performance baseline
 
@@ -50,7 +54,7 @@ Any PR that grows active RSS by more than ~10% needs a one-line justification in
 
 Default path: Carbon `RegisterEventHotKey` (via Carbon FFI). This is the only public macOS API for a global hotkey that requires no Accessibility permission — do not require Accessibility just to install the app.
 
-Known limitation, not a bug to "fix" by switching defaults: Carbon `RegisterEventHotKey` silently fails to fire when the frontmost app is a self-drawn text UI — this includes GPU-rendered terminals (WezTerm, Ghostty, Zed's own terminal), which is exactly where this app's users spend most of their time. The fix is a second, **opt-in** backend using `NSEvent.addGlobalMonitorForEvents`, gated behind Accessibility permission and an explicit config flag (`hotkey.reliable_mode = true`). Never make this the default — it trades zero-friction install for reliability, and that trade should be the user's choice, not ours.
+Known limitation, not a bug to "fix" by switching defaults: Carbon `RegisterEventHotKey` silently fails to fire when the frontmost app is a self-drawn text UI — this includes GPU-rendered terminals (WezTerm, Ghostty, Zed's own terminal), which is exactly where this app's users spend most of their time.
 
 ## GPUI dependency policy
 
@@ -59,10 +63,10 @@ GPUI is pinned to a specific git commit SHA in `Cargo.toml`, never `main` and ne
 ## Script execution modes
 
 - `silent`: Runs detached in the background, launcher window closes immediately; floating toast displays status.
-- `compact`: Floating toast shows running indicator, outputs single-line status updates.
+- `compact`: Floating toast shows a running indicator, then the script's final output line.
 - `inline`: Displays output dynamically as a subtitle next to the script in the launcher list.
-- `fullOutput`: Renders stdout in the built-in markdown viewer with ANSI/Markdown support.
-- `pipe`: Captures stdout and copies output directly to the system clipboard (`pbcopy`).
+- `fullOutput`: Renders stdout in the built-in markdown viewer (headings, code blocks, lists).
+- `pipe`: Captures stdout and copies it to the system clipboard.
 - `gui`: Two-way interactive Rofi-compatible streaming protocol via stdin/stdout (`\0prompt`, `\0message`, etc.).
 
 Applications open via `open <path>`.

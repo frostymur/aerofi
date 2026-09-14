@@ -10,9 +10,9 @@ This directory contains reference implementations of dynamic C ABI plugins for a
 2. **`file_search`**:
    - **Trigger prefix:** `f ` (e.g. `f document.pdf`)
    - **Features:** Uses macOS Spotlight (`mdfind`) to locate files on your system.
-   - **Actions:**
-     - `Enter`: Open file in default application.
-     - `Alt+Enter` / action code 1: Reveal file in Finder (`open -R`).
+    - **Actions:**
+      - `Enter`: Open file in default application (`action_code` 0 — what the launcher dispatches).
+      - Reveal in Finder (`open -R`, `action_code` 1): implemented by the plugin, but not currently mapped to a key in the launcher.
 
 ## Building and Installing
 

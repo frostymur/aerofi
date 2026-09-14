@@ -81,7 +81,7 @@ aerofi &
 
 ### Cargo
 ```bash
-cargo install aerofi
+cargo install --git https://github.com/frostymur/aerofi aerofi
 ```
 
 ### Build from Source
@@ -139,18 +139,21 @@ children = ["header_title", "spacer", "status_badge"]
 type = "text"
 text = "aerofi"
 color = "$accent"
-weight = "bold"
+font_weight = "bold"
 ```
 
 ### 🎨 Bundled Themes & Modular Architecture
 
-aerofi comes bundled with curated modern themes in `~/.config/aerofi/themes/`:
+The built-in **Dark Transparent** theme is always available. Additional curated
+themes ship in [`examples/themes/`](examples/themes/) — copy any of them to
+`~/.config/aerofi/themes/` and select it with `theme = "<name>"`:
 
 | Theme | Description |
 |---|---|
 | **Tokyo Night** | Deep indigo surfaces with neon cyan & sky blue accents and frosted glass blur. |
+| **Tokyo Night Grid** | Compact 4-column grid layout with larger application icons. |
+| **Tokyo Night Modular** | Splits palette and layout into importable modules. |
 | **Gruvbox Dark** | Warm vintage retro-groove palette with high contrast and earthy tones. |
-| **Dark Transparent** | Minimalist semi-translucent dark monochrome design. |
 
 Themes support modular splitting via `imports = ["colors/...", "layouts/..."]` to effortlessly mix-and-match color palettes and window layouts.
 

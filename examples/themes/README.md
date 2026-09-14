@@ -23,8 +23,8 @@ A warm, vintage retro-groove theme designed for optimal contrast and eye comfort
 ### 3. 🏁 Tokyo Night Grid (`tokyo-night-grid.toml`)
 A compact 4-column icon tile grid layout styled with the Tokyo Night palette.
 
-- **Layout**: 4-column compact grid with large 32px application icons
-- **Window**: Compact 560x380 footprint
+- **Layout**: 4-column compact grid with large 36px application icons
+- **Window**: Compact 520x360 footprint
 
 ---
 
@@ -117,6 +117,18 @@ aerofi themes are written in standard TOML. Every section is customizable:
 ```toml
 name = "My Custom Theme"
 author = "Your Name"
+
+# $-tokens used below resolve from this palette:
+[colors]
+bg = "#1a1b26"
+surface = "#24283b"
+surface2 = "#292e42"
+text = "#c0caf5"
+subtle = "#565f89"
+accent = "#7aa2f7"
+urgent = "#f7768e"
+green = "#9ece6a"
+border = "#33467c"
 
 [font]
 family = "SF Pro Text"

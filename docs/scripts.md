@@ -68,12 +68,12 @@ Annotations are placed inside comments (`#`) at the top of your script:
 aerofi provides six dedicated execution modes tailored for different workflows. Each mode has a minimalist reference script in `examples/scripts/`:
 
 ### 1. `silent`
-Runs the script detached in the background. The aerofi search window closes immediately. A compact floating toast appears in the corner of your screen indicating execution status.
+Runs the script detached in the background. The aerofi search window closes immediately. If the script produces output or errors, a compact floating toast appears in the corner of your screen; a clean no-output exit shows nothing.
 - **Example Script**: [examples/scripts/silent.sh](../examples/scripts/silent.sh)
 - **Ideal for**: Triggering background automations, toggling system settings, running backup jobs.
 
 ### 2. `compact`
-Displays a minimalist floating indicator on screen while the script runs, streaming single-line output updates until finished.
+Displays a minimalist floating indicator on screen while the script runs, then shows its final output line when it finishes.
 - **Example Script**: [examples/scripts/compact.sh](../examples/scripts/compact.sh)
 - **Ideal for**: Fast actions that take 1–3 seconds and report brief progress.
 
@@ -83,7 +83,7 @@ The script runs in the background and its output is displayed directly as a subt
 - **Ideal for**: Live status widgets (e.g. current Spotify track, active Git branch, weather, battery health). When combined with `@aerofi.refreshTime 10s`, aerofi automatically refreshes the output periodically.
 
 ### 4. `fullOutput`
-Executes the command and renders stdout in aerofi's built-in rich markdown and ANSI terminal viewer. Supports headings, syntax-highlighted code blocks, blockquotes, and lists.
+Executes the command and renders stdout in aerofi's built-in rich markdown viewer. Supports headings, code blocks, blockquotes, and lists.
 - **Example Script**: [examples/scripts/full-output.sh](../examples/scripts/full-output.sh)
 - **Ideal for**: Viewing documentation, API responses, logs, or curl outputs.
 
@@ -195,8 +195,10 @@ When a user interacts with aerofi (presses `Enter`, a contextual key like `Shift
 
 Event types: `select` (plain `Enter`), `action` (contextual keys: `Shift+Enter`, `Alt+Enter`, `Ctrl+<key>`), `custom` (free-form text submitted while no row is highlighted). Note that `Tab` multi-selection is handled inside aerofi — it never reaches the script; the toggled rows arrive in `ids`/`texts` of the next `select` event.
 
+**Live-search mode:** when `\0live-search\x1ftrue` is set, aerofi also sends a separate `\0change\x1f<query>` line to `stdin` on every keystroke and backspace, carrying the current search text for server-side filtering (in addition to the event lines above).
+
 Fields in the event line (separated by `\x1f`, prefixed with the field name and `:`):
-- `key`: Key pressed (`"enter"`, `"shift+enter"`, `"alt+enter"`, `"ctrl+d"`, `"custom"`, or a `kb-custom-N` binding name).
+- `key`: Key pressed (`"enter"`, `"shift+enter"`, `"alt+enter"`, `"ctrl+d"`, or `"custom"` — `kb-custom-N` bindings always report `key:custom`, with the binding number encoded in `retv`).
 - `index`: 0-based index of the highlighted row in the last emitted frame.
 - `id`: Row ID (the `id` field of the highlighted row; empty when absent).
 - `text`: Row text content.

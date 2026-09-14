@@ -10,11 +10,11 @@ Clean, minimal examples demonstrating all 6 aerofi script execution modes:
 
 | Script | Mode | Description | Behavior |
 |---|---|---|---|
-| **[`silent.sh`](silent.sh)** | `silent` | Detached background job | Launcher closes immediately; floating toast notifies upon completion. |
-| **[`compact.sh`](compact.sh)** | `compact` | Progress updates | Floating toast indicator displays real-time single-line status messages. |
+| **[`silent.sh`](silent.sh)** | `silent` | Detached background job | Launcher closes immediately; a toast appears only if the script outputs something or errors. |
+| **[`compact.sh`](compact.sh)** | `compact` | Progress updates | Floating toast shows a running indicator, then the script's final output line. |
 | **[`inline.sh`](inline.sh)** | `inline` | Subtitle widget in list | Prints status directly into launcher row subtitle; auto-refreshes via `@aerofi.refreshTime`. |
-| **[`full-output.sh`](full-output.sh)** | `fullOutput` | Rich Markdown reader | Renders formatted GitHub Flavored Markdown (tables, headings, alerts, code). |
-| **[`pipe.sh`](pipe.sh)** | `pipe` | Clipboard pipe | Captures stdout and automatically copies it directly to macOS clipboard (`pbcopy`). |
+| **[`full-output.sh`](full-output.sh)** | `fullOutput` | Rich Markdown reader | Renders formatted Markdown (headings, code blocks, lists, blockquotes). |
+| **[`pipe.sh`](pipe.sh)** | `pipe` | Clipboard pipe | Captures stdout and automatically copies it to the macOS clipboard. |
 | **[`gui.sh`](gui.sh)** | `gui` | Interactive UI | Bidirectional Rofi-compatible IPC session over stdin/stdout with live Pango markup. |
 
 ---
@@ -25,7 +25,7 @@ An interactive theme previewer and switcher for aerofi using the bidirectional `
 
 ### ✨ Highlights
 - **Live Color Swatches**: Renders each palette (bg / surface / text / accent) as colour swatches via Pango markup, with `$alias` references resolved from the theme's `[colors]` table.
-- **Active Theme Indicator**: Marks the current theme with the launcher's native `ACTIVE` badge (`active\x1ftrue` row field).
+- **Active Theme First**: The currently active theme is sorted to the top of the list.
 - **Automatic Theme Discovery**: Scans `~/.config/aerofi/themes/*.toml` plus the built-in default.
 - **Instant Activation**: Selecting a theme updates `~/.config/aerofi/config.toml` and sends `\0reload` so the launcher re-themes live.
 
