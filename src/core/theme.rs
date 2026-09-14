@@ -1069,8 +1069,15 @@ accent = "#7aa2f7"
         // Modular composition + a partial palette override (bg, surface2).
         let t = load_example_theme("tokyo-night-grid.toml");
         assert_eq!(t.name, "Tokyo Night Grid");
-        assert_eq!(t.window.width, 520.0);
+        assert_eq!(t.window.width, 750.0);
+        assert_eq!(t.window.height, 350.0);
         assert_eq!(t.listview.columns, 4);
+        // Rofi-ported grid: borderless tiles, 10px radius, 48px icons, 15px gap.
+        assert_eq!(t.element.background, "transparent");
+        assert_eq!(t.element.corner_radius, 10.0);
+        assert_eq!(t.element.icon_size, 48.0);
+        assert_eq!(t.element.icon_gap, 15.0);
+        assert_eq!(t.element.border_width, 0.0);
         assert_eq!(t.colors.get("bg").map(String::as_str), Some("#1a1b26f4"));
         assert_eq!(
             t.colors.get("surface2").map(String::as_str),

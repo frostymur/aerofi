@@ -3,23 +3,24 @@
 # ==============================================================================
 # Location: ~/.config/aerofi/themes/layouts/grid.toml
 # Import via: imports = ["layouts/grid.toml"]
-# Shared 4-column tile grid geometry used by tokyo-night-grid.
+# 4-column, 2-row tile grid (icon over name) used by tokyo-night-grid.
+# Geometry ported from a Rofi drun theme.
 # ==============================================================================
 
 [font]
 family = "SF Pro Text"
-size = 12.5
+size = 13.0
 fallback = ["SF Pro", "Helvetica Neue", "Arial"]
 
 [window]
-width = 520.0
-height = 360.0
-padding = 10.0
+width = 750.0
+height = 350.0
+padding = 20.0
 background = "$bg"
 blur = true
 background_opacity = 0.95
-corner_radius = 16.0
-border_width = 1.0
+corner_radius = 12.0
+border_width = 0.0
 border_color = "$border"
 
 [mainbox]
@@ -27,20 +28,20 @@ orientation = "vertical"
 children = ["InputBar", "ListView"]
 
 [inputbar]
-height = 36.0
-padding = [8.0, 12.0]
-margin = [0.0, 0.0, 8.0, 0.0]
+height = 44.0
+padding = [15.0, 12.0]
+margin = [0.0, 0.0, 20.0, 0.0]
 background = "$surface"
 text_color = "$text"
-placeholder = "Search apps & scripts…"
+placeholder = "Search"
 placeholder_color = "$subtle"
-corner_radius = 8.0
+corner_radius = 10.0
 icon = "❯"
 icon_color = "$accent"
 
 [listview]
 columns = 4
-spacing = 6.0
+spacing = 12.0
 scrollbar = false
 empty_text = "No matching results"
 empty_text_color = "$subtle"
@@ -50,23 +51,25 @@ show = false
 color = "$subtle"
 
 [listview.alias_badge]
-show = true
+show = false
 color = "$accent"
 
 [element]
-padding = [20.0, 8.0]
-corner_radius = 12.0
-background = "$surface"
+padding = [10.0, 20.0]
+corner_radius = 10.0
+background = "transparent"
 text_color = "$text"
 description_color = "$subtle"
 show_icons = true
-icon_size = 36.0
+icon_size = 48.0
+icon_gap = 15.0
+border_width = 0.0
 layout = ["icon", "name"]
 
 [element.selected]
 background = "$surface2"
 text_color = "$text"
-description_color = "$accent"
+description_color = "$subtle"
 
 [element.hover]
 background = "$surface2"
