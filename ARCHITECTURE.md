@@ -43,7 +43,6 @@ Current operational baseline: **~40 MB RSS idle, ~50 MB RSS active, ~0.1% CPU id
 
 - Idle/backgrounded RSS: keep around ~40 MB (textures dropped and Metal buffers compressed once hidden).
 - Active/foreground RSS: keep around ~50 MB with the search index and applications loaded.
-- Hotkey-to-rendered-frame latency: ~1–2 ms on Apple Silicon (strict < 5 ms ceiling on the warm path).
 
 Any PR that grows active RSS by more than ~10% needs a one-line justification in the PR description. Measure with Activity Monitor or `footprint <pid>`, before and after hiding the window.
 

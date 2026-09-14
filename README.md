@@ -9,7 +9,6 @@
 [![Platform](https://img.shields.io/badge/platform-macOS%2013%2B-lightgrey?style=flat-square&logo=apple)](https://apple.com)
 [![Language](https://img.shields.io/badge/language-Rust%202024-orange?style=flat-square&logo=rust)](https://www.rust-lang.org)
 [![Memory](https://img.shields.io/badge/memory-~40MB%20RSS-brightgreen?style=flat-square)](ARCHITECTURE.md)
-[![Latency](https://img.shields.io/badge/latency-%3C2ms-blueviolet?style=flat-square)](ARCHITECTURE.md)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 
 <br />
@@ -34,7 +33,7 @@
 
 ## Why aerofi?
 
-**aerofi** is a lightweight, open-source macOS application launcher and extensible productivity tool designed as a fast Spotlight and Raycast alternative. Built in Rust with GPU acceleration (GPUI), it brings lightning-fast application launching, script execution, and full Raycast script command compatibility to macOS.
+**aerofi** is a lightweight, open-source macOS application launcher and extensible productivity tool designed as a fast Spotlight and Raycast alternative. Built in Rust with GPU acceleration (GPUI), it brings fast application launching, a declarative widget & theming engine, six script execution modes (including an interactive stdin/stdout GUI mode), and full Raycast script command compatibility to macOS.
 
 Compare to alternatives:
 
@@ -43,10 +42,11 @@ Compare to alternatives:
 | Memory | ~40 MB | 250 MB | ~75 MB |
 | Open Source | ✅ | ❌ | ❌ |
 | Config as Code | ✅ Plain TOML (dotfiles) | ❌ GUI only | ❌ GUI only |
+| Declarative Widgets & Theme | ✅ TOML | ❌ | ❌ |
 | Raycast Scripts | ✅ | ✅ | ❌ |
+| Interactive Script IPC (stdin/stdout) | ✅ | ❌ | ❌ |
 | C ABI Plugins | ✅ | ❌ | ❌ |
 | Cost | Free | Free / $12/mo | Free / $42 |
-| Hotkey Latency | <2ms | ~5ms | ~3ms |
 
 ---
 
@@ -97,7 +97,6 @@ cargo build --release
 ## ✨ Key Features
 
 **Performance**
-- ⚡ Sub-2ms hotkey latency (GPU-accelerated via Metal)
 - 🪶 ~40 MB memory footprint (vs 250 MB Raycast)
 
 **Compatibility**
