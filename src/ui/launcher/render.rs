@@ -323,6 +323,8 @@ impl Launcher {
             .mb(px(margin_bottom))
             .bg(rgba(Self::color(&ib.background)))
             .rounded(px(ib.corner_radius))
+            .border(px(ib.border_width))
+            .border_color(rgba(Self::color(&ib.border_color)))
             .child(
                 div()
                     .flex()
@@ -507,6 +509,14 @@ impl Launcher {
                             let is_selectable = !row.nonselectable && !is_disabled;
                             let is_toggled = toggled_indices_clone.contains(&row_idx);
 
+                            // Shrink padding by border width on the selected
+                            // row so total row height stays constant.
+                            let effective_pad_v = if is_selected && el.border_width > 0.0 {
+                                (pad_v_el - el.border_width).max(0.0)
+                            } else {
+                                pad_v_el
+                            };
+
                             let (row_bg, name_color) = if is_selected {
                                 (
                                     rgba(Self::color(&el.selected.background)),
@@ -542,10 +552,20 @@ impl Launcher {
                                     .gap_2()
                                     .w_full()
                                     .px(px(pad_h))
-                                    .py(px(pad_v_el))
+                                    .py(px(effective_pad_v))
                                     .rounded(px(el.corner_radius))
                                     .bg(row_bg)
                                     .cursor(CursorStyle::PointingHand);
+
+                                if is_selected {
+                                    row_div = row_div
+                                        .border(px(el.border_width))
+                                        .border_color(rgba(Self::color(&t.status_colors.accent)));
+                                } else if el.background != "transparent" {
+                                    row_div = row_div
+                                        .border(px(el.border_width))
+                                        .border_color(rgba(Self::color(&t.window.border_color)));
+                                }
 
                                 if multi_select_val {
                                     let toggle_icon = if is_toggled { "☑" } else { "☐" };
@@ -836,18 +856,22 @@ impl Launcher {
             } else {
                 div()
                     .w(icon_size)
+                    .h(icon_size)
                     .flex()
                     .items_center()
                     .justify_center()
+                    .text_size(icon_size)
                     .child(display.to_string())
                     .into_any()
             }
         } else {
             div()
                 .w(icon_size)
+                .h(icon_size)
                 .flex()
                 .items_center()
                 .justify_center()
+                .text_size(icon_size)
                 .child("•".to_string())
                 .into_any()
         }
@@ -1425,6 +1449,14 @@ impl Launcher {
         let pad_h = el.padding.first().copied().unwrap_or(8.0);
         let pad_v = el.padding.get(1).copied().unwrap_or(12.0);
 
+        // When a border is drawn, shrink padding by the same amount so the
+        // total row height (content + padding + border) stays constant.
+        let effective_pad_v = if is_selected && el.border_width > 0.0 {
+            (pad_v - el.border_width).max(0.0)
+        } else {
+            pad_v
+        };
+
         let desc_color = rgba(Self::color(
             el.description_color.as_deref().unwrap_or(&el.text_color),
         ));
@@ -1435,10 +1467,20 @@ impl Launcher {
             .gap_2()
             .w_full()
             .px(px(pad_h))
-            .py(px(pad_v))
+            .py(px(effective_pad_v))
             .rounded(px(el.corner_radius))
             .cursor(CursorStyle::PointingHand)
             .bg(row_bg);
+
+        if is_selected {
+            row = row
+                .border(px(el.border_width))
+                .border_color(rgba(Self::color(&t.status_colors.accent)));
+        } else if el.background != "transparent" {
+            row = row
+                .border(px(el.border_width))
+                .border_color(rgba(Self::color(&t.window.border_color)));
+        }
 
         if let Some(layout) = &el.layout {
             for slot in layout {
@@ -1536,6 +1578,11 @@ impl Launcher {
                 } else {
                     div()
                         .w(icon_size)
+                        .h(icon_size)
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .text_size(icon_size)
                         .text_color(rgba(Self::color(
                             t.inputbar
                                 .icon_color
@@ -1548,6 +1595,11 @@ impl Launcher {
             } else {
                 div()
                     .w(icon_size)
+                    .h(icon_size)
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .text_size(icon_size)
                     .text_color(rgba(Self::color(
                         t.inputbar
                             .icon_color

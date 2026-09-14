@@ -4,7 +4,7 @@
 //! recurse via `render_custom_widget`. Unknown ids are silently skipped
 //! (a warning was already emitted during registry construction).
 
-use gpui::{Context, CursorStyle, div, img, prelude::*, px, rgb};
+use gpui::{Context, CursorStyle, div, img, prelude::*, px, rgb, rgba};
 
 use crate::core::item::Target;
 use crate::core::theme::{WidgetDef, parse_hex_color, parse_hex_color_alpha};
@@ -320,8 +320,10 @@ impl Launcher {
             _ => container.items_start(),
         };
 
-        if let Some(bg) = background.and_then(parse_hex_color) {
-            container = container.bg(rgb(bg));
+        // Box backgrounds support opaque (#RRGGBB), translucent (#RRGGBBAA),
+        // and "transparent", so panels can be semi-transparent.
+        if let Some(bg) = background.and_then(parse_hex_color_alpha) {
+            container = container.bg(rgba(bg));
         }
 
         if let Some(r) = radius {

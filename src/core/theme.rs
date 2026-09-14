@@ -355,6 +355,8 @@ pub struct InputBarConfig {
     pub corner_radius: f32,
     pub icon: Option<String>,
     pub icon_color: Option<String>,
+    pub border_width: f32,
+    pub border_color: String,
 }
 
 impl Default for InputBarConfig {
@@ -370,6 +372,8 @@ impl Default for InputBarConfig {
             corner_radius: 8.0,
             icon: Some("❯".to_string()),
             icon_color: Some("#888888".to_string()),
+            border_width: 0.0,
+            border_color: "transparent".to_string(),
         }
     }
 }
@@ -667,6 +671,7 @@ impl ThemeConfig {
         resolve(&mut self.inputbar.text_color, colors);
         resolve(&mut self.inputbar.placeholder_color, colors);
         resolve_opt(&mut self.inputbar.icon_color, colors);
+        resolve(&mut self.inputbar.border_color, colors);
 
         // ListView
         resolve(&mut self.listview.empty_text_color, colors);
@@ -1084,6 +1089,48 @@ accent = "#7aa2f7"
             Some("#343b58")
         );
         assert_eq!(t.status_colors.accent, "#7aa2f7");
+    }
+
+    #[test]
+    fn example_catppuccin_mocha_theme_is_valid() {
+        let t = load_example_theme("catppuccin-mocha.toml");
+        assert_eq!(t.name, "Catppuccin Mocha");
+        // Window is 20% wider than the default; normal (1:1) icon/text sizes.
+        assert_eq!(t.window.width, 912.0);
+        assert_eq!(t.font.size, 15.0);
+        assert_eq!(t.element.icon_size, 24.0);
+        // Fully transparent window with frosted-glass blur.
+        assert_eq!(t.window.background, "transparent");
+        assert!(t.window.blur);
+        // Two EQUAL panes: horizontal mainbox with two flex custom widgets.
+        assert_eq!(t.mainbox.orientation, "horizontal");
+        assert_eq!(t.mainbox.children.len(), 2);
+        // Catppuccin palette + opaque right-pane colour.
+        assert_eq!(t.colors.get("bg").map(String::as_str), Some("#1e1e2e"));
+        assert_eq!(t.colors.get("panel").map(String::as_str), Some("#1e1e2e"));
+
+        // Both panes resolve, are equal (flex), and the tree validates.
+        let registry = crate::core::widget::WidgetRegistry::from_theme(&t.widgets);
+        assert!(registry.validate().is_ok());
+        for id in ["left_panel", "right_panel"] {
+            match registry.get(id) {
+                Some(WidgetDef::Box { flex, width, .. }) => {
+                    assert!(
+                        matches!(flex, &Some(true)),
+                        "{id} should be flex (equal panes)"
+                    );
+                    assert!(width.is_none(), "{id} should not have a fixed width");
+                }
+                other => panic!("{id} should be a Box, got {other:?}"),
+            }
+        }
+        // Right pane keeps its opaque background after resolution.
+        match registry.get("right_panel") {
+            Some(WidgetDef::Box { background, .. }) => {
+                assert_eq!(background.as_deref(), Some("#1e1e2e"));
+            }
+            other => panic!("right_panel should be a Box, got {other:?}"),
+        }
     }
 
     #[test]
