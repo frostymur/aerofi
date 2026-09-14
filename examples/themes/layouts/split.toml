@@ -1,0 +1,115 @@
+# ==============================================================================
+# Split Two-Pane Layout (Mixin)
+# ==============================================================================
+# Location: ~/.config/aerofi/themes/layouts/split.toml
+# Import via: imports = ["layouts/split.toml"]
+#
+# The window is divided into two EQUAL vertical panes:
+#   • LEFT   — fully transparent; the window's frosted-glass blur shows through.
+#              The search bar is pinned to the top.
+#   • RIGHT  — a solid, opaque background ($panel). Because it is opaque it
+#              covers the window blur behind it, so this side reads as "no blur".
+#              Holds the results list.
+#
+# Geometry:
+#   • window width = 20% larger than the 760pt default -> 912
+#   • base font size 15pt, icon size 24pt (1:1 with the row text)
+#
+# Requires the palette to define an opaque `panel` colour.
+# ==============================================================================
+
+[font]
+family = "SF Pro Text"
+size = 15.0
+fallback = ["SF Pro", "Helvetica Neue", "Arial"]
+
+[window]
+width = 912.0
+height = 480.0
+padding = 16.0
+background = "transparent"
+blur = true
+corner_radius = 18.0
+border_width = 0.0
+border_color = "$border"
+
+[mainbox]
+orientation = "horizontal"
+children = ["left_panel", "right_panel"]
+
+[inputbar]
+height = 46.0
+padding = [10.0, 14.0]
+margin = [0.0, 0.0, 0.0, 0.0]
+background = "$surface"
+text_color = "$text"
+placeholder = "Search apps, scripts, commands…"
+placeholder_color = "$subtle"
+corner_radius = 10.0
+icon = "❯"
+icon_color = "$accent"
+
+[listview]
+columns = 1
+spacing = 8.0
+scrollbar = false
+empty_text = "No matching results"
+empty_text_color = "$subtle"
+
+[listview.category_badge]
+show = false
+color = "$subtle"
+
+[listview.alias_badge]
+show = false
+color = "$accent"
+
+[element]
+padding = [8.0, 12.0]
+corner_radius = 8.0
+background = "transparent"
+text_color = "$text"
+description_color = "$subtle"
+show_icons = true
+icon_size = 24.0
+icon_gap = 8.0
+border_width = 0.0
+icon_radius = 6.0
+layout = ["icon", "name", "spacer"]
+
+[element.selected]
+background = "$accent"
+text_color = "#1e1e2e"
+description_color = "#1e1e2e"
+
+[element.hover]
+background = "$surface2"
+text_color = "$text"
+description_color = "$subtle"
+
+# ------------------------------------------------------------------------------
+# Left pane: fully transparent (window blur shows through), search bar on top.
+# ------------------------------------------------------------------------------
+[widgets.left_panel]
+type = "box"
+orientation = "vertical"
+flex = true
+gap = 12.0
+padding = [4.0, 8.0]
+children = ["InputBar", "panel_spacer"]
+
+# ------------------------------------------------------------------------------
+# Right pane: opaque background (hides the blur) holding the results list.
+# ------------------------------------------------------------------------------
+[widgets.right_panel]
+type = "box"
+orientation = "vertical"
+flex = true
+gap = 8.0
+padding = [8.0, 10.0]
+background = "$panel"
+radius = 14.0
+children = ["ListView"]
+
+[widgets.panel_spacer]
+type = "spacer"

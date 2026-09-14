@@ -28,13 +28,28 @@ A compact 4-column icon tile grid layout styled with the Tokyo Night palette.
 
 ---
 
-### 4. 🧩 Modular Themes, Mixins & Widgets
+### 4. Catppuccin Mocha (`catppuccin-mocha.toml`)
+The [Catppuccin Mocha](https://catppuccin.com) palette in a **split two-pane layout**:
+a fully transparent left pane (search bar on top) and a solid right pane for the
+results list. The window is a frosted-glass blur; the opaque right pane covers it,
+so only the left side reads as blurred.
+
+- **Layout**: Two equal panes side by side (search left, results right)
+- **Window**: 912pt wide (20% larger than the default), fully transparent + blurred
+- **Right pane**: Opaque background (hides the window blur → "no blur" on that side)
+- **Accents**: Latte blue (`#89b4fa`), Mauve (`#cba6f7`), Sage green (`#a6e3a1`)
+
+---
+
+### 5. 🧩 Modular Themes, Mixins & Widgets
 **Every bundled theme is modular** — a thin file that composes reusable mixins via the top-level `imports = [...]` array. The building blocks:
 
 - **`colors/tokyo-night.toml`**: Standalone Tokyo Night palette and status color definitions.
 - **`colors/gruvbox.toml`**: Standalone Gruvbox Dark palette and status color definitions.
+- **`colors/catppuccin-mocha.toml`**: Standalone Catppuccin Mocha palette, including an opaque `panel` colour for the split layout's right pane.
 - **`layouts/compact.toml`**: Reusable single-column list layout geometry and styling.
 - **`layouts/grid.toml`**: Reusable 4-column tile grid layout geometry.
+- **`layouts/split.toml`**: Reusable two-pane layout — a transparent search pane on the left and a translucent results pane on the right.
 - **`widgets/header-bar.toml`**: A header bar (logo + brand) as reusable custom widgets.
 - **`widgets/footer-bar.toml`**: A footer bar (hint + quick-action buttons) as reusable custom widgets.
 
@@ -66,6 +81,11 @@ theme = "gruvbox"
 #### To use Tokyo Night Grid:
 ```toml
 theme = "tokyo-night-grid"
+```
+
+#### To use Catppuccin Mocha (split two-pane):
+```toml
+theme = "catppuccin-mocha"
 ```
 
 #### To use the built-in default theme:

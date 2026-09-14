@@ -1,0 +1,41 @@
+# ==============================================================================
+# Catppuccin Mocha Color Palette (Mixin)
+# ==============================================================================
+# Location: ~/.config/aerofi/themes/colors/catppuccin-mocha.toml
+# Import via: imports = ["colors/catppuccin-mocha.toml"]
+#
+# Official Catppuccin Mocha colors (https://catppuccin.com). Mapped onto
+# aerofi's named slots. `panel` is the opaque background of the split layout's
+# right pane (an opaque fill also hides the window blur behind it, so the
+# right side reads as "no blur" while the transparent left side shows it).
+# ==============================================================================
+
+[colors]
+bg       = "#1e1e2e"  # base
+surface  = "#313244"  # surface0
+surface2 = "#45475a"  # surface1
+border   = "#585b7066"  # surface2 @ 40%
+text     = "#cdd6f4"  # text
+subtle   = "#a6adc8"  # subtext0
+accent   = "#89b4fa"  # blue
+green    = "#a6e3a1"  # green
+urgent   = "#f38ba8"  # red
+orange   = "#fab387"  # peach
+purple   = "#cba6f7"  # mauve
+cyan     = "#74c7ec"  # sapphire
+panel    = "#1e1e2e"  # base, opaque (right pane background; hides the blur)
+
+[status_colors]
+urgent_background     = "$urgent"
+urgent_text           = "#1e1e2e"
+urgent_row_background = "#f38ba822"
+active_background     = "$green"
+active_text           = "#1e1e2e"
+active_row_background = "#a6e3a122"
+accent                = "$accent"
+muted                 = "$subtle"
+
+[toast]
+running_dot = "$accent"
+success_dot = "$green"
+error_dot   = "$urgent"
