@@ -12,6 +12,12 @@ use crate::core::item::{ScriptMode, Target};
 /// back to `sh` (the scanner accepts shell-extension files regardless of
 /// the executable bit).
 pub fn script_command(path: &Path) -> Command {
+    let mut cmd = base_script_command(path);
+    augment_script_path(&mut cmd);
+    cmd
+}
+
+fn base_script_command(path: &Path) -> Command {
     let content = std::fs::read_to_string(path).ok();
     if let Some(content) = content
         && let Some(first) = content.lines().next()
@@ -37,6 +43,38 @@ pub fn script_command(path: &Path) -> Command {
         cmd.arg(path);
         cmd
     }
+}
+
+/// Prepend the Homebrew bin dirs to `PATH` for a spawned script.
+///
+/// When aerofi runs as a launchd/brew service its `PATH` is minimal
+/// (`/usr/bin:/bin:/usr/sbin:/sbin`), so a script's `#!/usr/bin/env python3`
+/// shebang resolves to the old system Python rather than the user's Homebrew
+/// one (and similarly for node, ripgrep, etc.). Prepending the Homebrew
+/// prefixes — when present and not already on the path — restores the user's
+/// toolchain for spawned scripts.
+fn augment_script_path(cmd: &mut Command) {
+    let current = std::env::var("PATH").unwrap_or_default();
+    if let Some(path) = augmented_path(&current) {
+        cmd.env("PATH", path);
+    }
+}
+
+/// Return a `PATH` with the Homebrew bin dirs prepended (when present and not
+/// already listed), or `None` when no change is needed.
+fn augmented_path(current: &str) -> Option<String> {
+    let existing: Vec<&str> = current.split(':').filter(|p| !p.is_empty()).collect();
+    let extra: Vec<&str> = ["/opt/homebrew/bin", "/usr/local/bin"]
+        .iter()
+        .copied()
+        .filter(|dir| Path::new(*dir).is_dir() && !existing.contains(dir))
+        .collect();
+    if extra.is_empty() {
+        return None;
+    }
+    let mut combined = extra;
+    combined.extend(existing);
+    Some(combined.join(":"))
 }
 
 /// Run the given target asynchronously or detached.
@@ -168,5 +206,33 @@ mod tests {
             path.to_string_lossy().into_owned()
         );
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn augmented_path_prepends_homebrew_and_keeps_original() {
+        // Only meaningful on a machine that has a Homebrew prefix.
+        let homebrew = std::path::Path::new("/opt/homebrew/bin");
+        if !homebrew.is_dir() && !std::path::Path::new("/usr/local/bin").is_dir() {
+            return;
+        }
+        let current = "/usr/bin:/bin:/usr/sbin:/sbin";
+        let result = augmented_path(current).expect("expected a change");
+        let expected_prefix = if homebrew.is_dir() {
+            "/opt/homebrew/bin:"
+        } else {
+            "/usr/local/bin:"
+        };
+        assert!(result.starts_with(expected_prefix), "got {result}");
+        assert!(result.ends_with(current), "got {result}");
+        let parts: Vec<&str> = result.split(':').collect();
+        let unique: std::collections::HashSet<_> = parts.iter().copied().collect();
+        assert_eq!(parts.len(), unique.len(), "duplicate entries in {result}");
+    }
+
+    #[test]
+    fn augmented_path_none_when_prefixes_already_present() {
+        // Both prefixes already listed → nothing to add → None.
+        let current = "/opt/homebrew/bin:/usr/local/bin:/usr/bin";
+        assert!(augmented_path(current).is_none());
     }
 }
