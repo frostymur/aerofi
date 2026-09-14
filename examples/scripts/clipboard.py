@@ -14,6 +14,8 @@ Powered by the clipy daemon (https://crates.io/crates/clipy) with a
 pbcopy/pbpaste fallback. Enter copies, Tab multi-selects, Ctrl+D deletes.
 """
 
+from __future__ import annotations
+
 import html
 import json
 import os

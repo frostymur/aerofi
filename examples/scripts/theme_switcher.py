@@ -18,8 +18,12 @@ import html
 import os
 import re
 import sys
-import tomllib
 from pathlib import Path
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python < 3.11 (e.g. the macOS system 3.9)
+    tomllib = None
 
 BUILTIN = {
     "slug": "default",
@@ -40,6 +44,36 @@ FALLBACKS = {
 }
 
 
+def _toml_load(path: Path) -> dict:
+    """Load a TOML file; fall back to a minimal parser on Python < 3.11."""
+    if tomllib is not None:
+        with open(path, "rb") as fh:
+            return tomllib.load(fh)
+    data: dict = {}
+    current: dict = data
+    with open(path, "r", encoding="utf-8") as fh:
+        for raw in fh:
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            if line.startswith("[") and line.endswith("]"):
+                current = data.setdefault(line[1:-1].strip(), {})
+                continue
+            if "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            key = key.strip().strip('"')
+            value = value.strip()
+            if value and value[0] in "\"'":
+                quote = value[0]
+                end = value.find(quote, 1)
+                value = value[1:end] if end != -1 else value[1:]
+            else:
+                value = value.split("#", 1)[0].strip()
+            current[key] = value
+    return data
+
+
 def config_dir() -> Path:
     xdg = os.environ.get("XDG_CONFIG_HOME")
     base = Path(xdg) if xdg else Path.home() / ".config"
@@ -48,8 +82,7 @@ def config_dir() -> Path:
 
 def current_theme(config_file: Path) -> str:
     try:
-        with open(config_file, "rb") as fh:
-            cfg = tomllib.load(fh)
+        cfg = _toml_load(config_file)
         theme = cfg.get("theme")
         return str(theme) if isinstance(theme, str) and theme else "default"
     except Exception:
@@ -89,8 +122,7 @@ def parse_theme_file(path: Path) -> dict:
         "colors": dict(FALLBACKS),
     }
     try:
-        with open(path, "rb") as fh:
-            data = tomllib.load(fh)
+        data = _toml_load(path)
     except Exception:
         return theme
 
