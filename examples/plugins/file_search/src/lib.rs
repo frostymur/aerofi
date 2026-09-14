@@ -150,7 +150,9 @@ fn search_files(query: &str) -> Vec<String> {
         return Vec::new();
     }
 
-    // 1. Try Spotlight `mdfind`
+    // 1. Try Spotlight `mdfind`. Only trust it when it actually returns
+    // matches — on machines where Spotlight indexing is disabled, `mdfind`
+    // exits 0 with empty output, so we must fall through to `fd`/`find`.
     if let Ok(out) = Command::new("mdfind").arg("-name").arg(query).output()
         && out.status.success()
     {
