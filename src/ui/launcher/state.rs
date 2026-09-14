@@ -441,7 +441,7 @@ impl Launcher {
 
         if let Some((plugin, remainder)) = self.plugin_manager.match_prefix(&self.query) {
             let remainder = remainder.to_string();
-            
+
             if let Some(cx) = cx {
                 let plugin = plugin.clone();
                 let view = cx.entity();
@@ -449,18 +449,18 @@ impl Launcher {
                 let (tx, rx) = futures::channel::oneshot::channel();
                 let plugin_clone = plugin.clone();
                 let remainder_str = remainder.to_string();
-                
+
                 std::thread::Builder::new()
                     .name("aerofi-plugin-search".into())
                     .spawn(move || {
                         let results = plugin_clone.query(&remainder_str);
-                        
+
                         let items = if results.count == 0 || results.items.is_null() {
                             &[]
                         } else {
                             unsafe { std::slice::from_raw_parts(results.items, results.count) }
                         };
-                        
+
                         let mut parsed = Vec::with_capacity(results.count);
                         for item in items {
                             let name = if item.title.is_null() {
@@ -469,7 +469,7 @@ impl Launcher {
                                 let c_str = unsafe { std::ffi::CStr::from_ptr(item.title) };
                                 gpui::SharedString::from(c_str.to_string_lossy().into_owned())
                             };
-            
+
                             let subtitle = if item.subtitle.is_null() {
                                 None
                             } else {
@@ -478,7 +478,7 @@ impl Launcher {
                                     c_str.to_string_lossy().into_owned(),
                                 ))
                             };
-            
+
                             let icon = if item.icon.is_null() {
                                 None
                             } else {
@@ -487,14 +487,14 @@ impl Launcher {
                                     c_str.to_string_lossy().into_owned(),
                                 ))
                             };
-            
+
                             let plugin_id = if item.id.is_null() {
                                 gpui::SharedString::from("")
                             } else {
                                 let c_str = unsafe { std::ffi::CStr::from_ptr(item.id) };
                                 gpui::SharedString::from(c_str.to_string_lossy().into_owned())
                             };
-                            
+
                             parsed.push(Target::PluginItem {
                                 name,
                                 subtitle,
@@ -503,25 +503,26 @@ impl Launcher {
                                 plugin_name: gpui::SharedString::from(plugin.name.clone()),
                             });
                         }
-                        
+
                         plugin.free_results(results);
                         let _ = tx.send(parsed);
-                    }).unwrap();
+                    })
+                    .unwrap();
 
                 self.plugin_search_task = Some(cx.spawn(|_, _: &mut gpui::AsyncApp| async move {
                     if let Ok(parsed_items) = rx.await {
-                        let _ = cx_async.update(|cx| {
-                        view.update(cx, |this, cx| {
-                            this.all.truncate(this.base_count);
-                            this.all.extend(parsed_items);
-                            this.filtered = (this.base_count..this.all.len()).collect();
-                            if this.selected >= this.filtered.len() {
-                                this.selected = 0;
-                            }
-                            this.list.scroll_to_item(0, ScrollStrategy::Top);
-                            cx.notify();
+                        cx_async.update(|cx| {
+                            view.update(cx, |this, cx| {
+                                this.all.truncate(this.base_count);
+                                this.all.extend(parsed_items);
+                                this.filtered = (this.base_count..this.all.len()).collect();
+                                if this.selected >= this.filtered.len() {
+                                    this.selected = 0;
+                                }
+                                this.list.scroll_to_item(0, ScrollStrategy::Top);
+                                cx.notify();
+                            });
                         });
-                    });
                     }
                 }));
             } else {
@@ -1300,13 +1301,11 @@ impl Launcher {
                 self.gui_jump_to_edge(false);
                 LauncherAction::None
             }
-            ("left", false, false, false, false)
-            | ("b", false, true, false, false) => {
+            ("left", false, false, false, false) | ("b", false, true, false, false) => {
                 self.gui_move_selection(-1);
                 LauncherAction::None
             }
-            ("right", false, false, false, false)
-            | ("f", false, true, false, false) => {
+            ("right", false, false, false, false) | ("f", false, true, false, false) => {
                 self.gui_move_selection(1);
                 LauncherAction::None
             }
