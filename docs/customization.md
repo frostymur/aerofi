@@ -184,10 +184,16 @@ width = 660.0
 ### Font & Typography
 ```toml
 [font]
-family = "SF Pro Text"                                    # Font family name
+family = "SF Pro Text"                                    # Font family name (applies to the whole UI)
 size = 15.0                                              # Base size in points
 fallback = ["SF Pro", "SF Mono", "Helvetica Neue", "Arial"] # Fallback glyph fonts
 ```
+
+`family` is any font installed on your system. To use a font you haven't
+installed, drop its `.ttf`/`.otf`/`.ttc` file into `~/.config/aerofi/fonts/`
+and restart aerofi — it's registered with the text system at startup and can
+be referenced by its real family name. Monospace code blocks in script output
+always use a monospace face (`JetBrains Mono`).
 
 ### Window & Frosted Glassmorphism
 ```toml

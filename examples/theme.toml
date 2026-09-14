@@ -27,7 +27,9 @@ author = "aerofi"
 # [font] - Typography Settings
 # ------------------------------------------------------------------------------
 [font]
-# Primary font family. System fonts or installed user fonts are supported.
+# Primary font family, applied to the whole UI. System fonts, fonts you
+# install, and files dropped in ~/.config/aerofi/fonts/ (loaded at startup)
+# are all supported.
 # Type: String
 # Default: "SF Pro Text"
 family = "SF Pro Text"

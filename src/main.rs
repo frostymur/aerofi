@@ -85,6 +85,12 @@ fn main() {
         // Extract native app icons now that the Objective-C run loop is
         // active and MainThreadMarker is available.
         sys::icons::extract_all(&mut targets);
+        // Register bundled fonts (~/.config/aerofi/fonts/) before the first
+        // render so a theme's [font] family can reference them.
+        let bundled = sys::fonts::load_custom_fonts(cx);
+        if bundled > 0 {
+            println!("aerofi: registered {bundled} bundled font(s)");
+        }
         let theme = core::theme::load_theme(&app_config.theme);
         let toggle_hotkey = app_config.bindings.toggle.clone();
         let view =

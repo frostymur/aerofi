@@ -139,6 +139,7 @@ impl Render for Launcher {
             .flex_col()
             .bg(rgba(Self::color(&t.window.background)))
             .text_color(rgba(Self::color(&t.element.text_color)))
+            .font_family(t.font.family.as_str())
             .text_size(px(t.font.size))
             .rounded(px(t.window.corner_radius))
             .overflow_hidden();
