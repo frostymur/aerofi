@@ -137,7 +137,7 @@ def clean(value: str) -> str:
     return value.replace("\x00", " ").replace("\x1f", " ").replace("\r", " ").replace("\n", " ")
 
 
-def emit_frame(themes: list[dict], active_slug: str) -> None:
+def emit_frame(themes: list[dict]) -> None:
     out = [
         "\0prompt\x1fSearch themes…",
         "\0no-custom\x1ftrue",
@@ -148,8 +148,6 @@ def emit_frame(themes: list[dict], active_slug: str) -> None:
         name = html.escape(theme["name"])
         slug = theme["slug"]
         fields = f"{name}\0id\x1f{slug}\0info\x1f{swatches(theme)}\0meta\x1f{clean(theme['name'] + ' ' + slug + ' theme')}"
-        if slug == active_slug:
-            fields += "\0active\x1ftrue"
         out.append(fields)
     out.append("\0flush")
     sys.stdout.write("\n".join(out) + "\n")
@@ -175,7 +173,7 @@ def main() -> None:
     themes = discover(config)
     themes.sort(key=lambda t: (t["slug"] != active, t["name"].lower()))
 
-    emit_frame(themes, active)
+    emit_frame(themes)
 
     by_slug = {t["slug"]: t for t in themes}
 
@@ -190,10 +188,10 @@ def main() -> None:
             slug = event.get("id", "")
             theme = by_slug.get(slug)
             if theme is None:
-                emit_frame(themes, active)
+                emit_frame(themes)
                 continue
             if theme["slug"] == active:
-                emit_frame(themes, active)
+                emit_frame(themes)
                 continue
             if set_theme(config_file, theme["slug"]):
                 sys.stdout.write("\0reload\x1ftrue\n\0flush\n")
@@ -201,7 +199,7 @@ def main() -> None:
             break
 
         # Any other event: keep the frame alive.
-        emit_frame(themes, active)
+        emit_frame(themes)
 
 
 if __name__ == "__main__":
