@@ -229,6 +229,21 @@ description_color = "$subtle"
 show_icons = true
 icon_size = 22.0
 
+# Gap between the icon and the name inside a grid cell (points).
+# Type: Float (f32)
+# Default: 6.0
+icon_gap = 6.0
+
+# Border drawn around each item. 0.0 = borderless tile.
+# Type: Float (f32)
+# Default: 1.0
+border_width = 1.0
+
+# Corner radius applied to the item's icon image.
+# Type: Float (f32)
+# Default: 4.0
+icon_radius = 4.0
+
 # Row internal slot layout order.
 # Type: Array of Strings (Optional)
 # Available slot identifiers:

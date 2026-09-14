@@ -1305,7 +1305,11 @@ impl Launcher {
         let icon_size = px(el.icon_size);
         let icon_element = if el.show_icons {
             let inner = if let Some(path) = item.icon_path() {
-                img(path).w(icon_size).h(icon_size).rounded_sm().into_any()
+                img(path)
+                    .w(icon_size)
+                    .h(icon_size)
+                    .rounded(px(el.icon_radius))
+                    .into_any()
             } else {
                 let fallback = item.icon().unwrap_or("•");
                 let is_image = fallback.starts_with('/')
@@ -1321,7 +1325,7 @@ impl Launcher {
                     img(std::path::PathBuf::from(p))
                         .w(icon_size)
                         .h(icon_size)
-                        .rounded_sm()
+                        .rounded(px(el.icon_radius))
                         .into_any()
                 } else {
                     div()
@@ -1364,7 +1368,7 @@ impl Launcher {
             .flex_col()
             .items_center()
             .justify_center()
-            .gap(px(6.0))
+            .gap(px(el.icon_gap))
             .py(px(pad_v))
             .px(px(pad_h))
             .rounded(px(el.corner_radius))
@@ -1374,11 +1378,11 @@ impl Launcher {
 
         if is_selected {
             cell_div = cell_div
-                .border_1()
+                .border(px(el.border_width))
                 .border_color(rgba(Self::color(&t.status_colors.accent)));
         } else if el.background != "transparent" {
             cell_div = cell_div
-                .border_1()
+                .border(px(el.border_width))
                 .border_color(rgba(Self::color(&t.window.border_color)));
         }
 
@@ -1496,7 +1500,11 @@ impl Launcher {
         let icon_size = px(el.icon_size);
         if el.show_icons {
             if let Some(path) = item.icon_path() {
-                img(path).w(icon_size).h(icon_size).rounded_sm().into_any()
+                img(path)
+                    .w(icon_size)
+                    .h(icon_size)
+                    .rounded(px(el.icon_radius))
+                    .into_any()
             } else if let Some(icon_str) = item.icon() {
                 let is_image = icon_str.starts_with('/')
                     || icon_str.starts_with('~')
@@ -1522,7 +1530,7 @@ impl Launcher {
                     img(resolved)
                         .w(icon_size)
                         .h(icon_size)
-                        .rounded_sm()
+                        .rounded(px(el.icon_radius))
                         .into_any()
                 } else {
                     div()

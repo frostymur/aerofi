@@ -509,6 +509,12 @@ pub struct ElementConfig {
     pub description_color: Option<String>,
     pub show_icons: bool,
     pub icon_size: f32,
+    /// Gap between the icon and the name inside a grid cell (points).
+    pub icon_gap: f32,
+    /// Border drawn around an item: `0.0` for a borderless tile.
+    pub border_width: f32,
+    /// Corner radius applied to the item's icon image.
+    pub icon_radius: f32,
     pub layout: Option<Vec<String>>,
     pub selected: SelectedState,
     pub hover: Option<HoverState>,
@@ -524,6 +530,9 @@ impl Default for ElementConfig {
             description_color: Some("#888888".to_string()),
             show_icons: true,
             icon_size: 24.0,
+            icon_gap: 6.0,
+            border_width: 1.0,
+            icon_radius: 4.0,
             layout: Some(vec![
                 "icon".to_string(),
                 "name".to_string(),
@@ -1068,6 +1077,17 @@ accent = "#7aa2f7"
             Some("#343b58")
         );
         assert_eq!(t.status_colors.accent, "#7aa2f7");
+    }
+
+    #[test]
+    fn element_config_item_fields_default_when_absent() {
+        // icon_gap / border_width / icon_radius are optional and fall back to
+        // defaults when a theme omits them (backward compatible).
+        let el: ElementConfig = toml::from_str("icon_size = 40.0").unwrap();
+        assert_eq!(el.icon_size, 40.0);
+        assert_eq!(el.icon_gap, 6.0);
+        assert_eq!(el.border_width, 1.0);
+        assert_eq!(el.icon_radius, 4.0);
     }
 
     #[test]
