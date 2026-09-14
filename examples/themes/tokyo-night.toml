@@ -44,11 +44,11 @@ empty_text = "No matching results"
 empty_text_color = "$subtle"
 
 [listview.category_badge]
-enabled = true
+show = true
 color = "$subtle"
 
 [listview.alias_badge]
-enabled = true
+show = true
 color = "$accent"
 
 [element]
