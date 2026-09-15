@@ -70,6 +70,17 @@ impl SearchIndex {
         self.hay_buf.clear();
         self.scored_buf.clear();
         out_filtered.clear();
+
+        // nucleo lowercases the haystack when matching (ignore_case) but
+        // compares needle characters verbatim. An uppercase needle char can
+        // then pass the prefilter (which matches it case-sensitively) and
+        // still fail inside the optimal matcher, which panics with
+        // "should have been caught by prefilter". Lowercasing the query
+        // keeps the needle consistent with the normalized haystack.
+        let mut lower_query = String::new();
+        lower_query.extend(query.chars().flat_map(|c| c.to_lowercase()));
+        let query = lower_query.as_str();
+
         let needle = Utf32Str::new(query, &mut self.needle_buf);
         let frecency_map = history.calculate_frecency_map();
         for (i, target) in targets.iter().enumerate() {
@@ -165,6 +176,29 @@ mod tests {
         let mut results = Vec::new();
         idx.search(query, targets, history, &mut results);
         results.into_iter().map(|i| targets[i].clone()).collect()
+    }
+
+    /// Uppercase letters in the query used to abort the process: nucleo
+    /// lowercases the haystack (ignore_case) but compares needle bytes
+    /// verbatim, so an uppercase needle char could pass the prefilter and
+    /// still fail inside the optimal matcher ("should have been caught by
+    /// prefilter" panic).
+    #[test]
+    fn uppercase_query_does_not_panic_and_matches() {
+        let mut idx = SearchIndex::new(&HashMap::new());
+        let history = empty_history();
+        let targets = [
+            target("Safari"),
+            target("Chrome"),
+            target("Calculator"),
+            target("Terminal"),
+        ];
+        for q in ["Sa", "Ch", "Ca", "Te", "SAFARI", "sA", "cH"] {
+            let results = search_helper(&mut idx, &history, &targets, q);
+            assert!(!results.is_empty(), "query {q:?} should match something");
+        }
+        let results = search_helper(&mut idx, &history, &targets, "Sa");
+        assert_eq!(names(&results)[0], "Safari");
     }
 
     /// A launch recorded "just now" (100 frecency points).
