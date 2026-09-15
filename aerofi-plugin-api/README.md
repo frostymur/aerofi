@@ -1,5 +1,9 @@
 # aerofi-plugin-api
 
+[![crates.io](https://img.shields.io/crates/v/aerofi-plugin-api.svg)](https://crates.io/crates/aerofi-plugin-api)
+[![docs.rs](https://img.shields.io/badge/docs.rs-aerofi--plugin--api-4D77CF.svg)](https://docs.rs/aerofi-plugin-api)
+[![license: MIT](https://img.shields.io/badge/license-MIT-lightgrey.svg)](../LICENSE)
+
 C ABI for [aerofi](https://github.com/frostymur/aerofi) launcher plugins.
 
 aerofi extends through native shared libraries (`.dylib` on macOS) loaded at

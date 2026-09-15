@@ -1,6 +1,6 @@
 # Example aerofi Native Plugins (Modi)
 
-This directory contains reference implementations of dynamic C ABI plugins for aerofi:
+This directory contains reference implementations of dynamic C ABI plugins for aerofi. The plugin API is published as the [`aerofi-plugin-api`](https://crates.io/crates/aerofi-plugin-api) crate — these examples use a workspace `path` dependency instead. Full guide: [docs/plugins.md](../../docs/plugins.md).
 
 1. **`web_search`**:
    - **Trigger prefix:** `g ` (e.g. `g rust async`)
