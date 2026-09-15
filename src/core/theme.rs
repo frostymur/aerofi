@@ -1103,12 +1103,13 @@ accent = "#7aa2f7"
         let t = load_example_theme("tokyo-night-grid.toml");
         assert_eq!(t.name, "Tokyo Night Grid");
         assert_eq!(t.window.width, 750.0);
-        assert_eq!(t.window.height, 350.0);
+        assert_eq!(t.window.height, 440.0);
         assert_eq!(t.listview.columns, 4);
-        // Rofi-ported grid: borderless tiles, 10px radius, 48px icons, 15px gap.
+        // Rofi-ported grid: borderless tiles, 10px radius, 72px icons, 15px gap.
+        assert_eq!(t.font.size, 15.0);
         assert_eq!(t.element.background, "transparent");
         assert_eq!(t.element.corner_radius, 10.0);
-        assert_eq!(t.element.icon_size, 48.0);
+        assert_eq!(t.element.icon_size, 72.0);
         assert_eq!(t.element.icon_gap, 15.0);
         assert_eq!(t.element.border_width, 0.0);
         assert_eq!(t.colors.get("bg").map(String::as_str), Some("#1a1b26f4"));
@@ -1127,8 +1128,9 @@ accent = "#7aa2f7"
         assert_eq!(t.window.width, 912.0);
         assert_eq!(t.font.size, 15.0);
         assert_eq!(t.element.icon_size, 24.0);
-        // Fully transparent window with frosted-glass blur.
-        assert_eq!(t.window.background, "transparent");
+        // Tinted blur: base colour at 75% opacity over frosted glass.
+        assert_eq!(t.window.background, "#1e1e2e");
+        assert_eq!(t.window.background_opacity, Some(0.75));
         assert!(t.window.blur);
         // Two EQUAL panes: horizontal mainbox with two flex custom widgets.
         assert_eq!(t.mainbox.orientation, "horizontal");

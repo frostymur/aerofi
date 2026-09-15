@@ -926,8 +926,12 @@ impl Launcher {
         };
         let start_ix = row_ix * cols;
         let end_ix = (start_ix + cols).min(total);
+        let total_rows = total.div_ceil(cols);
 
-        let mut row = div().flex().gap(spacing).w_full().pb(spacing);
+        let mut row = div().flex().gap(spacing).w_full();
+        if row_ix + 1 < total_rows {
+            row = row.pb(spacing);
+        }
         for vis_ix in start_ix..end_ix {
             row = row.child(
                 div()
@@ -1499,8 +1503,15 @@ impl Launcher {
         let spacing = px(t.listview.spacing);
         let start_ix = row_ix * cols;
         let end_ix = (start_ix + cols).min(self.filtered.len());
+        let total_rows = self.filtered.len().div_ceil(cols);
 
-        let mut row = div().flex().gap(spacing).w_full().pb(spacing);
+        // No bottom padding on the last row: it would add dead space below
+        // the list and can push content past the viewport, which makes
+        // scroll_to_item(Nearest) snap when selecting rows below.
+        let mut row = div().flex().gap(spacing).w_full();
+        if row_ix + 1 < total_rows {
+            row = row.pb(spacing);
+        }
         for global_ix in start_ix..end_ix {
             let item = &self.all[self.filtered[global_ix]];
             let is_selected = global_ix == self.selected;
@@ -1602,6 +1613,13 @@ impl Launcher {
 
         let pad_v = el.padding.get(1).copied().unwrap_or(10.0);
         let pad_h = el.padding.first().copied().unwrap_or(8.0);
+        // Shrink padding by border width on the selected cell so the total
+        // cell height stays constant.
+        let effective_pad_v = if is_selected && el.border_width > 0.0 {
+            (pad_v - el.border_width).max(0.0)
+        } else {
+            pad_v
+        };
 
         let mut cell_div = div()
             .w_full()
@@ -1610,7 +1628,7 @@ impl Launcher {
             .items_center()
             .justify_center()
             .gap(px(el.icon_gap))
-            .py(px(pad_v))
+            .py(px(effective_pad_v))
             .px(px(pad_h))
             .rounded(px(el.corner_radius))
             .cursor(CursorStyle::PointingHand)

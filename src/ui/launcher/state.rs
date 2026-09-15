@@ -668,9 +668,15 @@ impl Launcher {
         self.refilter(None);
         // refilter() resets the scroll to the top, but the selection
         // survived the hide/show cycle — restore the view to it so the
-        // user doesn't lose their place.
-        self.list
-            .scroll_to_item(self.selected, ScrollStrategy::Nearest);
+        // user doesn't lose their place. In grid mode the list items are
+        // rows, so convert the flat selection index to a grid-row index.
+        let cols = self.effective_columns().max(1);
+        let row_ix = if cols > 1 {
+            self.selected / cols
+        } else {
+            self.selected
+        };
+        self.list.scroll_to_item(row_ix, ScrollStrategy::Nearest);
     }
 
     pub fn selected_item(&self) -> Option<&Target> {
