@@ -197,6 +197,16 @@ Event types: `select` (plain `Enter`), `action` (contextual keys: `Shift+Enter`,
 
 **Live-search mode:** when `\0live-search\x1ftrue` is set, aerofi also sends a separate `\0change\x1f<query>` line to `stdin` on every keystroke and backspace, carrying the current search text for server-side filtering (in addition to the event lines above).
 
+> [!WARNING]
+> **Bash scripts:** event lines begin with a NUL byte (`\0`), and bash variables cannot store NUL — a plain `read -r line` stops at the NUL and returns an empty string. Consume the NUL first, then read the line:
+>
+> ```bash
+> IFS= read -r -n 1 _nul   # discard the leading NUL
+> IFS= read -r event_line  # read the rest of the event line
+> ```
+>
+> Python scripts are unaffected: strip it with `line.lstrip("\x00")`.
+
 Fields in the event line (separated by `\x1f`, prefixed with the field name and `:`):
 - `key`: Key pressed (`"enter"`, `"shift+enter"`, `"alt+enter"`, `"ctrl+d"`, or `"custom"` — `kb-custom-N` bindings always report `key:custom`, with the binding number encoded in `retv`).
 - `index`: 0-based index of the highlighted row in the last emitted frame.

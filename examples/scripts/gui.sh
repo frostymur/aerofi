@@ -22,7 +22,10 @@ printf "<span foreground=\"#9ece6a\" weight=\"bold\">Second Option</span>\0icon\
 printf "<span foreground=\"#f7768e\" weight=\"bold\">Third Option</span>\0icon\x1femoji:🔥\x1finfo\x1fDanger\x1fmeta\x1fthird option\n"
 printf "\0flush\n"
 
-# Read user event from stdin
-read -r event_line
+# Read user event from stdin. aerofi prefixes event lines with a NUL
+# byte and bash variables cannot hold NUL, so consume it first, then
+# read the rest of the line.
+IFS= read -r -n 1 _nul
+IFS= read -r event_line
 # Upon selection, perform action or exit
 exit 0
