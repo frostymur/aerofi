@@ -186,6 +186,7 @@ width = 660.0
 [font]
 family = "SF Pro Text"                                    # Font family name (applies to the whole UI)
 size = 15.0                                              # Base size in points
+weight = "500"                                           # Weight: a name ("bold", "medium") or a number, 100–900
 fallback = ["SF Pro", "SF Mono", "Helvetica Neue", "Arial"] # Fallback glyph fonts
 ```
 
@@ -371,7 +372,7 @@ Widgets are defined either using table syntax `[widgets.<id>]` or array syntax `
 | Type | Description | Key Properties |
 |---|---|---|
 | **`box`** | Container for grouping widgets | `orientation` ("horizontal" / "vertical"), `gap`, `padding`, `align` ("left", "center", "end"), `background`, `radius`, `width`, `height`, `flex`, `children` |
-| **`text`** | Static typography label | `text`, `color`, `font_size`, `font_weight`, `align` |
+| **`text`** | Static typography label | `text`, `color`, `font_size`, `font_weight` (name or number 100–900), `align` |
 | **`icon`** | Symbol or emoji | `icon`, `size`, `color` |
 | **`image`** | Image asset | `path`, `width`, `height`, `radius` |
 | **`spacer`** | Flexible expanding space | Expands horizontally or vertically to push siblings apart |

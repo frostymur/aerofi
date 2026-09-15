@@ -8,7 +8,9 @@ use gpui::{
 use crate::core::item::Target;
 use crate::core::theme::{BuiltinWidget, Widget, parse_hex_color_alpha};
 
-use super::helpers::{apply_md_style, expand_tilde_path, format_combo, is_primary_click};
+use super::helpers::{
+    apply_md_style, expand_tilde_path, format_combo, is_primary_click, resolve_font_weight,
+};
 use super::state::Launcher;
 use super::types::LauncherState;
 
@@ -141,6 +143,10 @@ impl Render for Launcher {
             .text_color(rgba(Self::color(&t.element.text_color)))
             .font_family(t.font.family.as_str())
             .text_size(px(t.font.size))
+            .font_weight(match t.font.weight.as_ref() {
+                Some(w) => resolve_font_weight(&w.as_str()),
+                None => gpui::FontWeight::NORMAL,
+            })
             .rounded(px(t.window.corner_radius))
             .overflow_hidden();
 

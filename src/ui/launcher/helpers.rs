@@ -13,6 +13,28 @@ pub(super) fn apply_md_style(mut el: gpui::Div, style: &gpui::TextStyle) -> gpui
     el
 }
 
+/// Resolve a theme font-weight spec to a GPUI [`gpui::FontWeight`].
+/// Accepts CSS-style names (`"bold"`, `"semibold"`, …) or a numeric value
+/// (`"700"`, `"550"`, `100`–`900`); unknown values fall back to normal.
+pub(super) fn resolve_font_weight(spec: &str) -> gpui::FontWeight {
+    let s = spec.trim().to_ascii_lowercase().replace(['-', ' '], "");
+    match s.as_str() {
+        "thin" => gpui::FontWeight::THIN,
+        "extralight" => gpui::FontWeight::EXTRA_LIGHT,
+        "light" => gpui::FontWeight::LIGHT,
+        "normal" | "regular" => gpui::FontWeight::NORMAL,
+        "medium" => gpui::FontWeight::MEDIUM,
+        "semibold" => gpui::FontWeight::SEMIBOLD,
+        "bold" => gpui::FontWeight::BOLD,
+        "extrabold" => gpui::FontWeight::EXTRA_BOLD,
+        "black" | "heavy" => gpui::FontWeight::BLACK,
+        _ => s
+            .parse::<f32>()
+            .map(gpui::FontWeight::from)
+            .unwrap_or(gpui::FontWeight::NORMAL),
+    }
+}
+
 /// True for a left-mouse-button click (keyboard/touch-generated clicks
 /// are ignored).
 pub(super) fn is_primary_click(event: &gpui::ClickEvent) -> bool {
@@ -126,4 +148,45 @@ pub(super) fn combo_matches(combo: &str, ks: &gpui::Keystroke) -> bool {
         && want_alt == ks.modifiers.alt
         && want_shift == ks.modifiers.shift;
     key_matches && mods_match
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui::FontWeight;
+
+    #[test]
+    fn resolves_named_font_weights() {
+        assert_eq!(resolve_font_weight("thin"), FontWeight::THIN);
+        assert_eq!(resolve_font_weight("light"), FontWeight::LIGHT);
+        assert_eq!(resolve_font_weight("normal"), FontWeight::NORMAL);
+        assert_eq!(resolve_font_weight("regular"), FontWeight::NORMAL);
+        assert_eq!(resolve_font_weight("medium"), FontWeight::MEDIUM);
+        assert_eq!(resolve_font_weight("semibold"), FontWeight::SEMIBOLD);
+        assert_eq!(resolve_font_weight("bold"), FontWeight::BOLD);
+        assert_eq!(resolve_font_weight("black"), FontWeight::BLACK);
+        assert_eq!(resolve_font_weight("heavy"), FontWeight::BLACK);
+    }
+
+    #[test]
+    fn resolves_numeric_font_weights() {
+        assert_eq!(resolve_font_weight("100"), FontWeight::THIN);
+        assert_eq!(resolve_font_weight("400"), FontWeight::NORMAL);
+        assert_eq!(resolve_font_weight("550"), FontWeight(550.0));
+        assert_eq!(resolve_font_weight("700"), FontWeight::BOLD);
+        assert_eq!(resolve_font_weight("900"), FontWeight::BLACK);
+    }
+
+    #[test]
+    fn resolves_hyphenated_and_case_insensitive() {
+        assert_eq!(resolve_font_weight("Extra-Light"), FontWeight::EXTRA_LIGHT);
+        assert_eq!(resolve_font_weight("SEMI-BOLD"), FontWeight::SEMIBOLD);
+        assert_eq!(resolve_font_weight("Extra Bold"), FontWeight::EXTRA_BOLD);
+    }
+
+    #[test]
+    fn falls_back_to_normal_for_unknown() {
+        assert_eq!(resolve_font_weight("chunky"), FontWeight::NORMAL);
+        assert_eq!(resolve_font_weight(""), FontWeight::NORMAL);
+    }
 }

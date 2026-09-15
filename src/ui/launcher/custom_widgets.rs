@@ -7,9 +7,9 @@
 use gpui::{Context, CursorStyle, div, img, prelude::*, px, rgb, rgba};
 
 use crate::core::item::Target;
-use crate::core::theme::{WidgetDef, parse_hex_color, parse_hex_color_alpha};
+use crate::core::theme::{FontWeightSpec, WidgetDef, parse_hex_color, parse_hex_color_alpha};
 
-use super::helpers::{expand_tilde_path, format_combo, is_primary_click};
+use super::helpers::{expand_tilde_path, format_combo, is_primary_click, resolve_font_weight};
 use super::state::Launcher;
 
 impl Launcher {
@@ -63,7 +63,7 @@ impl Launcher {
                 text.as_deref(),
                 color.as_deref(),
                 *font_size,
-                font_weight.as_deref(),
+                font_weight.as_ref(),
                 align.as_deref(),
             ),
             WidgetDef::Icon {
@@ -141,7 +141,7 @@ impl Launcher {
                 *radius,
                 padding.as_deref(),
                 *font_size,
-                font_weight.as_deref(),
+                font_weight.as_ref(),
                 *gap,
                 row_context,
                 cx,
@@ -154,7 +154,7 @@ impl Launcher {
         text: Option<&str>,
         color: Option<&str>,
         font_size: Option<f32>,
-        font_weight: Option<&str>,
+        font_weight: Option<&FontWeightSpec>,
         align: Option<&str>,
     ) -> gpui::AnyElement {
         let t = &self.theme;
@@ -167,13 +167,7 @@ impl Launcher {
         let mut el = div().text_color(rgb(col)).text_size(px(size));
 
         if let Some(w) = font_weight {
-            el = match w.to_lowercase().as_str() {
-                "bold" => el.font_weight(gpui::FontWeight::BOLD),
-                "semibold" => el.font_weight(gpui::FontWeight::SEMIBOLD),
-                "medium" => el.font_weight(gpui::FontWeight::MEDIUM),
-                "light" => el.font_weight(gpui::FontWeight::LIGHT),
-                _ => el,
-            };
+            el = el.font_weight(resolve_font_weight(&w.as_str()));
         }
 
         el = match align {
@@ -372,7 +366,7 @@ impl Launcher {
         radius: Option<f32>,
         padding: Option<&[f32]>,
         font_size: Option<f32>,
-        font_weight: Option<&str>,
+        font_weight: Option<&FontWeightSpec>,
         gap: Option<f32>,
         row_context: Option<(usize, &Target)>,
         cx: &mut Context<Self>,
@@ -433,13 +427,7 @@ impl Launcher {
         btn = btn.text_size(px(sz));
 
         if let Some(w) = font_weight {
-            btn = match w.to_lowercase().as_str() {
-                "bold" => btn.font_weight(gpui::FontWeight::BOLD),
-                "semibold" => btn.font_weight(gpui::FontWeight::SEMIBOLD),
-                "medium" => btn.font_weight(gpui::FontWeight::MEDIUM),
-                "light" => btn.font_weight(gpui::FontWeight::LIGHT),
-                _ => btn,
-            };
+            btn = btn.font_weight(resolve_font_weight(&w.as_str()));
         }
 
         if let Some(g) = gap {

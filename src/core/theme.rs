@@ -74,7 +74,7 @@ pub enum WidgetDef {
         text: Option<String>,
         color: Option<String>,
         font_size: Option<f32>,
-        font_weight: Option<String>,
+        font_weight: Option<FontWeightSpec>,
         align: Option<String>,
     },
     Icon {
@@ -134,7 +134,7 @@ pub enum WidgetDef {
         radius: Option<f32>,
         padding: Option<Vec<f32>>,
         font_size: Option<f32>,
-        font_weight: Option<String>,
+        font_weight: Option<FontWeightSpec>,
         gap: Option<f32>,
     },
 }
@@ -227,12 +227,40 @@ where
 // Font
 // ---------------------------------------------------------------------------
 
+/// A font weight: either a CSS name (`"bold"`, `"medium"`) or a numeric
+/// value (`700`, `550`). Accepts both TOML forms — quoted or bare.
+#[derive(Debug, Clone, PartialEq, serde::Deserialize, serde::Serialize)]
+#[serde(untagged)]
+pub enum FontWeightSpec {
+    Named(String),
+    Numeric(f64),
+}
+
+impl FontWeightSpec {
+    /// The spec as a plain string so rendering helpers can parse it
+    /// uniformly (numeric values are stringified without a trailing `.0`).
+    pub fn as_str(&self) -> std::borrow::Cow<'_, str> {
+        match self {
+            Self::Named(s) => std::borrow::Cow::Borrowed(s.as_str()),
+            Self::Numeric(n) => {
+                let mut s = n.to_string();
+                if let Some(idx) = s.find('.')
+                    && s[idx + 1..].chars().all(|c| c == '0')
+                {
+                    s.truncate(idx);
+                }
+                std::borrow::Cow::Owned(s)
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct FontConfig {
     pub family: String,
     pub size: f32,
-    pub weight: Option<String>,
+    pub weight: Option<FontWeightSpec>,
     pub fallback: Option<Vec<String>>,
 }
 
@@ -1716,5 +1744,35 @@ orientation = "horizontal"
         assert_eq!(theme.widgets.len(), 4);
         let registry = crate::core::widget::WidgetRegistry::from_theme(&theme.widgets);
         assert!(registry.validate().is_ok());
+    }
+    #[test]
+    fn font_weight_accepts_names_and_numbers() {
+        // Quoted names.
+        let named: FontConfig = toml::from_str(
+            r#"family = "A"
+weight = "bold""#,
+        )
+        .unwrap();
+        assert_eq!(
+            named.weight,
+            Some(crate::core::theme::FontWeightSpec::Named("bold".into()))
+        );
+
+        // Bare numbers.
+        let numeric: FontConfig = toml::from_str("family = \"A\"\nweight = 700").unwrap();
+        assert_eq!(
+            numeric.weight,
+            Some(crate::core::theme::FontWeightSpec::Numeric(700.0))
+        );
+
+        // Fractional numbers stringified without a trailing .0.
+        assert_eq!(
+            crate::core::theme::FontWeightSpec::Numeric(550.0).as_str(),
+            "550"
+        );
+        assert_eq!(
+            crate::core::theme::FontWeightSpec::Named("medium".into()).as_str(),
+            "medium"
+        );
     }
 }
