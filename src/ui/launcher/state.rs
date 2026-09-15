@@ -1440,8 +1440,16 @@ impl Launcher {
             return;
         };
         // Keep the selected row in view as the user navigates with the arrows.
+        // In grid mode the list items are rows of `cols` cells, so convert
+        // the flat selection index to the grid-row index first.
+        let cols = self.gui_columns().max(1);
+        let item_ix = if cols > 1 {
+            new_selected / cols
+        } else {
+            new_selected
+        };
         self.gui_rows_scroll
-            .scroll_to_item(new_selected, ScrollStrategy::Nearest);
+            .scroll_to_item(item_ix, ScrollStrategy::Nearest);
     }
 
     fn gui_jump_to_edge(&mut self, top: bool) {
@@ -1459,8 +1467,14 @@ impl Launcher {
         } else {
             return;
         };
+        let cols = self.gui_columns().max(1);
+        let item_ix = if cols > 1 {
+            new_selected / cols
+        } else {
+            new_selected
+        };
         self.gui_rows_scroll
-            .scroll_to_item(new_selected, ScrollStrategy::Nearest);
+            .scroll_to_item(item_ix, ScrollStrategy::Nearest);
     }
 
     /// Toggle selection of the currently focused row if multi-select is enabled.
@@ -1494,7 +1508,7 @@ impl Launcher {
         }
     }
 
-    fn gui_columns(&self) -> usize {
+    pub(super) fn gui_columns(&self) -> usize {
         if let LauncherState::GuiMode { columns, .. } = &self.state {
             (*columns).unwrap_or(1)
         } else {

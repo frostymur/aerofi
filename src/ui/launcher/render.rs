@@ -490,310 +490,334 @@ impl Launcher {
                 el.description_color.as_deref().unwrap_or(&el.text_color),
             ));
 
-            let filtered_clone = filtered_rows.clone();
-            let rows_clone = rows.clone();
-            let active_indices_clone = active_indices.clone();
-            let selected_val = *selected;
-            let multi_select_val = *multi_select;
-            let toggled_indices_clone = toggled_indices.clone();
-            let markup_rows_val = *markup_rows;
+            let cols = self.gui_columns().max(1);
+            if cols > 1 {
+                // Grid mode: virtualized rows of `cols` cells each.
+                let total_rows = filtered_rows.len().div_ceil(cols);
+                let list = uniform_list(
+                    "gui_rows",
+                    total_rows,
+                    cx.processor(move |this, range: std::ops::Range<usize>, _window, _cx| {
+                        range
+                            .map(|row_ix| this.render_gui_grid_row(row_ix, cols, _cx))
+                            .collect()
+                    }),
+                )
+                .track_scroll(&self.gui_rows_scroll)
+                .flex_1()
+                .w_full();
+                list_container = list_container.child(list);
+            } else {
+                let filtered_clone = filtered_rows.clone();
+                let rows_clone = rows.clone();
+                let active_indices_clone = active_indices.clone();
+                let selected_val = *selected;
+                let multi_select_val = *multi_select;
+                let toggled_indices_clone = toggled_indices.clone();
+                let markup_rows_val = *markup_rows;
 
-            let list = uniform_list(
-                "gui_rows",
-                filtered_clone.len(),
-                cx.processor(move |_this, range: std::ops::Range<usize>, _window, _cx| {
-                    let t = &_this.theme;
-                    let el = &t.element;
-                    range
-                        .map(|vis_ix| {
-                            let row_idx = filtered_clone[vis_ix];
-                            let row = &rows_clone[row_idx];
-                            let is_selected = vis_ix == selected_val;
-                            let is_active = row.active || active_indices_clone.contains(&row_idx);
-                            let is_urgent = row.urgent;
-                            let is_disabled = row.disabled;
-                            let is_selectable = !row.nonselectable && !is_disabled;
-                            let is_toggled = toggled_indices_clone.contains(&row_idx);
+                let list = uniform_list(
+                    "gui_rows",
+                    filtered_clone.len(),
+                    cx.processor(move |_this, range: std::ops::Range<usize>, _window, _cx| {
+                        let t = &_this.theme;
+                        let el = &t.element;
+                        range
+                            .map(|vis_ix| {
+                                let row_idx = filtered_clone[vis_ix];
+                                let row = &rows_clone[row_idx];
+                                let is_selected = vis_ix == selected_val;
+                                let is_active =
+                                    row.active || active_indices_clone.contains(&row_idx);
+                                let is_urgent = row.urgent;
+                                let is_disabled = row.disabled;
+                                let is_selectable = !row.nonselectable && !is_disabled;
+                                let is_toggled = toggled_indices_clone.contains(&row_idx);
 
-                            // Shrink padding by border width on the selected
-                            // row so total row height stays constant.
-                            let effective_pad_v = if is_selected && el.border_width > 0.0 {
-                                (pad_v_el - el.border_width).max(0.0)
-                            } else {
-                                pad_v_el
-                            };
-
-                            let (row_bg, name_color) = if is_selected {
-                                (
-                                    rgba(Self::color(&el.selected.background)),
-                                    rgba(Self::color(&el.selected.text_color)),
-                                )
-                            } else if is_toggled {
-                                (
-                                    rgba(Self::color(&el.selected.background)).opacity(0.4),
-                                    rgba(Self::color(&el.selected.text_color)),
-                                )
-                            } else if !is_selectable {
-                                (rgba(0x00000000), desc_color)
-                            } else if is_urgent {
-                                (
-                                    rgba(Self::color(&t.status_colors.urgent_row_background)),
-                                    rgba(Self::color(&el.text_color)),
-                                )
-                            } else if is_active {
-                                (
-                                    rgba(Self::color(&t.status_colors.active_row_background)),
-                                    rgba(Self::color(&el.text_color)),
-                                )
-                            } else {
-                                (rgba(0x00000000), rgba(Self::color(&el.text_color)))
-                            };
-
-                            if is_selectable {
-                                let id = format!("gui-row-{vis_ix}");
-                                let mut row_div = div()
-                                    .id(id)
-                                    .flex()
-                                    .items_center()
-                                    .gap_2()
-                                    .w_full()
-                                    .px(px(pad_h))
-                                    .py(px(effective_pad_v))
-                                    .rounded(px(el.corner_radius))
-                                    .bg(row_bg)
-                                    .cursor(CursorStyle::PointingHand);
-
-                                if is_selected {
-                                    row_div = row_div
-                                        .border(px(el.border_width))
-                                        .border_color(rgba(Self::color(&t.status_colors.accent)));
-                                } else if el.background != "transparent" {
-                                    row_div = row_div
-                                        .border(px(el.border_width))
-                                        .border_color(rgba(Self::color(&t.window.border_color)));
-                                }
-
-                                if multi_select_val {
-                                    let toggle_icon = if is_toggled { "☑" } else { "☐" };
-                                    row_div = row_div.child(
-                                        div()
-                                            .text_color(if is_toggled {
-                                                rgba(Self::color(
-                                                    &t.status_colors.active_background,
-                                                ))
-                                            } else {
-                                                desc_color
-                                            })
-                                            .text_size(px(t.font.size))
-                                            .child(toggle_icon),
-                                    );
-                                }
-
-                                if el.show_icons {
-                                    row_div = row_div
-                                        .child(Self::render_gui_row_icon(icon_size, &row.icon));
-                                }
-
-                                let text_div = div().flex_1().text_color(name_color);
-                                let text_div = if markup_rows_val {
-                                    let (plain, highlights) =
-                                        crate::core::pango::parse_pango(&row.text);
-                                    let mut st = gpui::StyledText::new(plain);
-                                    if !highlights.is_empty() {
-                                        st = st.with_highlights(highlights);
-                                    }
-                                    text_div.child(st)
+                                // Shrink padding by border width on the selected
+                                // row so total row height stays constant.
+                                let effective_pad_v = if is_selected && el.border_width > 0.0 {
+                                    (pad_v_el - el.border_width).max(0.0)
                                 } else {
-                                    text_div.child(row.text.clone())
+                                    pad_v_el
                                 };
-                                row_div = row_div.child(text_div);
 
-                                if is_urgent {
-                                    row_div = row_div.child(
-                                        div()
-                                            .px_2()
-                                            .py(px(2.0))
-                                            .rounded_sm()
-                                            .bg(rgba(Self::color(
-                                                &t.status_colors.urgent_background,
-                                            )))
-                                            .text_color(rgba(Self::color(
-                                                &t.status_colors.urgent_text,
-                                            )))
-                                            .text_size(px(t.font.size * 0.72))
-                                            .child("URGENT"),
-                                    );
-                                }
+                                let (row_bg, name_color) = if is_selected {
+                                    (
+                                        rgba(Self::color(&el.selected.background)),
+                                        rgba(Self::color(&el.selected.text_color)),
+                                    )
+                                } else if is_toggled {
+                                    (
+                                        rgba(Self::color(&el.selected.background)).opacity(0.4),
+                                        rgba(Self::color(&el.selected.text_color)),
+                                    )
+                                } else if !is_selectable {
+                                    (rgba(0x00000000), desc_color)
+                                } else if is_urgent {
+                                    (
+                                        rgba(Self::color(&t.status_colors.urgent_row_background)),
+                                        rgba(Self::color(&el.text_color)),
+                                    )
+                                } else if is_active {
+                                    (
+                                        rgba(Self::color(&t.status_colors.active_row_background)),
+                                        rgba(Self::color(&el.text_color)),
+                                    )
+                                } else {
+                                    (rgba(0x00000000), rgba(Self::color(&el.text_color)))
+                                };
 
-                                if is_active {
-                                    row_div = row_div.child(
-                                        div()
-                                            .px_2()
-                                            .py(px(2.0))
-                                            .rounded_sm()
-                                            .bg(rgba(Self::color(
-                                                &t.status_colors.active_background,
-                                            )))
-                                            .text_color(rgba(Self::color(
-                                                &t.status_colors.active_text,
-                                            )))
-                                            .text_size(px(t.font.size * 0.72))
-                                            .child("ACTIVE"),
-                                    );
-                                }
+                                if is_selectable {
+                                    let id = format!("gui-row-{vis_ix}");
+                                    let mut row_div = div()
+                                        .id(id)
+                                        .flex()
+                                        .items_center()
+                                        .gap_2()
+                                        .w_full()
+                                        .px(px(pad_h))
+                                        .py(px(effective_pad_v))
+                                        .rounded(px(el.corner_radius))
+                                        .bg(row_bg)
+                                        .cursor(CursorStyle::PointingHand);
 
-                                if let Some(info) = &row.info {
-                                    let info_color = rgba(Self::color(
-                                        el.description_color.as_deref().unwrap_or(&el.text_color),
-                                    ));
-                                    let info_el = div()
-                                        .text_color(info_color)
-                                        .text_size(px(t.font.size * 0.82))
-                                        .flex_shrink_0();
-                                    let info_el = if markup_rows_val {
+                                    if is_selected {
+                                        row_div = row_div.border(px(el.border_width)).border_color(
+                                            rgba(Self::color(&t.status_colors.accent)),
+                                        );
+                                    } else if el.background != "transparent" {
+                                        row_div = row_div.border(px(el.border_width)).border_color(
+                                            rgba(Self::color(&t.window.border_color)),
+                                        );
+                                    }
+
+                                    if multi_select_val {
+                                        let toggle_icon = if is_toggled { "☑" } else { "☐" };
+                                        row_div = row_div.child(
+                                            div()
+                                                .text_color(if is_toggled {
+                                                    rgba(Self::color(
+                                                        &t.status_colors.active_background,
+                                                    ))
+                                                } else {
+                                                    desc_color
+                                                })
+                                                .text_size(px(t.font.size))
+                                                .child(toggle_icon),
+                                        );
+                                    }
+
+                                    if el.show_icons {
+                                        row_div = row_div
+                                            .child(Self::render_gui_row_icon(icon_size, &row.icon));
+                                    }
+
+                                    let text_div = div().flex_1().text_color(name_color);
+                                    let text_div = if markup_rows_val {
                                         let (plain, highlights) =
-                                            crate::core::pango::parse_pango(info);
+                                            crate::core::pango::parse_pango(&row.text);
                                         let mut st = gpui::StyledText::new(plain);
                                         if !highlights.is_empty() {
                                             st = st.with_highlights(highlights);
                                         }
-                                        info_el.child(st)
+                                        text_div.child(st)
                                     } else {
-                                        info_el.child(info.clone())
+                                        text_div.child(row.text.clone())
                                     };
-                                    row_div = row_div.child(info_el);
-                                }
+                                    row_div = row_div.child(text_div);
 
-                                row_div
-                                    .on_click(_cx.listener(move |this, event, _window, cx| {
-                                        if is_primary_click(event) {
-                                            if let LauncherState::GuiMode { selected, .. } =
-                                                &mut this.state
-                                            {
-                                                *selected = vis_ix;
+                                    if is_urgent {
+                                        row_div = row_div.child(
+                                            div()
+                                                .px_2()
+                                                .py(px(2.0))
+                                                .rounded_sm()
+                                                .bg(rgba(Self::color(
+                                                    &t.status_colors.urgent_background,
+                                                )))
+                                                .text_color(rgba(Self::color(
+                                                    &t.status_colors.urgent_text,
+                                                )))
+                                                .text_size(px(t.font.size * 0.72))
+                                                .child("URGENT"),
+                                        );
+                                    }
+
+                                    if is_active {
+                                        row_div = row_div.child(
+                                            div()
+                                                .px_2()
+                                                .py(px(2.0))
+                                                .rounded_sm()
+                                                .bg(rgba(Self::color(
+                                                    &t.status_colors.active_background,
+                                                )))
+                                                .text_color(rgba(Self::color(
+                                                    &t.status_colors.active_text,
+                                                )))
+                                                .text_size(px(t.font.size * 0.72))
+                                                .child("ACTIVE"),
+                                        );
+                                    }
+
+                                    if let Some(info) = &row.info {
+                                        let info_color = rgba(Self::color(
+                                            el.description_color
+                                                .as_deref()
+                                                .unwrap_or(&el.text_color),
+                                        ));
+                                        let info_el = div()
+                                            .text_color(info_color)
+                                            .text_size(px(t.font.size * 0.82))
+                                            .flex_shrink_0();
+                                        let info_el = if markup_rows_val {
+                                            let (plain, highlights) =
+                                                crate::core::pango::parse_pango(info);
+                                            let mut st = gpui::StyledText::new(plain);
+                                            if !highlights.is_empty() {
+                                                st = st.with_highlights(highlights);
                                             }
-                                            this.gui_select_row(cx);
-                                            cx.notify();
-                                        }
-                                    }))
-                                    .into_any()
-                            } else {
-                                let mut row_div = div()
-                                    .flex()
-                                    .items_center()
-                                    .gap_2()
-                                    .w_full()
-                                    .px(px(pad_h))
-                                    .py(px(pad_v_el))
-                                    .rounded(px(el.corner_radius))
-                                    .bg(row_bg);
-
-                                if is_disabled {
-                                    row_div = row_div.opacity(0.4);
-                                }
-
-                                if multi_select_val {
-                                    let toggle_icon = if is_toggled { "☑" } else { "☐" };
-                                    row_div = row_div.child(
-                                        div()
-                                            .text_color(if is_toggled {
-                                                rgba(Self::color(
-                                                    &t.status_colors.active_background,
-                                                ))
-                                            } else {
-                                                desc_color
-                                            })
-                                            .text_size(px(t.font.size))
-                                            .child(toggle_icon),
-                                    );
-                                }
-
-                                if el.show_icons {
-                                    row_div = row_div
-                                        .child(Self::render_gui_row_icon(icon_size, &row.icon));
-                                }
-
-                                let text_div = div().flex_1().text_color(name_color);
-                                let text_div = if markup_rows_val {
-                                    let (plain, highlights) =
-                                        crate::core::pango::parse_pango(&row.text);
-                                    let mut st = gpui::StyledText::new(plain);
-                                    if !highlights.is_empty() {
-                                        st = st.with_highlights(highlights);
+                                            info_el.child(st)
+                                        } else {
+                                            info_el.child(info.clone())
+                                        };
+                                        row_div = row_div.child(info_el);
                                     }
-                                    text_div.child(st)
+
+                                    row_div
+                                        .on_click(_cx.listener(move |this, event, _window, cx| {
+                                            if is_primary_click(event) {
+                                                if let LauncherState::GuiMode { selected, .. } =
+                                                    &mut this.state
+                                                {
+                                                    *selected = vis_ix;
+                                                }
+                                                this.gui_select_row(cx);
+                                                cx.notify();
+                                            }
+                                        }))
+                                        .into_any()
                                 } else {
-                                    text_div.child(row.text.clone())
-                                };
-                                row_div = row_div.child(text_div);
+                                    let mut row_div = div()
+                                        .flex()
+                                        .items_center()
+                                        .gap_2()
+                                        .w_full()
+                                        .px(px(pad_h))
+                                        .py(px(pad_v_el))
+                                        .rounded(px(el.corner_radius))
+                                        .bg(row_bg);
 
-                                if is_urgent {
-                                    row_div = row_div.child(
-                                        div()
-                                            .px_2()
-                                            .py(px(2.0))
-                                            .rounded_sm()
-                                            .bg(rgba(Self::color(
-                                                &t.status_colors.urgent_background,
-                                            )))
-                                            .text_color(rgba(Self::color(
-                                                &t.status_colors.urgent_text,
-                                            )))
-                                            .text_size(px(t.font.size * 0.72))
-                                            .child("URGENT"),
-                                    );
-                                }
+                                    if is_disabled {
+                                        row_div = row_div.opacity(0.4);
+                                    }
 
-                                if is_active {
-                                    row_div = row_div.child(
-                                        div()
-                                            .px_2()
-                                            .py(px(2.0))
-                                            .rounded_sm()
-                                            .bg(rgba(Self::color(
-                                                &t.status_colors.active_background,
-                                            )))
-                                            .text_color(rgba(Self::color(
-                                                &t.status_colors.active_text,
-                                            )))
-                                            .text_size(px(t.font.size * 0.72))
-                                            .child("ACTIVE"),
-                                    );
-                                }
+                                    if multi_select_val {
+                                        let toggle_icon = if is_toggled { "☑" } else { "☐" };
+                                        row_div = row_div.child(
+                                            div()
+                                                .text_color(if is_toggled {
+                                                    rgba(Self::color(
+                                                        &t.status_colors.active_background,
+                                                    ))
+                                                } else {
+                                                    desc_color
+                                                })
+                                                .text_size(px(t.font.size))
+                                                .child(toggle_icon),
+                                        );
+                                    }
 
-                                if let Some(info) = &row.info {
-                                    let info_color = rgba(Self::color(
-                                        el.description_color.as_deref().unwrap_or(&el.text_color),
-                                    ));
-                                    let info_el = div()
-                                        .text_color(info_color)
-                                        .text_size(px(t.font.size * 0.82))
-                                        .flex_shrink_0();
-                                    let info_el = if markup_rows_val {
+                                    if el.show_icons {
+                                        row_div = row_div
+                                            .child(Self::render_gui_row_icon(icon_size, &row.icon));
+                                    }
+
+                                    let text_div = div().flex_1().text_color(name_color);
+                                    let text_div = if markup_rows_val {
                                         let (plain, highlights) =
-                                            crate::core::pango::parse_pango(info);
+                                            crate::core::pango::parse_pango(&row.text);
                                         let mut st = gpui::StyledText::new(plain);
                                         if !highlights.is_empty() {
                                             st = st.with_highlights(highlights);
                                         }
-                                        info_el.child(st)
+                                        text_div.child(st)
                                     } else {
-                                        info_el.child(info.clone())
+                                        text_div.child(row.text.clone())
                                     };
-                                    row_div = row_div.child(info_el);
+                                    row_div = row_div.child(text_div);
+
+                                    if is_urgent {
+                                        row_div = row_div.child(
+                                            div()
+                                                .px_2()
+                                                .py(px(2.0))
+                                                .rounded_sm()
+                                                .bg(rgba(Self::color(
+                                                    &t.status_colors.urgent_background,
+                                                )))
+                                                .text_color(rgba(Self::color(
+                                                    &t.status_colors.urgent_text,
+                                                )))
+                                                .text_size(px(t.font.size * 0.72))
+                                                .child("URGENT"),
+                                        );
+                                    }
+
+                                    if is_active {
+                                        row_div = row_div.child(
+                                            div()
+                                                .px_2()
+                                                .py(px(2.0))
+                                                .rounded_sm()
+                                                .bg(rgba(Self::color(
+                                                    &t.status_colors.active_background,
+                                                )))
+                                                .text_color(rgba(Self::color(
+                                                    &t.status_colors.active_text,
+                                                )))
+                                                .text_size(px(t.font.size * 0.72))
+                                                .child("ACTIVE"),
+                                        );
+                                    }
+
+                                    if let Some(info) = &row.info {
+                                        let info_color = rgba(Self::color(
+                                            el.description_color
+                                                .as_deref()
+                                                .unwrap_or(&el.text_color),
+                                        ));
+                                        let info_el = div()
+                                            .text_color(info_color)
+                                            .text_size(px(t.font.size * 0.82))
+                                            .flex_shrink_0();
+                                        let info_el = if markup_rows_val {
+                                            let (plain, highlights) =
+                                                crate::core::pango::parse_pango(info);
+                                            let mut st = gpui::StyledText::new(plain);
+                                            if !highlights.is_empty() {
+                                                st = st.with_highlights(highlights);
+                                            }
+                                            info_el.child(st)
+                                        } else {
+                                            info_el.child(info.clone())
+                                        };
+                                        row_div = row_div.child(info_el);
+                                    }
+
+                                    row_div.into_any()
                                 }
+                            })
+                            .collect()
+                    }),
+                )
+                .flex_1()
+                .w_full()
+                .track_scroll(&self.gui_rows_scroll);
 
-                                row_div.into_any()
-                            }
-                        })
-                        .collect()
-                }),
-            )
-            .flex_1()
-            .w_full()
-            .track_scroll(&self.gui_rows_scroll);
-
-            list_container = list_container.child(list);
+                list_container = list_container.child(list);
+            }
         }
 
         if let Some(blocks) = preview_blocks {
@@ -860,13 +884,16 @@ impl Launcher {
                     .rounded_sm()
                     .into_any()
             } else {
+                // Emoji/symbol glyphs have line boxes ~1.17em tall (Apple Color
+                // Emoji metrics), so render at 0.85× the box size to keep the
+                // text inside the fixed-size icon box without overflowing.
                 div()
                     .w(icon_size)
                     .h(icon_size)
                     .flex()
                     .items_center()
                     .justify_center()
-                    .text_size(icon_size)
+                    .text_size(icon_size * 0.85)
                     .child(display.to_string())
                     .into_any()
             }
@@ -877,10 +904,193 @@ impl Launcher {
                 .flex()
                 .items_center()
                 .justify_center()
-                .text_size(icon_size)
+                .text_size(icon_size * 0.85)
                 .child("•".to_string())
                 .into_any()
         }
+    }
+
+    /// Render one row of GUI-mode grid cells (used when columns > 1).
+    fn render_gui_grid_row(
+        &self,
+        row_ix: usize,
+        cols: usize,
+        cx: &mut Context<Self>,
+    ) -> gpui::AnyElement {
+        let t = &self.theme;
+        let spacing = px(t.listview.spacing);
+        let total = if let LauncherState::GuiMode { filtered_rows, .. } = &self.state {
+            filtered_rows.len()
+        } else {
+            return div().into_any();
+        };
+        let start_ix = row_ix * cols;
+        let end_ix = (start_ix + cols).min(total);
+
+        let mut row = div().flex().gap(spacing).w_full().pb(spacing);
+        for vis_ix in start_ix..end_ix {
+            row = row.child(
+                div()
+                    .flex_1()
+                    .overflow_hidden()
+                    .child(self.render_gui_grid_cell(vis_ix, cx)),
+            );
+        }
+        // Pad incomplete last row to keep column alignment.
+        for _ in end_ix..(start_ix + cols) {
+            row = row.child(div().flex_1());
+        }
+        row.into_any()
+    }
+
+    /// Render a single GUI-mode grid cell: icon on top, row text below.
+    fn render_gui_grid_cell(&self, vis_ix: usize, cx: &mut Context<Self>) -> gpui::AnyElement {
+        let t = &self.theme;
+        let el = &t.element;
+        let icon_size = px(el.icon_size);
+        let pad_h = el.padding.first().copied().unwrap_or(8.0);
+        let pad_v = el.padding.get(1).copied().unwrap_or(12.0);
+
+        let (row, is_selected, is_active, is_urgent, is_disabled, is_toggled, markup_rows) =
+            if let LauncherState::GuiMode {
+                rows,
+                filtered_rows,
+                selected,
+                active_indices,
+                toggled_indices,
+                markup_rows,
+                ..
+            } = &self.state
+            {
+                let Some(&row_idx) = filtered_rows.get(vis_ix) else {
+                    return div().into_any();
+                };
+                let Some(row) = rows.get(row_idx) else {
+                    return div().into_any();
+                };
+                (
+                    row,
+                    vis_ix == *selected,
+                    row.active || active_indices.contains(&row_idx),
+                    row.urgent,
+                    row.disabled,
+                    toggled_indices.contains(&row_idx),
+                    *markup_rows,
+                )
+            } else {
+                return div().into_any();
+            };
+
+        let is_selectable = !row.nonselectable && !is_disabled;
+
+        let (row_bg, name_color) = if is_selected {
+            (
+                rgba(Self::color(&el.selected.background)),
+                rgba(Self::color(&el.selected.text_color)),
+            )
+        } else if is_toggled {
+            (
+                rgba(Self::color(&el.selected.background)).opacity(0.4),
+                rgba(Self::color(&el.selected.text_color)),
+            )
+        } else if !is_selectable {
+            (
+                rgba(0x00000000),
+                rgba(Self::color(
+                    el.description_color.as_deref().unwrap_or(&el.text_color),
+                )),
+            )
+        } else if is_urgent {
+            (
+                rgba(Self::color(&t.status_colors.urgent_row_background)),
+                rgba(Self::color(&el.text_color)),
+            )
+        } else if is_active {
+            (
+                rgba(Self::color(&t.status_colors.active_row_background)),
+                rgba(Self::color(&el.text_color)),
+            )
+        } else {
+            (rgba(0x00000000), rgba(Self::color(&el.text_color)))
+        };
+
+        // Shrink padding by border width on the selected cell so the total
+        // cell height stays constant.
+        let effective_pad_v = if is_selected && el.border_width > 0.0 {
+            (pad_v - el.border_width).max(0.0)
+        } else {
+            pad_v
+        };
+
+        let mut cell = div()
+            .id(format!("gui-cell-{vis_ix}"))
+            .flex()
+            .flex_col()
+            .items_center()
+            .justify_center()
+            .gap(px(el.icon_gap))
+            .w_full()
+            .px(px(pad_h))
+            .py(px(effective_pad_v))
+            .rounded(px(el.corner_radius))
+            .bg(row_bg);
+
+        if is_selected {
+            cell = cell
+                .border(px(el.border_width))
+                .border_color(rgba(Self::color(&t.status_colors.accent)));
+        } else if el.background != "transparent" {
+            cell = cell
+                .border(px(el.border_width))
+                .border_color(rgba(Self::color(&t.window.border_color)));
+        }
+
+        if is_selectable {
+            cell = cell.cursor(CursorStyle::PointingHand);
+        }
+        if is_disabled {
+            cell = cell.opacity(0.4);
+        }
+
+        if el.show_icons {
+            cell = cell.child(Self::render_gui_row_icon(icon_size, &row.icon));
+        }
+
+        if !row.text.is_empty() {
+            let text_el = div()
+                .w_full()
+                .flex()
+                .justify_center()
+                .text_color(name_color)
+                .text_size(px((t.font.size - 1.5).max(11.0)))
+                .line_clamp(1)
+                .overflow_hidden();
+            let text_el = if markup_rows {
+                let (plain, highlights) = crate::core::pango::parse_pango(&row.text);
+                let mut st = gpui::StyledText::new(plain);
+                if !highlights.is_empty() {
+                    st = st.with_highlights(highlights);
+                }
+                text_el.child(st)
+            } else {
+                text_el.child(row.text.clone())
+            };
+            cell = cell.child(text_el);
+        }
+
+        if is_selectable {
+            cell = cell.on_click(cx.listener(move |this, event, _window, cx| {
+                if is_primary_click(event) {
+                    if let LauncherState::GuiMode { selected, .. } = &mut this.state {
+                        *selected = vis_ix;
+                    }
+                    this.gui_select_row(cx);
+                    cx.notify();
+                }
+            }));
+        }
+
+        cell.into_any()
     }
 
     /// Render the `LauncherState::Confirming` view when a dangerous action requires confirmation.
@@ -1365,7 +1575,7 @@ impl Launcher {
                         .justify_center()
                         .w(icon_size)
                         .h(icon_size)
-                        .text_size(icon_size)
+                        .text_size(icon_size * 0.85)
                         .text_color(rgba(Self::color(
                             t.inputbar
                                 .icon_color
@@ -1588,7 +1798,7 @@ impl Launcher {
                         .flex()
                         .items_center()
                         .justify_center()
-                        .text_size(icon_size)
+                        .text_size(icon_size * 0.85)
                         .text_color(rgba(Self::color(
                             t.inputbar
                                 .icon_color
@@ -1605,7 +1815,7 @@ impl Launcher {
                     .flex()
                     .items_center()
                     .justify_center()
-                    .text_size(icon_size)
+                    .text_size(icon_size * 0.85)
                     .text_color(rgba(Self::color(
                         t.inputbar
                             .icon_color
