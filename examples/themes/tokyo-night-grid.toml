@@ -9,6 +9,9 @@ imports = [
     "layouts/grid.toml",
 ]
 
+[window]
+background_opacity = 0.75
+
 # The grid variant uses a slightly more opaque background and a distinct tile
 # surface, overriding those two values from the shared Tokyo Night palette.
 [colors]

@@ -9,12 +9,13 @@
 
 [font]
 family = "SF Pro Text"
-size = 13.0
+size = 15.0
+weight = 300
 fallback = ["SF Pro", "Helvetica Neue", "Arial"]
 
 [window]
 width = 750.0
-height = 350.0
+height = 440.0
 padding = 20.0
 background = "$bg"
 blur = true
@@ -61,7 +62,7 @@ background = "transparent"
 text_color = "$text"
 description_color = "$subtle"
 show_icons = true
-icon_size = 48.0
+icon_size = 72.0
 icon_gap = 15.0
 border_width = 0.0
 layout = ["icon", "name"]

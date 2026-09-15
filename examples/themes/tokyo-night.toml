@@ -9,3 +9,6 @@ imports = [
     "colors/tokyo-night.toml",
     "layouts/compact.toml",
 ]
+
+[window]
+background_opacity = 0.75

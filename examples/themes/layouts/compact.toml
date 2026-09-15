@@ -9,6 +9,7 @@
 [font]
 family = "SF Pro Text"
 size = 15.0
+weight = 300
 fallback = ["SF Pro", "Helvetica Neue", "Arial"]
 
 [window]

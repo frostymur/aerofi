@@ -10,3 +10,8 @@ imports = [
     "colors/catppuccin-mocha.toml",
     "layouts/split.toml",
 ]
+
+[window]
+# Tinted blur: base colour at 75% instead of the layout's pure frosted glass.
+background = "$bg"
+background_opacity = 0.75
