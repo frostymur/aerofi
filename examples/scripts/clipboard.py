@@ -12,9 +12,9 @@
 Clipboard history manager for aerofi's interactive gui mode.
 Powered by the clipy daemon (https://crates.io/crates/clipy) with a
 pbcopy/pbpaste fallback. Enter copies, Tab multi-selects, Ctrl+D deletes.
-Images are captured from the pasteboard on demand (via a small
-self-compiled Swift helper) and shown with thumbnail previews;
-selecting one pastes the image back.
+Images are captured from the pasteboard on demand via the clippy suite
+(https://github.com/neilberkman/clippy: `pasty` extracts, `clippy` copies
+back) and shown with thumbnail previews.
 """
 
 from __future__ import annotations
@@ -145,119 +145,63 @@ def relative_time(ts: float) -> str:
 # Image history
 #
 # Text entries come from the clipy daemon; images are captured on demand from
-# the pasteboard when the switcher is (re)drawn. A tiny Swift helper is
-# compiled once (background, cached) and then used for check/get/put —
-# native speed, no third-party dependencies, TIFF→PNG conversion built in.
+# the pasteboard when the switcher is (re)drawn, using the clippy suite
+# (https://github.com/neilberkman/clippy, `brew install clippy`):
+#
+#   pasty --inspect   show clipboard types (image detection)
+#   pasty <path>      extract the image to a file (TIFF -> PNG)
+#   clippy <path>     copy the file to the clipboard (paste-back)
+#
+# Without clippy/pasty the switcher silently degrades to text-only.
 # ---------------------------------------------------------------------------
 
-CLIP_HELPER = "aerofi-clip"
-
-CLIP_HELPER_SOURCE = """
-import AppKit
-
-let pb = NSPasteboard.general
-let types = ["public.png", "com.apple.tiff", "public.tiff", "public.jpeg"]
-
-func findImage() -> Data? {
-    for type in types {
-        if let data = pb.data(forType: NSPasteboard.PasteboardType(type)) {
-            return data
-        }
-    }
-    return nil
-}
-
-func toPNG(_ data: Data) -> Data? {
-    if let rep = NSBitmapImageRep(data: data),
-       let out = rep.representation(using: .png, properties: [:]) {
-        return out
-    }
-    return nil
-}
-
-switch CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "" {
-case "check":
-    exit(findImage() == nil ? 1 : 0)
-case "get":
-    guard CommandLine.arguments.count > 2, let data = findImage() else { exit(1) }
-    do { try (toPNG(data) ?? data).write(to: URL(fileURLWithPath: CommandLine.arguments[2])) }
-    catch { exit(1) }
-    exit(0)
-case "put":
-    guard CommandLine.arguments.count > 2 else { exit(1) }
-    guard let data = try? Data(contentsOf: URL(fileURLWithPath: CommandLine.arguments[2])),
-          let png = toPNG(data) else { exit(1) }
-    pb.clearContents()
-    pb.setData(png, forType: NSPasteboard.PasteboardType("public.png"))
-    exit(0)
-default:
-    exit(2)
-}
-"""
-
-_helper_build_started = False
+IMAGE_TYPES = ("public.png", "public.tiff", "com.apple.tiff", "public.jpeg")
 
 
 def img_dir() -> str:
     return os.path.join(os.path.expanduser("~"), ".config", "aerofi", "clipboard-history")
 
 
-def helper_path() -> str:
-    return os.path.join(img_dir(), CLIP_HELPER)
+def pasty_bin() -> str | None:
+    return shutil.which("pasty")
 
 
-def helper_bin() -> str | None:
-    path = helper_path()
-    if os.path.isfile(path) and os.access(path, os.X_OK):
-        return path
+def clippy_bin() -> str | None:
+    return shutil.which("clippy")
+
+
+def clipboard_has_image() -> bool:
+    pbin = pasty_bin()
+    if not pbin:
+        return False
+    try:
+        res = subprocess.run([pbin, "--inspect"], capture_output=True, text=True, timeout=2)
+    except Exception:
+        return False
+    return any(t in res.stdout for t in IMAGE_TYPES)
+
+
+def sniff_image(path: str) -> str | None:
+    """Return "png" or "jpg" from the file magic, else None."""
+    try:
+        with open(path, "rb") as fh:
+            head = fh.read(8)
+    except Exception:
+        return None
+    if head[:8] == b"\x89PNG\r\n\x1a\n":
+        return "png"
+    if head[:3] == b"\xff\xd8\xff":
+        return "jpg"
     return None
 
 
-def start_helper_build() -> None:
-    """Compile the Swift helper in the background (one time)."""
-    global _helper_build_started
-    if _helper_build_started:
-        return
-    if shutil.which("swiftc") is None:
-        return
-    _helper_build_started = True
-    try:
-        os.makedirs(img_dir(), exist_ok=True)
-        src = os.path.join(img_dir(), CLIP_HELPER + ".swift")
-        with open(src, "w", encoding="utf-8") as fh:
-            fh.write(CLIP_HELPER_SOURCE)
-        subprocess.Popen(
-            ["swiftc", "-O", "-o", helper_path(), src],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-    except Exception:
-        _helper_build_started = False
-
-
-def helper_ok() -> bool:
-    return helper_bin() is not None
-
-
-def helper_check() -> bool:
-    try:
-        res = subprocess.run([helper_bin(), "check"], capture_output=True, timeout=3)
-        return res.returncode == 0
-    except Exception:
+def paste_image(path: str) -> bool:
+    """Put the image file back on the clipboard (as a file reference)."""
+    cbin = clippy_bin()
+    if not cbin:
         return False
-
-
-def helper_get(path: str) -> bool:
     try:
-        res = subprocess.run([helper_bin(), "get", path], capture_output=True, timeout=10)
-        return res.returncode == 0 and os.path.isfile(path) and os.path.getsize(path) > 0
-    except Exception:
-        return False
-
-
-def img_put(path: str) -> bool:
-    try:
-        res = subprocess.run([helper_bin(), "put", path], capture_output=True, timeout=5)
+        res = subprocess.run([cbin, path], capture_output=True, timeout=5)
         return res.returncode == 0
     except Exception:
         return False
@@ -315,11 +259,26 @@ def prune_images(manifest: dict) -> None:
 
 def capture_image() -> None:
     """Save the current pasteboard image (if any) into the image history."""
-    if not helper_ok() or not helper_check():
+    pbin = pasty_bin()
+    if not pbin or not clipboard_has_image():
         return
+    os.makedirs(img_dir(), exist_ok=True)
     path = os.path.join(img_dir(), f"{int(time.time() * 1000)}.png")
-    if not helper_get(path):
+    try:
+        subprocess.run([pbin, path], capture_output=True, timeout=10)
+    except Exception:
         return
+    kind = sniff_image(path)
+    if kind is None:
+        try:
+            os.unlink(path)
+        except Exception:
+            pass
+        return
+    if kind == "jpg":
+        final = path[: -len(".png")] + ".jpg"
+        os.replace(path, final)
+        path = final
     with open(path, "rb") as fh:
         digest = hashlib.sha256(fh.read()).hexdigest()
     manifest = load_manifest()
@@ -340,17 +299,13 @@ def capture_image() -> None:
     save_manifest(manifest)
 
 
-def paste_image(path: str) -> bool:
-    return img_put(path)
-
-
 def render_image_entry(digest: str, entry: dict) -> str:
     w, h = entry.get("w"), entry.get("h")
     size = f"{w}×{h} " if w and h else ""
     return (
         f"🖼️ <b>{size}image</b>\0id\x1fimg:{digest[:8]}"
         f"\0icon\x1f{entry['path']}\0info\x1f{relative_time(entry.get('ts', time.time()))}"
-        f"\0meta\x1fcopied image png {size}image"
+        f"\0meta\x1fcopied image {size}".rstrip()
     )
 
 
@@ -460,7 +415,6 @@ def main() -> None:
     binary = clipy_bin()
     if binary:
         ensure_daemon(binary)
-    start_helper_build()
     last_capture = 0.0
 
     def fetch() -> list[dict]:
