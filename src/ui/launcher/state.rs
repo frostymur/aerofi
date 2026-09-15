@@ -666,6 +666,11 @@ impl Launcher {
     /// decode on demand.
     pub fn on_show(&mut self) {
         self.refilter(None);
+        // refilter() resets the scroll to the top, but the selection
+        // survived the hide/show cycle — restore the view to it so the
+        // user doesn't lose their place.
+        self.list
+            .scroll_to_item(self.selected, ScrollStrategy::Nearest);
     }
 
     pub fn selected_item(&self) -> Option<&Target> {
