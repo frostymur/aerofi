@@ -12,10 +12,14 @@
 Clipboard history manager for aerofi's interactive gui mode.
 Powered by the clipy daemon (https://crates.io/crates/clipy) with a
 pbcopy/pbpaste fallback. Enter copies, Tab multi-selects, Ctrl+D deletes.
+Images are captured from the pasteboard on demand (via a small
+self-compiled Swift helper) and shown with thumbnail previews;
+selecting one pastes the image back.
 """
 
 from __future__ import annotations
 
+import hashlib
 import html
 import json
 import os
@@ -26,7 +30,11 @@ import subprocess
 import sys
 import time
 
-HINT = "↵ Copy · ⇥ Multi-select · ⌃D Delete"
+HINT = "↵ Copy · ⇥ Multi-select · ⌃D Delete · 🖼 images auto-saved"
+
+MAX_IMAGES = 50
+IMG_LIST_CAP = 20
+CAPTURE_INTERVAL = 2.0
 
 
 def clean(value: str) -> str:
@@ -131,6 +139,219 @@ def relative_time(ts: float) -> str:
     if days < 7:
         return f"{days}d ago"
     return time.strftime("%b %d", time.localtime(ts))
+
+
+# ---------------------------------------------------------------------------
+# Image history
+#
+# Text entries come from the clipy daemon; images are captured on demand from
+# the pasteboard when the switcher is (re)drawn. A tiny Swift helper is
+# compiled once (background, cached) and then used for check/get/put —
+# native speed, no third-party dependencies, TIFF→PNG conversion built in.
+# ---------------------------------------------------------------------------
+
+CLIP_HELPER = "aerofi-clip"
+
+CLIP_HELPER_SOURCE = """
+import AppKit
+
+let pb = NSPasteboard.general
+let types = ["public.png", "com.apple.tiff", "public.tiff", "public.jpeg"]
+
+func findImage() -> Data? {
+    for type in types {
+        if let data = pb.data(forType: NSPasteboard.PasteboardType(type)) {
+            return data
+        }
+    }
+    return nil
+}
+
+func toPNG(_ data: Data) -> Data? {
+    if let rep = NSBitmapImageRep(data: data),
+       let out = rep.representation(using: .png, properties: [:]) {
+        return out
+    }
+    return nil
+}
+
+switch CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "" {
+case "check":
+    exit(findImage() == nil ? 1 : 0)
+case "get":
+    guard CommandLine.arguments.count > 2, let data = findImage() else { exit(1) }
+    do { try (toPNG(data) ?? data).write(to: URL(fileURLWithPath: CommandLine.arguments[2])) }
+    catch { exit(1) }
+    exit(0)
+case "put":
+    guard CommandLine.arguments.count > 2 else { exit(1) }
+    guard let data = try? Data(contentsOf: URL(fileURLWithPath: CommandLine.arguments[2])),
+          let png = toPNG(data) else { exit(1) }
+    pb.clearContents()
+    pb.setData(png, forType: NSPasteboard.PasteboardType("public.png"))
+    exit(0)
+default:
+    exit(2)
+}
+"""
+
+_helper_build_started = False
+
+
+def img_dir() -> str:
+    return os.path.join(os.path.expanduser("~"), ".config", "aerofi", "clipboard-history")
+
+
+def helper_path() -> str:
+    return os.path.join(img_dir(), CLIP_HELPER)
+
+
+def helper_bin() -> str | None:
+    path = helper_path()
+    if os.path.isfile(path) and os.access(path, os.X_OK):
+        return path
+    return None
+
+
+def start_helper_build() -> None:
+    """Compile the Swift helper in the background (one time)."""
+    global _helper_build_started
+    if _helper_build_started:
+        return
+    if shutil.which("swiftc") is None:
+        return
+    _helper_build_started = True
+    try:
+        os.makedirs(img_dir(), exist_ok=True)
+        src = os.path.join(img_dir(), CLIP_HELPER + ".swift")
+        with open(src, "w", encoding="utf-8") as fh:
+            fh.write(CLIP_HELPER_SOURCE)
+        subprocess.Popen(
+            ["swiftc", "-O", "-o", helper_path(), src],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception:
+        _helper_build_started = False
+
+
+def helper_ok() -> bool:
+    return helper_bin() is not None
+
+
+def helper_check() -> bool:
+    try:
+        res = subprocess.run([helper_bin(), "check"], capture_output=True, timeout=3)
+        return res.returncode == 0
+    except Exception:
+        return False
+
+
+def helper_get(path: str) -> bool:
+    try:
+        res = subprocess.run([helper_bin(), "get", path], capture_output=True, timeout=10)
+        return res.returncode == 0 and os.path.isfile(path) and os.path.getsize(path) > 0
+    except Exception:
+        return False
+
+
+def img_put(path: str) -> bool:
+    try:
+        res = subprocess.run([helper_bin(), "put", path], capture_output=True, timeout=5)
+        return res.returncode == 0
+    except Exception:
+        return False
+
+
+def manifest_path() -> str:
+    return os.path.join(img_dir(), "manifest.json")
+
+
+def load_manifest() -> dict:
+    try:
+        with open(manifest_path(), "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def save_manifest(manifest: dict) -> None:
+    try:
+        os.makedirs(img_dir(), exist_ok=True)
+        tmp = manifest_path() + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(manifest, fh)
+        os.replace(tmp, manifest_path())
+    except Exception:
+        pass
+
+
+def png_dimensions(path: str):
+    try:
+        with open(path, "rb") as fh:
+            head = fh.read(24)
+        if head[:8] == b"\x89PNG\r\n\x1a\n" and len(head) >= 24:
+            return (
+                int.from_bytes(head[16:20], "big"),
+                int.from_bytes(head[20:24], "big"),
+            )
+    except Exception:
+        pass
+    return None
+
+
+def prune_images(manifest: dict) -> None:
+    if len(manifest) <= MAX_IMAGES:
+        return
+    oldest_first = sorted(manifest.items(), key=lambda kv: kv[1].get("ts", 0))
+    for digest, entry in oldest_first[: len(manifest) - MAX_IMAGES]:
+        manifest.pop(digest, None)
+        try:
+            os.unlink(entry["path"])
+        except Exception:
+            pass
+
+
+def capture_image() -> None:
+    """Save the current pasteboard image (if any) into the image history."""
+    if not helper_ok() or not helper_check():
+        return
+    path = os.path.join(img_dir(), f"{int(time.time() * 1000)}.png")
+    if not helper_get(path):
+        return
+    with open(path, "rb") as fh:
+        digest = hashlib.sha256(fh.read()).hexdigest()
+    manifest = load_manifest()
+    if digest in manifest:
+        try:
+            os.unlink(path)
+        except Exception:
+            pass
+        return
+    size = png_dimensions(path)
+    manifest[digest] = {
+        "path": path,
+        "ts": time.time(),
+        "w": size[0] if size else None,
+        "h": size[1] if size else None,
+    }
+    prune_images(manifest)
+    save_manifest(manifest)
+
+
+def paste_image(path: str) -> bool:
+    return img_put(path)
+
+
+def render_image_entry(digest: str, entry: dict) -> str:
+    w, h = entry.get("w"), entry.get("h")
+    size = f"{w}×{h} " if w and h else ""
+    return (
+        f"🖼️ <b>{size}image</b>\0id\x1fimg:{digest[:8]}"
+        f"\0icon\x1f{entry['path']}\0info\x1f{relative_time(entry.get('ts', time.time()))}"
+        f"\0meta\x1fcopied image png {size}image"
+    )
 
 
 def describe(content: str) -> tuple[str, str]:
@@ -239,6 +460,8 @@ def main() -> None:
     binary = clipy_bin()
     if binary:
         ensure_daemon(binary)
+    start_helper_build()
+    last_capture = 0.0
 
     def fetch() -> list[dict]:
         if binary:
@@ -258,25 +481,45 @@ def main() -> None:
                 return value
         return None
 
+    def image_entries() -> list[tuple[str, dict]]:
+        manifest = load_manifest()
+        return sorted(
+            manifest.items(), key=lambda kv: kv[1].get("ts", 0), reverse=True
+        )[:IMG_LIST_CAP]
+
     def frame(message: str | None = None) -> None:
+        nonlocal last_capture
+        now = time.time()
+        if now - last_capture >= CAPTURE_INTERVAL:
+            last_capture = now
+            capture_image()
+        img_rows = [render_image_entry(d, e) for d, e in image_entries()]
+
+        text_rows: list[str] | None = None
         if entries:
-            emit([render_entry(e) for e in entries], message)
+            text_rows = [render_entry(e) for e in entries]
         elif binary:
             if pbpaste().strip():
-                emit([render_current()], "History is empty — showing current clipboard")
-            else:
-                emit(
-                    ["Clipboard is empty\0nonselectable\x1ftrue\0icon\x1f📋"],
-                    "History is empty",
-                )
-        else:
-            rows = [
-                "<b>clipy is not installed</b>\0nonselectable\x1ftrue\0icon\x1f⚠️\0info\x1fmissing dependency",
-                '<b>cargo install clipy</b>\0id\x1finstall_cmd\0icon\x1f📦\0info\x1fEnter copies command',
-            ]
-            if pbpaste().strip():
-                rows.append(render_current())
-            emit(rows, message or "clipy is not installed — install it to keep history")
+                text_rows = [render_current()]
+        if text_rows is not None:
+            emit(img_rows + text_rows, message)
+            return
+        if img_rows:
+            emit(img_rows, message or "No text history — images only")
+            return
+        if binary:
+            emit(
+                ["Clipboard is empty\0nonselectable\x1ftrue\0icon\x1f📋"],
+                "History is empty",
+            )
+            return
+        rows = [
+            "<b>clipy is not installed</b>\0nonselectable\x1ftrue\0icon\x1f⚠️\0info\x1fmissing dependency",
+            '<b>cargo install clipy</b>\0id\x1finstall_cmd\0icon\x1f📦\0info\x1fEnter copies command',
+        ]
+        if pbpaste().strip():
+            rows.append(render_current())
+        emit(rows, message or "clipy is not installed — install it to keep history")
 
     frame()
 
@@ -290,7 +533,16 @@ def main() -> None:
         if kind == "select":
             ids = [i.strip() for i in event.get("ids", "").split(",") if i.strip()]
             pieces = []
+            image_paths = []
             for rid in ids:
+                if rid.startswith("img:"):
+                    short = rid[len("img:"):]
+                    entry = next(
+                        (e for d, e in load_manifest().items() if d.startswith(short)), None
+                    )
+                    if entry:
+                        image_paths.append(entry["path"])
+                    continue
                 if rid == "current":
                     cur = pbpaste()
                     if cur:
@@ -313,10 +565,17 @@ def main() -> None:
                         pass
                 if content is not None:
                     pieces.append(content)
-            if len(pieces) == 1:
-                pbcopy(pieces[0])
+            # Single image selected on its own -> paste the image back.
+            # In multi-selects images are skipped (they can't be joined).
+            if len(ids) == 1 and image_paths and not pieces:
+                paste_image(image_paths[0])
             elif pieces:
-                pbcopy("\n".join(p.rstrip("\n") for p in pieces))
+                if len(pieces) == 1:
+                    pbcopy(pieces[0])
+                else:
+                    pbcopy("\n".join(p.rstrip("\n") for p in pieces))
+            elif image_paths:
+                paste_image(image_paths[0])
             break
 
         if kind == "custom":
@@ -324,9 +583,22 @@ def main() -> None:
                 pbcopy(event["text"])
             break
 
-        if kind == "action" and event.get("key") == "ctrl+d" and binary:
+        if kind == "action" and event.get("key") == "ctrl+d":
             rid = event.get("id", "")
-            if rid and rid != "current":
+            if rid.startswith("img:"):
+                short = rid[len("img:"):]
+                manifest = load_manifest()
+                digest = next((d for d in manifest if d.startswith(short)), None)
+                if digest:
+                    entry = manifest.pop(digest)
+                    try:
+                        os.unlink(entry["path"])
+                    except Exception:
+                        pass
+                    save_manifest(manifest)
+                frame("Entry removed")
+                continue
+            if binary and rid and rid != "current":
                 try:
                     subprocess.run([binary, "delete", rid], capture_output=True, timeout=1.5)
                 except Exception:
