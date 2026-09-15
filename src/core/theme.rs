@@ -985,10 +985,10 @@ mod tests {
         let mut merged = toml::Table::new();
         if let Some(toml::Value::Array(imports)) = table.remove("imports") {
             for import in imports {
-                if let toml::Value::String(import_path) = import {
-                    if let Some(imported) = load_example_table(&import_path, visited) {
-                        super::merge_toml(&mut merged, imported);
-                    }
+                if let toml::Value::String(import_path) = import
+                    && let Some(imported) = load_example_table(&import_path, visited)
+                {
+                    super::merge_toml(&mut merged, imported);
                 }
             }
         }
