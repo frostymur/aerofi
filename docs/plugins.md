@@ -207,11 +207,29 @@ cp target/release/libmy_aerofi_plugin.dylib ~/.config/aerofi/plugins/
 
 Restart aerofi or press `Cmd+R` to reload configuration.
 
+> **Note:** if you change the example plugins, rebuild their prebuilt universal `.dylib`s and re-sign them so the repo binaries stay in sync (per plugin):
+>
+> ```bash
+> rustup target add x86_64-apple-darwin
+> cargo build --release -p plugin-web-search -p plugin-file-search
+> cargo build --release --target x86_64-apple-darwin -p plugin-web-search -p plugin-file-search
+> lipo -create target/release/libplugin_web_search.dylib \
+>   target/x86_64-apple-darwin/release/libplugin_web_search.dylib \
+>   -output examples/plugins/web_search/libplugin_web_search.dylib
+> codesign -s - -f examples/plugins/web_search/libplugin_web_search.dylib
+> ```
+
 ---
 
 ## 🌟 Reference Examples in Repository
 
-Explore the ready-to-build examples included in the aerofi repository:
+Explore the ready-to-build examples included in the aerofi repository. Each example also ships a **prebuilt universal (arm64 + x86_64) `.dylib`** right next to its sources — no compilation needed:
+
+```bash
+mkdir -p ~/.config/aerofi/plugins
+cp examples/plugins/web_search/libplugin_web_search.dylib ~/.config/aerofi/plugins/
+cp examples/plugins/file_search/libplugin_file_search.dylib ~/.config/aerofi/plugins/
+```
 
 1. **Web Search Plugin** (`examples/plugins/web_search/`):
    - Prefix: `g ` (e.g. `g rust async`)
