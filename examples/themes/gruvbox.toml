@@ -9,3 +9,6 @@ imports = [
     "colors/gruvbox.toml",
     "layouts/compact.toml",
 ]
+
+[font]
+weight = 300
