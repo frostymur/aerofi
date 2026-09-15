@@ -467,4 +467,4 @@ gap = 4.0
 
 1. **Keep `max_results` around 20–30**: Ensures near-zero memory allocation during fuzzy filtering.
 2. **Use Frosted Glass Blur Judiciously**: Real-time macOS blur is highly optimized on Apple Silicon Metal, but setting `window.blur = false` is available for pure minimum-power setups.
-3. **Use `.dylib` Plugins for Large Datasets**: For indexing tens of thousands of items (e.g. Spotlight or database queries), use aerofi's native C ABI `.dylib` plugin system ([docs/plugins.md](plugins.md)) to bypass CLI process spawning.
+3. **Power-user option: `.dylib` Plugins for Large Datasets**: For advanced integrations that index tens of thousands of items (e.g. Spotlight or database queries), aerofi provides a native C ABI `.dylib` plugin system ([docs/plugins.md](plugins.md)). Plugins are built from source and placed in `~/.config/aerofi/plugins/`; the example plugins in `examples/plugins/` serve as API demos.
