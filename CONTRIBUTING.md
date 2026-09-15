@@ -38,7 +38,7 @@ stubs — macOS is the only supported target.
 ```
 
 **Types:** `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `perf`, `ci`
-**Scopes:** `ui`, `core`, `sys`, `search`, `indexer`, `config`, `hotkey`
+**Scopes:** `ui`, `core`, `sys`, `search`, `indexer`, `config`, `hotkey`, `theme`, `scripts`, `plugin`
 
 Examples:
 
