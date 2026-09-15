@@ -7,4 +7,4 @@ edition = "2024"
 crate-type = ["cdylib"]
 
 [dependencies]
-aerofi-plugin-api = { path = "../../../aerofi-plugin-api" }
+aerofi-plugin-api = { path = "../../../aerofi-plugin-api", version = "0.1.0" }

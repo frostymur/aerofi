@@ -107,8 +107,11 @@ edition = "2024"
 crate-type = ["cdylib"]
 
 [dependencies]
-aerofi-plugin-api = { path = "/path/to/aerofi/aerofi-plugin-api" }
+aerofi-plugin-api = "0.1"
 ```
+
+The API crate is published on [crates.io](https://crates.io/crates/aerofi-plugin-api)
+(the in-repo example plugins use a `path` dependency instead).
 
 ---
 

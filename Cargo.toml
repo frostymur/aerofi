@@ -10,6 +10,7 @@ name = "aerofi"
 version = "0.1.9"
 edition = "2024"
 license = "MIT"
+publish = false
 
 [dependencies]
 
@@ -25,7 +26,7 @@ nucleo-matcher = "0.3"
 
 # Dynamic Plugins
 libloading = "0.8"
-aerofi-plugin-api = { path = "aerofi-plugin-api" }
+aerofi-plugin-api = { path = "aerofi-plugin-api", version = "0.1.0" }
 
 # Markdown parsing for full-output script results (MIT/Apache-2.0, no deps)
 pulldown-cmark = { version = "0.13", default-features = false }

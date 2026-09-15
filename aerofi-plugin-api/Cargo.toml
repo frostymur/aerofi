@@ -2,5 +2,11 @@
 name = "aerofi-plugin-api"
 version = "0.1.0"
 edition = "2024"
+description = "C ABI interface for aerofi launcher plugins: build in-process .dylib extensions in Rust, C, C++, or Swift"
+license = "MIT"
+repository = "https://github.com/frostymur/aerofi"
+homepage = "https://github.com/frostymur/aerofi"
+keywords = ["launcher", "plugins", "ffi", "c-abi", "macos"]
+categories = ["api-bindings", "os::macos-apis"]
 
 [dependencies]
