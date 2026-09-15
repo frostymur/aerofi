@@ -264,9 +264,9 @@ pub struct WindowConfig {
     pub background_position: Option<String>,
     pub image_scale: Option<f32>,
     pub blur: bool,
-    /// Window background opacity: `1.0` = fully opaque (default),
-    /// `0.0` = fully transparent. Makes the NSWindow non-opaque so
-    /// the desktop shows through.
+    /// Window background opacity: `1.0` = fully opaque, `0.0` = fully
+    /// transparent. The default (0.80) keeps enough of the dark background
+    /// for light text to stay readable even over a bright desktop.
     pub background_opacity: Option<f32>,
     pub corner_radius: f32,
     pub border_width: f32,
@@ -279,12 +279,12 @@ impl Default for WindowConfig {
             width: 760.0,
             height: 480.0,
             padding: 16.0,
-            background: "#0d0d0d".to_string(),
+            background: "#1a1a1a".to_string(),
             background_image: None,
             background_position: None,
             image_scale: None,
             blur: true,
-            background_opacity: Some(0.50),
+            background_opacity: Some(0.80),
             corner_radius: 16.0,
             border_width: 1.0,
             border_color: "#2a2a2a".to_string(),
@@ -983,7 +983,7 @@ mod tests {
     fn default_theme_has_dark_transparent_palette() {
         let t = ThemeConfig::default();
         assert_eq!(t.name, "Dark Transparent");
-        assert_eq!(t.window.background, "#0d0d0d");
+        assert_eq!(t.window.background, "#1a1a1a");
         assert_eq!(t.inputbar.background, "transparent");
         assert_eq!(t.inputbar.text_color, "#ffffff");
         assert_eq!(t.element.selected.background, "#ffffff20");
