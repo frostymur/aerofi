@@ -1066,7 +1066,10 @@ impl Launcher {
         let mut message = None;
         let mut no_custom = false;
         let mut keep_selection: Option<String> = None;
-        let mut columns = None;
+        let mut columns = self
+            .sticky_metatags
+            .as_ref()
+            .and_then(|m| m.columns);
         let mut loading = false;
         let mut live_search = false;
         let mut active_indices = Vec::new();
