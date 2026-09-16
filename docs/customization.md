@@ -196,6 +196,10 @@ and restart aerofi — it's registered with the text system at startup and can
 be referenced by its real family name. Monospace code blocks in script output
 always use a monospace face (`JetBrains Mono`).
 
+Individual elements can override the global font with an optional `font`
+sub-table (`[inputbar].font` and `[element].font` — see those sections
+below); any field left unset inherits the value above.
+
 For glyphs the theme font lacks, aerofi walks a fallback cascade: the
 `fallback` list, then common **Nerd Font** families (JetBrainsMono, Hack,
 FiraCode, CascadiaCode, SourceCodePro, Symbols), then Apple Color Emoji and
