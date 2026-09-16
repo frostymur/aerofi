@@ -80,11 +80,9 @@ pub fn set_borderless_style(window: &Window, corner_radius: f32) {
     // as the GPUI div, so no square-corner artefacts are visible.
     unsafe {
         use objc2::runtime::AnyObject;
-        use objc2::{class, msg_send};
+        use objc2::msg_send;
 
         let _: () = msg_send![&*ns_window, setHasShadow: false];
-        let clear_color: *mut AnyObject = msg_send![class!(NSColor), clearColor];
-        let _: () = msg_send![&*ns_window, setBackgroundColor: clear_color];
 
         if corner_radius > 0.0 {
             // contentView.layer.cornerRadius = corner_radius
