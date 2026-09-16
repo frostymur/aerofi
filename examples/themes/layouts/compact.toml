@@ -42,7 +42,6 @@ icon_color = "$accent"
 [listview]
 columns = 1
 spacing = 4.0
-scrollbar = false
 empty_text = "No matching results"
 empty_text_color = "$subtle"
 
@@ -68,7 +67,3 @@ background = "$surface2"
 text_color = "$text"
 description_color = "$accent"
 
-[element.hover]
-background = "$surface"
-text_color = "$text"
-description_color = "$subtle"

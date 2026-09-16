@@ -9,8 +9,8 @@ use crate::core::item::Target;
 use crate::core::theme::{BuiltinWidget, Widget, parse_hex_color_alpha};
 
 use super::helpers::{
-    apply_md_style, expand_tilde_path, font_fallback_families, format_combo, is_primary_click,
-    resolve_font_weight,
+    apply_md_style, element_font, expand_tilde_path, font_fallback_families, format_combo,
+    is_primary_click, resolve_font_weight,
 };
 use super::state::Launcher;
 use super::types::LauncherState;
@@ -68,7 +68,7 @@ impl Render for Launcher {
         // it fires in the same frame as the window.resize() call above).
         if self.needs_center {
             self.needs_center = false;
-            crate::sys::appkit::center_window();
+            crate::sys::appkit::center_window(t.window.x_offset as f64, t.window.y_offset as f64);
         }
 
         // Inner content: the actual launcher widgets or full page views.
@@ -305,15 +305,21 @@ impl Launcher {
             }
             row.into_any()
         } else {
+            let (ib_font, ib_size) =
+                element_font(&t.font, ib.font.as_ref(), self.base_font_weight());
             if self.query.is_empty() {
                 div()
                     .flex_1()
+                    .font(ib_font)
+                    .text_size(px(ib_size))
                     .text_color(rgba(Self::color(&ib.placeholder_color)))
                     .child(ib.placeholder.clone())
                     .into_any()
             } else {
                 div()
                     .flex_1()
+                    .font(ib_font)
+                    .text_size(px(ib_size))
                     .text_color(rgba(Self::color(&ib.text_color)))
                     .child(self.query.clone())
                     .into_any()
@@ -632,6 +638,9 @@ impl Launcher {
                                             st = st.with_highlights(highlights);
                                         }
                                         text_div.child(st)
+                                    } else if let Some(st) = _this.query_highlighted_text(&row.text)
+                                    {
+                                        text_div.child(st)
                                     } else {
                                         text_div.child(row.text.clone())
                                     };
@@ -753,6 +762,9 @@ impl Launcher {
                                         if !highlights.is_empty() {
                                             st = st.with_highlights(highlights);
                                         }
+                                        text_div.child(st)
+                                    } else if let Some(st) = _this.query_highlighted_text(&row.text)
+                                    {
                                         text_div.child(st)
                                     } else {
                                         text_div.child(row.text.clone())
@@ -1093,6 +1105,8 @@ impl Launcher {
                 if !highlights.is_empty() {
                     st = st.with_highlights(highlights);
                 }
+                text_el.child(st)
+            } else if let Some(st) = self.query_highlighted_text(&row.text) {
                 text_el.child(st)
             } else {
                 text_el.child(row.text.clone())
@@ -1672,17 +1686,25 @@ impl Launcher {
                 .border_color(rgba(Self::color(&t.window.border_color)));
         }
 
+        let cell_name = item.name().to_string();
+        let cell_name_el: gpui::AnyElement = match self.query_highlighted_text(&cell_name) {
+            Some(st) => st.into_any(),
+            None => cell_name.into_any_element(),
+        };
+        let (cell_font, cell_size) =
+            element_font(&t.font, t.element.font.as_ref(), self.base_font_weight());
         Self::with_item_mouse_handlers(
             cell_div.child(icon_element).child(
                 div()
                     .w_full()
                     .flex()
                     .justify_center()
+                    .font(cell_font)
                     .text_color(name_color)
-                    .text_size(px((t.font.size - 1.5).max(11.0)))
+                    .text_size(px((cell_size - 1.5).max(11.0)))
                     .line_clamp(1)
                     .overflow_hidden()
-                    .child(item.name().to_string()),
+                    .child(cell_name_el),
             ),
             format!("cell-{filtered_ix}"),
             filtered_ix,
@@ -1877,6 +1899,59 @@ impl Launcher {
         }
     }
 
+    /// Byte ranges (with a highlight style) of the query's matched
+    /// characters inside `name`, or `None` when highlighting is disabled,
+    /// the query is empty, or the name doesn't match.
+    fn name_highlights(
+        &self,
+        name: &str,
+    ) -> Option<Vec<(std::ops::Range<usize>, gpui::HighlightStyle)>> {
+        let t = &self.theme;
+        if !t.listview.highlight_matches || self.query.is_empty() || name.is_empty() {
+            return None;
+        }
+        let ranges = crate::core::search::highlight_ranges(name, &self.query);
+        if ranges.is_empty() {
+            return None;
+        }
+        let color = Self::hsla_hex(Self::color(
+            t.listview
+                .match_color
+                .as_deref()
+                .unwrap_or(&t.status_colors.accent),
+        ));
+        Some(
+            ranges
+                .into_iter()
+                .map(|r| {
+                    (
+                        r,
+                        gpui::HighlightStyle {
+                            color: Some(color),
+                            ..Default::default()
+                        },
+                    )
+                })
+                .collect(),
+        )
+    }
+
+    /// The global `[font]` weight, for use as the base of per-element
+    /// font overrides.
+    fn base_font_weight(&self) -> gpui::FontWeight {
+        match self.theme.font.weight.as_ref() {
+            Some(w) => resolve_font_weight(&w.as_str()),
+            None => gpui::FontWeight::NORMAL,
+        }
+    }
+
+    /// A `StyledText` with the query match highlighted, or `None` when there
+    /// is nothing to highlight.
+    fn query_highlighted_text(&self, text: &str) -> Option<gpui::StyledText> {
+        let hl = self.name_highlights(text)?;
+        Some(gpui::StyledText::new(text.to_string()).with_highlights(hl))
+    }
+
     fn render_row_name(
         &self,
         item: &Target,
@@ -1886,6 +1961,14 @@ impl Launcher {
         let t = &self.theme;
         let subtitle_opt = item.inline_output().or_else(|| item.package_name());
 
+        let name = item.name().to_string();
+        let name_el: gpui::AnyElement = match self.query_highlighted_text(&name) {
+            Some(st) => st.into_any(),
+            None => name.into_any_element(),
+        };
+        let (name_font, name_size) =
+            element_font(&t.font, t.element.font.as_ref(), self.base_font_weight());
+
         if let Some(subtitle) = subtitle_opt {
             div()
                 .flex_1()
@@ -1893,7 +1976,13 @@ impl Launcher {
                 .flex_row()
                 .items_center()
                 .gap_2()
-                .child(div().text_color(name_color).child(item.name().to_string()))
+                .child(
+                    div()
+                        .font(name_font)
+                        .text_size(px(name_size))
+                        .text_color(name_color)
+                        .child(name_el),
+                )
                 .child(
                     div()
                         .text_size(px(t.font.size - 2.0))
@@ -1904,8 +1993,10 @@ impl Launcher {
         } else {
             div()
                 .flex_1()
+                .font(name_font)
+                .text_size(px(name_size))
                 .text_color(name_color)
-                .child(item.name().to_string())
+                .child(name_el)
                 .into_any()
         }
     }

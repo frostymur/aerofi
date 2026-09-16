@@ -132,11 +132,157 @@ impl SearchIndex {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Match highlighting
+// ---------------------------------------------------------------------------
+
+/// Scratch state for computing match ranges. A `Matcher` owns a large
+/// (~135 KB) heap working set, so it is created once per thread and reused.
+struct RangeMatcher {
+    matcher: Matcher,
+    hay_buf: Vec<char>,
+    needle_buf: Vec<char>,
+    indices: Vec<u32>,
+    lower_query: String,
+}
+
+impl RangeMatcher {
+    fn new() -> Self {
+        Self {
+            matcher: Matcher::new(Config::DEFAULT),
+            hay_buf: Vec::new(),
+            needle_buf: Vec::new(),
+            indices: Vec::new(),
+            lower_query: String::new(),
+        }
+    }
+
+    fn ranges(&mut self, name: &str, query: &str) -> Vec<std::ops::Range<usize>> {
+        self.hay_buf.clear();
+        self.needle_buf.clear();
+        self.indices.clear();
+        self.lower_query.clear();
+        self.lower_query
+            .extend(query.chars().flat_map(|c| c.to_lowercase()));
+
+        let hay = Utf32Str::new(name, &mut self.hay_buf);
+        let needle = Utf32Str::new(&self.lower_query, &mut self.needle_buf);
+        if self
+            .matcher
+            .fuzzy_indices(hay, needle, &mut self.indices)
+            .is_none()
+        {
+            return Vec::new();
+        }
+
+        // Merge consecutive char indices into runs, then map to byte offsets
+        // (char-aligned, as required by GPUI highlight ranges).
+        let mut runs: Vec<(usize, usize)> = Vec::new();
+        for &ix in &self.indices {
+            let ix = ix as usize;
+            match runs.last_mut() {
+                Some((_, end)) if *end == ix => *end = ix + 1,
+                _ => runs.push((ix, ix + 1)),
+            }
+        }
+        runs.into_iter()
+            .map(|(s, e)| {
+                let sb = byte_at(name, s).unwrap_or(name.len());
+                let eb = byte_at(name, e).unwrap_or(name.len());
+                sb..eb
+            })
+            .filter(|r| !r.is_empty())
+            .collect()
+    }
+}
+
+/// Byte offset of the `ix`-th char in `s`.
+fn byte_at(s: &str, ix: usize) -> Option<usize> {
+    s.char_indices().nth(ix).map(|(b, _)| b)
+}
+
+thread_local! {
+    static RANGE_MATCHER: std::cell::RefCell<RangeMatcher> =
+        std::cell::RefCell::new(RangeMatcher::new());
+}
+
+/// Byte ranges (char-aligned) of the query's matched characters inside
+/// `name` — the same fuzzy, case-insensitive match as
+/// [`SearchIndex::search`], so a row shown in the list always highlights.
+/// Returns an empty vec when the query does not match the name.
+pub fn highlight_ranges(name: &str, query: &str) -> Vec<std::ops::Range<usize>> {
+    let query = query.trim();
+    if query.is_empty() || name.is_empty() {
+        return Vec::new();
+    }
+    RANGE_MATCHER.with(|m| m.borrow_mut().ranges(name, query))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn highlight_ranges_empty_query() {
+        assert!(highlight_ranges("Firefox", "").is_empty());
+        assert!(highlight_ranges("Firefox", "   ").is_empty());
+    }
+
+    #[test]
+    fn highlight_ranges_no_match() {
+        assert!(highlight_ranges("Firefox", "zzz").is_empty());
+    }
+
+    #[test]
+    fn highlight_ranges_fuzzy_match() {
+        let name = "Firefox";
+        let r = highlight_ranges(name, "fx");
+        assert_eq!(r.len(), 2);
+        let matched: String = r.iter().map(|x| name[x.clone()].to_string()).collect();
+        // Matched chars keep their original case.
+        assert_eq!(matched.to_lowercase(), "fx");
+    }
+
+    #[test]
+    fn highlight_ranges_case_insensitive() {
+        let name = "Firefox";
+        let r = highlight_ranges(name, "FX");
+        let matched: String = r.iter().map(|x| name[x.clone()].to_string()).collect();
+        assert_eq!(matched.to_lowercase(), "fx");
+    }
+
+    #[test]
+    fn highlight_ranges_consecutive_chars_merge() {
+        let name = "Firefox";
+        let r = highlight_ranges(name, "fi");
+        assert_eq!(r.len(), 1);
+        assert_eq!(name[r[0].clone()].to_lowercase(), "fi");
+    }
+
+    #[test]
+    fn highlight_ranges_are_char_aligned() {
+        // The haystack contains the two-byte é; byte offsets must stay on
+        // char boundaries (GPUI assert).
+        let name = "café app";
+        let r = highlight_ranges(name, "fa");
+        assert_eq!(r.len(), 2);
+        let matched: String = r.iter().map(|x| name[x.clone()].to_string()).collect();
+        assert_eq!(matched, "fa");
+        for x in &r {
+            assert!(name.is_char_boundary(x.start));
+            assert!(name.is_char_boundary(x.end));
+        }
+    }
+
+    #[test]
+    fn highlight_ranges_trims_query() {
+        let name = "Firefox";
+        let padded = highlight_ranges(name, "  fx ");
+        let plain = highlight_ranges(name, "fx");
+        assert_eq!(padded, plain);
+    }
 
     use crate::core::history::ExecutionRecord;
 

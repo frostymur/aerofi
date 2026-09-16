@@ -53,7 +53,6 @@ icon_color = "$accent"
 [listview]
 columns = 1
 spacing = 8.0
-scrollbar = false
 empty_text = "No matching results"
 empty_text_color = "$subtle"
 
@@ -82,11 +81,6 @@ layout = ["icon", "name", "spacer"]
 background = "$accent"
 text_color = "#1e1e2e"
 description_color = "#1e1e2e"
-
-[element.hover]
-background = "$surface2"
-text_color = "$text"
-description_color = "$subtle"
 
 # ------------------------------------------------------------------------------
 # Left pane: fully transparent (window blur shows through), search bar on top.

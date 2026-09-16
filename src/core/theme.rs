@@ -275,6 +275,17 @@ impl Default for FontConfig {
     }
 }
 
+/// Per-element font override. Any field left unset inherits the global
+/// `[font]` value.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct FontOverride {
+    pub family: Option<String>,
+    pub size: Option<f32>,
+    pub weight: Option<FontWeightSpec>,
+    pub fallback: Option<Vec<String>>,
+}
+
 // ---------------------------------------------------------------------------
 // Window
 // ---------------------------------------------------------------------------
@@ -285,12 +296,17 @@ pub struct WindowConfig {
     pub width: f32,
     pub height: f32,
     pub padding: f32,
+    /// Horizontal offset from screen centre (points). `0.0` = centred,
+    /// negative = towards the left edge.
+    pub x_offset: f32,
+    /// Vertical offset from screen centre (points). `0.0` = centred,
+    /// negative = towards the top edge.
+    pub y_offset: f32,
     pub background: String,
     pub background_image: Option<String>,
     /// Position of the background image: `"cover"` (full), `"left"`,
     /// `"right"`, or `"center"`.
     pub background_position: Option<String>,
-    pub image_scale: Option<f32>,
     pub blur: bool,
     /// Window background opacity: `1.0` = fully opaque, `0.0` = fully
     /// transparent. The default (0.80) keeps enough of the dark background
@@ -307,10 +323,11 @@ impl Default for WindowConfig {
             width: 760.0,
             height: 480.0,
             padding: 16.0,
+            x_offset: 0.0,
+            y_offset: 0.0,
             background: "#1a1a1a".to_string(),
             background_image: None,
             background_position: None,
-            image_scale: None,
             blur: true,
             background_opacity: Some(0.80),
             corner_radius: 16.0,
@@ -353,7 +370,6 @@ impl Default for ContainerConfig {
 pub struct BannerConfig {
     pub image_path: Option<String>,
     pub height: f32,
-    pub align: Option<String>,
 }
 
 impl Default for BannerConfig {
@@ -361,7 +377,6 @@ impl Default for BannerConfig {
         Self {
             image_path: None,
             height: 120.0,
-            align: Some("center".to_string()),
         }
     }
 }
@@ -385,6 +400,8 @@ pub struct InputBarConfig {
     pub icon_color: Option<String>,
     pub border_width: f32,
     pub border_color: String,
+    /// Optional font override for the search bar text (see FontOverride).
+    pub font: Option<FontOverride>,
 }
 
 impl Default for InputBarConfig {
@@ -395,6 +412,7 @@ impl Default for InputBarConfig {
             margin: vec![0.0, 0.0, 8.0, 0.0],
             background: "transparent".to_string(),
             text_color: "#ffffff".to_string(),
+            font: None,
             placeholder: "Search...".to_string(),
             placeholder_color: "#888888".to_string(),
             corner_radius: 8.0,
@@ -453,9 +471,13 @@ impl Default for BadgeConfig {
 pub struct ListViewConfig {
     pub columns: usize,
     pub spacing: f32,
-    pub scrollbar: bool,
     pub empty_text: String,
     pub empty_text_color: String,
+    /// Highlight the query's matched characters inside item names.
+    pub highlight_matches: bool,
+    /// Colour of the matched characters. Defaults to
+    /// `status_colors.accent` when unset.
+    pub match_color: Option<String>,
     /// Styling for category badges ("Script", "Application", "Aerofi").
     pub category_badge: BadgeConfig,
     /// Styling for alias pill badges.
@@ -474,8 +496,9 @@ impl Default for ListViewConfig {
         Self {
             columns: 1,
             spacing: 4.0,
-            scrollbar: false,
             empty_text: "No matches".to_string(),
+            highlight_matches: true,
+            match_color: None,
             empty_text_color: "#888888".to_string(),
             category_badge: BadgeConfig {
                 show: false,
@@ -509,24 +532,6 @@ impl Default for SelectedState {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
-#[serde(default)]
-pub struct HoverState {
-    pub background: String,
-    pub text_color: String,
-    pub description_color: Option<String>,
-}
-
-impl Default for HoverState {
-    fn default() -> Self {
-        Self {
-            background: "#ffffff10".to_string(),
-            text_color: "#ffffff".to_string(),
-            description_color: Some("#bbbbbb".to_string()),
-        }
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Element
 // ---------------------------------------------------------------------------
@@ -549,7 +554,8 @@ pub struct ElementConfig {
     pub icon_radius: f32,
     pub layout: Option<Vec<String>>,
     pub selected: SelectedState,
-    pub hover: Option<HoverState>,
+    /// Optional font override for row names (see FontOverride).
+    pub font: Option<FontOverride>,
 }
 
 impl Default for ElementConfig {
@@ -571,7 +577,7 @@ impl Default for ElementConfig {
                 "spacer".to_string(),
             ]),
             selected: SelectedState::default(),
-            hover: Some(HoverState::default()),
+            font: None,
         }
     }
 }
@@ -703,6 +709,7 @@ impl ThemeConfig {
 
         // ListView
         resolve(&mut self.listview.empty_text_color, colors);
+        resolve_opt(&mut self.listview.match_color, colors);
         resolve(&mut self.listview.category_badge.color, colors);
         resolve(&mut self.listview.alias_badge.color, colors);
         resolve_opt(&mut self.listview.alias_badge.border_color, colors);
@@ -716,13 +723,6 @@ impl ThemeConfig {
         resolve(&mut self.element.selected.background, colors);
         resolve(&mut self.element.selected.text_color, colors);
         resolve_opt(&mut self.element.selected.description_color, colors);
-
-        // Element.hover
-        if let Some(hover) = &mut self.element.hover {
-            resolve(&mut hover.background, colors);
-            resolve(&mut hover.text_color, colors);
-            resolve_opt(&mut hover.description_color, colors);
-        }
 
         // Status colors
         resolve(&mut self.status_colors.urgent_background, colors);
@@ -1053,7 +1053,6 @@ icon_color = "$accent"
 [listview]
 columns = 1
 spacing = 6.0
-scrollbar = false
 empty_text = "No matches"
 empty_text_color = "$subtle"
 [element]
@@ -1225,7 +1224,6 @@ icon_color = "$accent"
 [listview]
 columns = 1
 spacing = 4.0
-scrollbar = false
 empty_text = "No matching targets"
 empty_text_color = "$subtle"
 [element]
@@ -1778,5 +1776,53 @@ weight = "bold""#,
             crate::core::theme::FontWeightSpec::Named("medium".into()).as_str(),
             "medium"
         );
+    }
+
+    #[test]
+    fn window_position_and_match_highlight_fields_deserialize() {
+        let mut theme: ThemeConfig = toml::from_str(
+            r##"
+[window]
+x_offset = 10.0
+y_offset = -40.0
+
+[listview]
+highlight_matches = false
+match_color = "#9ece6a"
+
+[inputbar]
+[inputbar.font]
+family = "JetBrains Mono"
+size = 14.0
+weight = "medium"
+
+[element]
+[element.font]
+family = "Fira Code"
+weight = 700
+"##,
+        )
+        .unwrap();
+        theme.resolve_colors();
+        assert_eq!(theme.window.x_offset, 10.0);
+        assert_eq!(theme.window.y_offset, -40.0);
+        assert!(!theme.listview.highlight_matches);
+        assert_eq!(theme.listview.match_color.as_deref(), Some("#9ece6a"));
+        let ib = theme.inputbar.font.as_ref().expect("inputbar font");
+        assert_eq!(ib.family.as_deref(), Some("JetBrains Mono"));
+        assert_eq!(ib.size, Some(14.0));
+        let el = theme.element.font.as_ref().expect("element font");
+        assert_eq!(el.family.as_deref(), Some("Fira Code"));
+    }
+
+    #[test]
+    fn window_position_and_match_highlight_fields_default() {
+        let theme: ThemeConfig = toml::from_str("").unwrap();
+        assert_eq!(theme.window.x_offset, 0.0);
+        assert_eq!(theme.window.y_offset, 0.0);
+        assert!(theme.listview.highlight_matches);
+        assert!(theme.listview.match_color.is_none());
+        assert!(theme.inputbar.font.is_none());
+        assert!(theme.element.font.is_none());
     }
 }

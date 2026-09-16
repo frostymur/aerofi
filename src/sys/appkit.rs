@@ -128,16 +128,25 @@ pub fn set_corner_radius(corner_radius: f32) {
     }
 }
 
-/// Center the NSWindow on the active screen, deferred via GCD so it fires
-/// after GPUI has finished processing the current frame (including any
-/// pending `window.resize()` call).  Calling `[NSWindow center]` synchronously
-/// during render would see the old frame size because GPUI queues the resize
-/// for after the render pass.
-pub fn center_window() {
+thread_local! {
+    static CENTER_OFFSET: std::cell::RefCell<(f64, f64)> =
+        const { std::cell::RefCell::new((0.0, 0.0)) };
+}
+
+/// Centre the window on the main screen, shifted by (`x_offset`,
+/// `y_offset`) points (positive = right/down), deferred via GCD so it
+/// fires after GPUI has finished processing the current frame (including
+/// any pending `window.resize()` call). Calling `[NSWindow center]`
+/// synchronously during render would see the old frame size because GPUI
+/// queues the resize for after the render pass. Both the caller and the
+/// trampoline run on the main thread, so `CENTER_OFFSET` carries the
+/// offsets without a heap allocation.
+pub fn center_window(x_offset: f64, y_offset: f64) {
     let ptr = NS_WINDOW.load(Ordering::SeqCst);
     if ptr.is_null() {
         return;
     }
+    CENTER_OFFSET.with(|o| *o.borrow_mut() = (x_offset, y_offset));
     // GCD trampoline — dispatch_async on the main queue defers this until
     // after the current run-loop iteration (i.e. after GPUI's resize fires).
     extern "C" fn do_center(ctx: *mut std::ffi::c_void) {
@@ -159,10 +168,13 @@ pub fn center_window() {
             if !screen.is_null() {
                 let screen_frame: NSRect = msg_send![screen, frame];
                 let window_frame: NSRect = msg_send![ns_window, frame];
+                let (ox, oy) = CENTER_OFFSET.with(|o| *o.borrow());
                 let new_x = screen_frame.origin.x
-                    + (screen_frame.size.width - window_frame.size.width) / 2.0;
+                    + (screen_frame.size.width - window_frame.size.width) / 2.0
+                    + ox;
                 let new_y = screen_frame.origin.y
-                    + (screen_frame.size.height - window_frame.size.height) / 2.0;
+                    + (screen_frame.size.height - window_frame.size.height) / 2.0
+                    + oy;
                 let new_origin = NSPoint::new(new_x, new_y);
                 let _: () = msg_send![ns_window, setFrameOrigin: new_origin];
             } else {

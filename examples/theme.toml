@@ -80,11 +80,16 @@ corner_radius = 16.0
 border_width = 1.0
 border_color = "$border"
 
+# Position offset from screen centre in points. 0.0 = centred;
+# negative = towards the left/top edge.
+# Type: Float (f32), Float (f32)
+x_offset = 0.0
+y_offset = 0.0
+
 # Optional background image overlay:
 # background_image = "~/.config/aerofi/themes/wallpaper.jpg"
 # Position: "cover", "left", "right", or "center"
 # background_position = "cover"
-# image_scale = 1.0
 
 
 # ------------------------------------------------------------------------------
@@ -120,8 +125,6 @@ children = [
 # image_path = "~/.config/aerofi/themes/banner.png"
 # Height in points.
 height = 80.0
-# Alignment: "left", "center", or "right".
-align = "center"
 
 
 # ------------------------------------------------------------------------------
@@ -159,6 +162,14 @@ corner_radius = 10.0
 icon = "❯"
 icon_color = "$accent"
 
+# Optional font override for the search text. Any subset of the global
+# [font] fields; unset fields inherit.
+# [inputbar.font]
+# family = "JetBrains Mono"
+# size = 15.0
+# weight = "500"
+# fallback = ["SF Mono"]
+
 
 # ------------------------------------------------------------------------------
 # [listview] - Results List View & Badges
@@ -172,9 +183,14 @@ columns = 1
 # Type: Float (f32)
 spacing = 4.0
 
-# Show a visible scrollbar track.
+# Highlight the query's matched characters inside item names.
 # Type: Boolean
-scrollbar = false
+highlight_matches = true
+
+# Colour of the highlighted characters. Defaults to status_colors.accent
+# when unset.
+# Type: String (Hex / $alias)
+# match_color = "$accent"
 
 # Placeholder text shown when no items match search query.
 # Type: String, String (Hex / $alias)
@@ -267,12 +283,13 @@ background = "$surface2"
 text_color = "$text"
 description_color = "$accent"
 
-# Hovered item styling (mouse hover)
-[element.hover]
-background = "$surface"
-text_color = "$text"
-description_color = "$subtle"
-
+# Optional font override for row names. Any subset of the global
+# [font] fields; unset fields inherit.
+# [element.font]
+# family = "JetBrains Mono"
+# size = 15.0
+# weight = "bold"
+# fallback = ["SF Mono"]
 
 # ------------------------------------------------------------------------------
 # [status_colors] - Semantic Colors for GUI Mode

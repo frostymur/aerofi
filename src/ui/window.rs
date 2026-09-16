@@ -5,7 +5,7 @@
 
 use gpui::{
     App, AsyncApp, Bounds, Entity, WindowBackgroundAppearance, WindowBounds, WindowKind,
-    WindowOptions, prelude::*, px, size,
+    WindowOptions, point, prelude::*, px, size,
 };
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -123,11 +123,14 @@ pub fn create_launcher_window(
     app_config: AppConfig,
     history: History,
 ) -> Entity<Launcher> {
-    let bounds = Bounds::centered(
+    let mut bounds = Bounds::centered(
         None,
         size(px(theme.window.width), px(theme.window.height)),
         cx,
     );
+    if theme.window.x_offset != 0.0 || theme.window.y_offset != 0.0 {
+        bounds.origin += point(px(theme.window.x_offset), px(theme.window.y_offset));
+    }
     let window = cx
         .open_window(
             WindowOptions {

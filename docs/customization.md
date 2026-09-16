@@ -22,7 +22,7 @@ aerofi is configured via transparent, human-readable TOML files located in `~/.c
   - [Layout Hierarchy (`[mainbox]`)](#layout-hierarchy-mainbox)
   - [Search Bar (`[inputbar]`)](#search-bar-inputbar)
   - [Results List & Badges (`[listview]`)](#results-list--badges-listview)
-  - [Row Slots & Hover States (`[element]`)](#row-slots--hover-states-element)
+  - [Row Slots & Selected State (`[element]`)](#row-slots--selected-state-element)
   - [Semantic Status Colors](#semantic-status-colors)
   - [Floating Toast](#floating-toast)
   - [Palette Variable Aliases (`[colors]`)](#palette-variable-aliases-colors)
@@ -216,10 +216,14 @@ corner_radius = 16.0
 border_width = 1.0
 border_color = "$border"
 
+# Position: offset from screen centre in points (0.0 = centred,
+# negative = towards the left/top edge).
+x_offset = 0.0
+y_offset = -40.0
+
 # Optional background image:
 # background_image = "~/.config/aerofi/themes/wallpaper.jpg"
 # background_position = "cover" # "cover" (default), "left", "right"
-# image_scale = 1.0
 ```
 
 ### Layout Hierarchy (`[mainbox]`)
@@ -255,6 +259,13 @@ placeholder_color = "$subtle"
 corner_radius = 10.0
 icon = "❯"
 icon_color = "$accent"
+
+# Optional font override for the search text (any subset of the
+# global [font] fields; unset fields inherit):
+# [inputbar.font]
+# family = "JetBrains Mono"
+# size = 15.0
+# weight = "500"                     # name ("bold", …) or number, 100–900
 ```
 
 ### Results List & Badges (`[listview]`)
@@ -262,9 +273,10 @@ icon_color = "$accent"
 [listview]
 columns = 1                          # 1 for list; any value >1 renders a grid (2, 3, 4, …)
 spacing = 4.0                        # Gap between rows
-scrollbar = false                    # Visible scrollbar
 empty_text = "No matching items"
 empty_text_color = "$subtle"
+highlight_matches = true             # Highlight the query's matched characters in item names
+# match_color = "$green"             # Colour of matched characters (default: status_colors.accent)
 # require_input = true               # Collapses listview until typing starts
 
 # Category Badge Styling ("Script", "Application", "Plugin")
@@ -289,7 +301,7 @@ border = true
 border_color = "$accent"
 ```
 
-### Row Slots & Hover States (`[element]`)
+### Row Slots & Selected State (`[element]`)
 ```toml
 [element]
 padding = [8.0, 12.0]
@@ -321,11 +333,12 @@ background = "$surface2"
 text_color = "$text"
 description_color = "$accent"
 
-# Mouse hover row
-[element.hover]
-background = "$surface"
-text_color = "$text"
-description_color = "$subtle"
+# Optional font override for row names (any subset of the global [font]
+# fields; unset fields inherit):
+# [element.font]
+# family = "JetBrains Mono"
+# size = 15.0
+# weight = "bold"
 ```
 
 ### Semantic Status Colors

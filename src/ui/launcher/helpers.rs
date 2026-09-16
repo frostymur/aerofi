@@ -66,6 +66,38 @@ pub(super) fn font_fallback_families(theme_fallbacks: &Option<Vec<String>>) -> V
     list
 }
 
+/// Resolve an element's font: the optional `FontOverride` (e.g.
+/// `[inputbar].font`) layered over the global `[font]` settings. Returns
+/// the GPUI font (family/weight/fallbacks) and the font size in points.
+pub(super) fn element_font(
+    base: &crate::core::theme::FontConfig,
+    override_: Option<&crate::core::theme::FontOverride>,
+    base_weight: gpui::FontWeight,
+) -> (gpui::Font, f32) {
+    let default_override = crate::core::theme::FontOverride::default();
+    let o = override_.unwrap_or(&default_override);
+    (
+        gpui::Font {
+            family: o
+                .family
+                .as_deref()
+                .unwrap_or(&base.family)
+                .to_string()
+                .into(),
+            features: gpui::FontFeatures::default(),
+            fallbacks: Some(gpui::FontFallbacks::from_fonts(font_fallback_families(
+                &o.fallback.clone().or_else(|| base.fallback.clone()),
+            ))),
+            weight: o
+                .weight
+                .as_ref()
+                .map_or(base_weight, |w| resolve_font_weight(&w.as_str())),
+            style: gpui::FontStyle::Normal,
+        },
+        o.size.unwrap_or(base.size),
+    )
+}
+
 /// True for a left-mouse-button click (keyboard/touch-generated clicks
 /// are ignored).
 pub(super) fn is_primary_click(event: &gpui::ClickEvent) -> bool {
