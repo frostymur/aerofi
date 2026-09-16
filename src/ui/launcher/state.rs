@@ -1070,6 +1070,7 @@ impl Launcher {
             .sticky_metatags
             .as_ref()
             .and_then(|m| m.columns);
+        eprintln!("[aerofi] gui_apply_burst: sticky_metatags columns={:?}", columns);
         let mut loading = false;
         let mut live_search = false;
         let mut active_indices = Vec::new();
@@ -1098,7 +1099,7 @@ impl Launcher {
         {
             prompt = prev_prompt.clone();
             no_custom = *prev_no_custom;
-            columns = *prev_columns;
+            columns = columns.or(*prev_columns);
             live_search = *prev_live_search;
             active_indices = prev_active_indices.clone();
             data = prev_data.clone();
@@ -1418,7 +1419,9 @@ impl Launcher {
 
     pub(super) fn gui_columns(&self) -> usize {
         if let LauncherState::GuiMode { columns, .. } = &self.state {
-            (*columns).unwrap_or(1)
+            let val = (*columns).unwrap_or(1);
+            eprintln!("[aerofi] gui_columns() = {:?} -> {}", columns, val);
+            val
         } else {
             1
         }

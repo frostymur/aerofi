@@ -557,6 +557,7 @@ impl Launcher {
                     .unwrap_or(1)
                     .max(1)
             };
+            eprintln!("[aerofi] render_gui: gui_columns()={}, layout={:?}, cols={}", self.gui_columns(), self.gui_layout(), cols);
             if cols > 1 {
                 // Grid mode: virtualized rows of `cols` cells each.
                 let total_rows = filtered_rows.len().div_ceil(cols);
