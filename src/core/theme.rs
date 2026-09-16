@@ -347,6 +347,9 @@ pub struct ContainerConfig {
     /// `"vertical"` or `"horizontal"`.
     pub orientation: String,
     pub children: Vec<Widget>,
+    /// Gap between mainbox children in points. Defaults to
+    /// `[listview].spacing` when unset.
+    pub gap: Option<f32>,
 }
 
 impl Default for ContainerConfig {
@@ -357,6 +360,7 @@ impl Default for ContainerConfig {
                 Widget::Builtin(BuiltinWidget::InputBar),
                 Widget::Builtin(BuiltinWidget::ListView),
             ],
+            gap: None,
         }
     }
 }
@@ -1813,6 +1817,14 @@ weight = 700
         assert_eq!(ib.size, Some(14.0));
         let el = theme.element.font.as_ref().expect("element font");
         assert_eq!(el.family.as_deref(), Some("Fira Code"));
+    }
+
+    #[test]
+    fn mainbox_gap_defaults_to_none_and_deserializes() {
+        let theme: ThemeConfig = toml::from_str("[mainbox]\ngap = 0.0").unwrap();
+        assert_eq!(theme.mainbox.gap, Some(0.0));
+        let theme: ThemeConfig = toml::from_str("").unwrap();
+        assert_eq!(theme.mainbox.gap, None);
     }
 
     #[test]

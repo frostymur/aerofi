@@ -248,6 +248,9 @@ children = [
     "ListView",
     "footer_bar"
 ]
+
+# Gap between the mainbox children in points (default: listview.spacing).
+# gap = 0.0
 ```
 
 ### Search Bar (`[inputbar]`)

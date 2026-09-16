@@ -116,6 +116,11 @@ children = [
     "footer_bar"
 ]
 
+# Gap between the mainbox children in points. Defaults to [listview].spacing
+# when unset.
+# Type: Float (f32)
+# gap = 8.0
+
 
 # ------------------------------------------------------------------------------
 # [banner] - Optional Image Banner (Optional)

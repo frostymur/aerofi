@@ -80,7 +80,8 @@ impl Render for Launcher {
             self.render_gui_mode(cx)
         } else {
             let is_vertical = t.mainbox.orientation == "vertical";
-            let mut inner_box = div().flex_1().flex().gap(px(t.listview.spacing));
+            let mainbox_gap = t.mainbox.gap.unwrap_or(t.listview.spacing);
+            let mut inner_box = div().flex_1().flex().gap(px(mainbox_gap));
 
             if is_vertical {
                 inner_box = inner_box.flex_col();
