@@ -30,3 +30,9 @@ padding = [20.0, 24.0]
 # Right pane flush to the window edges (window corner_radius clips it).
 [widgets.right_panel]
 radius = 0.0
+
+[layouts.grid.element]
+columns = 8
+icon_size = 48.0
+padding = [4.0, 4.0]
+corner_radius = 8.0
