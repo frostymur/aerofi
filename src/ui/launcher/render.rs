@@ -618,8 +618,9 @@ impl Launcher {
                                     }
 
                                     if el.show_icons {
-                                        row_div = row_div
-                                            .child(Self::render_gui_row_icon(icon_size, &row.icon));
+                                        row_div = row_div.child(Self::render_gui_row_icon(
+                                            icon_size, &row.icon, name_color,
+                                        ));
                                     }
 
                                     let text_div = div().flex_1().text_color(name_color);
@@ -739,8 +740,9 @@ impl Launcher {
                                     }
 
                                     if el.show_icons {
-                                        row_div = row_div
-                                            .child(Self::render_gui_row_icon(icon_size, &row.icon));
+                                        row_div = row_div.child(Self::render_gui_row_icon(
+                                            icon_size, &row.icon, name_color,
+                                        ));
                                     }
 
                                     let text_div = div().flex_1().text_color(name_color);
@@ -876,8 +878,13 @@ impl Launcher {
         container.into_any()
     }
 
-    /// Render the icon element for a GUI-mode row.
-    fn render_gui_row_icon(icon_size: gpui::Pixels, icon: &Option<String>) -> gpui::AnyElement {
+    /// Render the icon element for a GUI-mode row. Glyph icons use the
+    /// row's foreground colour so they stay readable on selection.
+    fn render_gui_row_icon(
+        icon_size: gpui::Pixels,
+        icon: &Option<String>,
+        icon_color: gpui::Rgba,
+    ) -> gpui::AnyElement {
         if let Some(icon_str) = icon {
             // Strip the "emoji:" prefix used by scripts to hint the type
             let display = icon_str.strip_prefix("emoji:").unwrap_or(icon_str.as_str());
@@ -903,6 +910,7 @@ impl Launcher {
                     .items_center()
                     .justify_center()
                     .text_size(icon_size * 0.85)
+                    .text_color(icon_color)
                     .child(display.to_string())
                     .into_any()
             }
@@ -914,6 +922,7 @@ impl Launcher {
                 .items_center()
                 .justify_center()
                 .text_size(icon_size * 0.85)
+                .text_color(icon_color)
                 .child("•".to_string())
                 .into_any()
         }
@@ -1066,7 +1075,7 @@ impl Launcher {
         }
 
         if el.show_icons {
-            cell = cell.child(Self::render_gui_row_icon(icon_size, &row.icon));
+            cell = cell.child(Self::render_gui_row_icon(icon_size, &row.icon, name_color));
         }
 
         if !row.text.is_empty() {
@@ -1563,6 +1572,20 @@ impl Launcher {
             (rgba(0x00000000), rgba(Self::color(&el.text_color)))
         };
 
+        // Glyph icons normally take the inputbar accent colour, but on a
+        // selected cell they must follow the row foreground (a theme may use
+        // the accent for both, which would make the icon invisible).
+        let icon_color = if is_selected {
+            name_color
+        } else {
+            rgba(Self::color(
+                t.inputbar
+                    .icon_color
+                    .as_deref()
+                    .unwrap_or(&t.inputbar.text_color),
+            ))
+        };
+
         let icon_size = px(el.icon_size);
         let icon_element = if el.show_icons {
             let inner = if let Some(path) = item.icon_path() {
@@ -1596,12 +1619,7 @@ impl Launcher {
                         .w(icon_size)
                         .h(icon_size)
                         .text_size(icon_size * 0.85)
-                        .text_color(rgba(Self::color(
-                            t.inputbar
-                                .icon_color
-                                .as_deref()
-                                .unwrap_or(&t.inputbar.text_color),
-                        )))
+                        .text_color(icon_color)
                         .child(fallback.to_string())
                         .into_any()
                 }
@@ -1689,6 +1707,19 @@ impl Launcher {
             (rgba(0x00000000), rgba(Self::color(&el.text_color)))
         };
 
+        // See render_grid_cell: glyph icons follow the row foreground when
+        // selected so they stay visible on the selection background.
+        let icon_color = if is_selected {
+            name_color
+        } else {
+            rgba(Self::color(
+                t.inputbar
+                    .icon_color
+                    .as_deref()
+                    .unwrap_or(&t.inputbar.text_color),
+            ))
+        };
+
         let pad_h = el.padding.first().copied().unwrap_or(8.0);
         let pad_v = el.padding.get(1).copied().unwrap_or(12.0);
 
@@ -1729,7 +1760,7 @@ impl Launcher {
             for slot in layout {
                 match slot.as_str() {
                     "icon" => {
-                        row = row.child(self.render_row_icon(item));
+                        row = row.child(self.render_row_icon(item, icon_color));
                     }
                     "name" => {
                         row = row.child(self.render_row_name(item, name_color, desc_color));
@@ -1763,7 +1794,7 @@ impl Launcher {
             }
         } else {
             row = row
-                .child(self.render_row_icon(item))
+                .child(self.render_row_icon(item, icon_color))
                 .child(self.render_row_name(item, name_color, desc_color));
             if let Some(alias) = self.render_alias_badge(item) {
                 row = row.child(alias);
@@ -1780,9 +1811,8 @@ impl Launcher {
             .into_any()
     }
 
-    fn render_row_icon(&self, item: &Target) -> gpui::AnyElement {
-        let t = &self.theme;
-        let el = &t.element;
+    fn render_row_icon(&self, item: &Target, icon_color: gpui::Rgba) -> gpui::AnyElement {
+        let el = &self.theme.element;
         let icon_size = px(el.icon_size);
         if el.show_icons {
             if let Some(path) = item.icon_path() {
@@ -1826,12 +1856,7 @@ impl Launcher {
                         .items_center()
                         .justify_center()
                         .text_size(icon_size * 0.85)
-                        .text_color(rgba(Self::color(
-                            t.inputbar
-                                .icon_color
-                                .as_deref()
-                                .unwrap_or(&t.inputbar.text_color),
-                        )))
+                        .text_color(icon_color)
                         .child(icon_str.to_string())
                         .into_any()
                 }
@@ -1843,12 +1868,7 @@ impl Launcher {
                     .items_center()
                     .justify_center()
                     .text_size(icon_size * 0.85)
-                    .text_color(rgba(Self::color(
-                        t.inputbar
-                            .icon_color
-                            .as_deref()
-                            .unwrap_or(&t.inputbar.text_color),
-                    )))
+                    .text_color(icon_color)
                     .child("•".to_string())
                     .into_any()
             }
