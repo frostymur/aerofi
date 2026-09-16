@@ -487,7 +487,15 @@ impl Launcher {
             );
         }
 
-        container = container.child(inputbar);
+        let show_search = self
+            .sticky_metatags
+            .as_ref()
+            .and_then(|m| m.show_search)
+            .unwrap_or(true);
+
+        if show_search {
+            container = container.child(inputbar);
+        }
 
         // ── Optional message banner ─────────────────────────────────
         if let Some(msg) = message {
