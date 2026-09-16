@@ -505,9 +505,15 @@ impl Launcher {
                     .child(t.listview.empty_text.clone()),
             );
         } else {
-            let pad_h = el.padding.first().copied().unwrap_or(8.0);
-            let pad_v_el = el.padding.get(1).copied().unwrap_or(12.0);
-            let icon_size = px(el.icon_size);
+            let gui_pad = t.gui.item_padding.as_deref();
+            let pad_h = gui_pad
+                .and_then(|p| p.get(1).copied())
+                .unwrap_or_else(|| el.padding.get(1).copied().unwrap_or(12.0));
+            let pad_v_el = gui_pad
+                .and_then(|p| p.first().copied())
+                .unwrap_or_else(|| el.padding.first().copied().unwrap_or(8.0));
+            let icon_size = px(t.gui.item_icon_size.unwrap_or(el.icon_size));
+            let gui_radius = t.gui.item_corner_radius.unwrap_or(el.corner_radius);
             let desc_color = rgba(Self::color(
                 el.description_color.as_deref().unwrap_or(&el.text_color),
             ));
@@ -600,7 +606,7 @@ impl Launcher {
                                         .w_full()
                                         .px(px(pad_h))
                                         .py(px(effective_pad_v))
-                                        .rounded(px(el.corner_radius))
+                                        .rounded(px(gui_radius))
                                         .bg(row_bg)
                                         .cursor(CursorStyle::PointingHand);
 
@@ -732,7 +738,7 @@ impl Launcher {
                                         .w_full()
                                         .px(px(pad_h))
                                         .py(px(pad_v_el))
-                                        .rounded(px(el.corner_radius))
+                                        .rounded(px(gui_radius))
                                         .bg(row_bg);
 
                                     if is_disabled {
@@ -988,9 +994,15 @@ impl Launcher {
     fn render_gui_grid_cell(&self, vis_ix: usize, cx: &mut Context<Self>) -> gpui::AnyElement {
         let t = &self.theme;
         let el = &t.element;
-        let icon_size = px(el.icon_size);
-        let pad_h = el.padding.first().copied().unwrap_or(8.0);
-        let pad_v = el.padding.get(1).copied().unwrap_or(12.0);
+        let gui_pad = t.gui.item_padding.as_deref();
+        let icon_size = px(t.gui.item_icon_size.unwrap_or(el.icon_size));
+        let pad_h = gui_pad
+            .and_then(|p| p.get(1).copied())
+            .unwrap_or_else(|| el.padding.get(1).copied().unwrap_or(12.0));
+        let pad_v = gui_pad
+            .and_then(|p| p.first().copied())
+            .unwrap_or_else(|| el.padding.first().copied().unwrap_or(8.0));
+        let gui_radius = t.gui.item_corner_radius.unwrap_or(el.corner_radius);
 
         let (row, is_selected, is_active, is_urgent, is_disabled, is_toggled, markup_rows) =
             if let LauncherState::GuiMode {
@@ -1073,7 +1085,7 @@ impl Launcher {
             .w_full()
             .px(px(pad_h))
             .py(px(effective_pad_v))
-            .rounded(px(el.corner_radius))
+            .rounded(px(gui_radius))
             .bg(row_bg);
 
         if is_selected {

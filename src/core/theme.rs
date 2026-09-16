@@ -347,6 +347,13 @@ pub struct GuiConfig {
     /// Extra padding around GUI-mode content (script output, theme switcher).
     /// Adds to the existing `[window].padding`. Default: 0.
     pub padding: Option<f32>,
+    /// Override `[element].padding` for GUI-mode rows.
+    /// Format: `[vertical, horizontal]`. Default: inherits `[element]`.
+    pub item_padding: Option<Vec<f32>>,
+    /// Override `[element].icon_size` for GUI-mode rows. Default: inherits.
+    pub item_icon_size: Option<f32>,
+    /// Override `[element].corner_radius` for GUI-mode rows. Default: inherits.
+    pub item_corner_radius: Option<f32>,
 }
 
 // ---------------------------------------------------------------------------
@@ -1847,6 +1854,20 @@ weight = 700
         assert_eq!(theme.gui.padding, Some(12.0));
         let theme: ThemeConfig = toml::from_str("").unwrap();
         assert_eq!(theme.gui.padding, None);
+    }
+
+    #[test]
+    fn gui_item_overrides_deserialize() {
+        let theme: ThemeConfig =
+            toml::from_str("[gui]\nitem_padding = [8.0, 12.0]\nitem_icon_size = 22.0\nitem_corner_radius = 8.0")
+                .unwrap();
+        assert_eq!(theme.gui.item_padding, Some(vec![8.0, 12.0]));
+        assert_eq!(theme.gui.item_icon_size, Some(22.0));
+        assert_eq!(theme.gui.item_corner_radius, Some(8.0));
+        let theme: ThemeConfig = toml::from_str("").unwrap();
+        assert_eq!(theme.gui.item_padding, None);
+        assert_eq!(theme.gui.item_icon_size, None);
+        assert_eq!(theme.gui.item_corner_radius, None);
     }
 
     #[test]

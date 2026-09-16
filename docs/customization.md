@@ -238,11 +238,16 @@ layout. Use `[gui]` to control its appearance independently:
 
 ```toml
 [gui]
-padding = 10.0            # Inset from window edges (default: 0)
+padding = 10.0               # Inset from window edges (default: 0)
+item_padding = [8.0, 12.0]   # Override [element].padding for GUI rows
+item_icon_size = 22.0        # Override [element].icon_size for GUI rows
+item_corner_radius = 8.0     # Override [element].corner_radius for GUI rows
 ```
 
-This is useful when `[window].padding = 0` (e.g. to let an image pane
-reach the window edge) but you still want the script output inset.
+Useful when `[window].padding = 0` (image pane reaches the edge) but
+GUI-mode still needs an inset. The `item_*` fields let you make GUI-mode
+rows match a different layout (e.g. grid theme uses compact list sizes
+in GUI mode).
 
 ### Layout Hierarchy (`[mainbox]`)
 

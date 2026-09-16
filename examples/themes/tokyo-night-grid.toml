@@ -17,3 +17,10 @@ background_opacity = 0.75
 [colors]
 bg       = "#1a1b26f4"
 surface2 = "#343b58"
+
+# GUI-mode rows use the regular Tokyo Night element sizes (compact list),
+# not the grid's 72pt icon / 20pt padding.
+[gui]
+item_padding = [8.0, 12.0]
+item_icon_size = 22.0
+item_corner_radius = 8.0
