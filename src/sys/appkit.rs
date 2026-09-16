@@ -252,11 +252,13 @@ pub fn hide_launcher_window() {
     }
 }
 
-/// Target icon size for downsampling (pixels).
-const ICON_SIZE: u32 = 64;
+/// Target icon size for downsampling (pixels). 128 covers Retina at 64pt
+/// (128px); grid themes at 72pt (144px Retina) are slightly upscaled but
+/// still crisp. Each cached TIFF is ~64 KB.
+const ICON_SIZE: u32 = 128;
 
-/// Extract the icon for an `.app` bundle, downsampled to 64×64 via the
-/// `image` crate so each cached TIFF is ~16 KB. Returns `None` on failure.
+/// Extract the icon for an `.app` bundle, downsampled to 128×128 via the
+/// `image` crate so each cached TIFF is ~64 KB. Returns `None` on failure.
 pub fn icon_for_app_bundle(path: &Path) -> Option<Vec<u8>> {
     let _mtm = MainThreadMarker::new()?;
     let path_str = NSString::from_str(path.to_str()?);
