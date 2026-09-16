@@ -277,7 +277,7 @@ fn list_shows_all_items() {
     let mut l = Launcher::new(
         vec![item("A One"), item("A Two"), item("A Three")],
         ThemeConfig::default(),
-        cap_config(2),
+        cap_config(10),
         History::test_new(PathBuf::new(), Vec::new()),
     );
     assert_eq!(

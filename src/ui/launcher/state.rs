@@ -456,6 +456,8 @@ impl Launcher {
                     &self.history,
                     &mut self.filtered,
                 );
+                self.filtered
+                    .truncate(self.app_config.general.max_results);
 
                 // Every keystroke re-enters this branch and drops the
                 // previous task, so the plugin is queried at most once per
@@ -636,6 +638,8 @@ impl Launcher {
                 &self.history,
                 &mut self.filtered,
             );
+            self.filtered
+                .truncate(self.app_config.general.max_results);
         }
 
         if self.selected >= self.filtered.len() {

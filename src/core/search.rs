@@ -116,20 +116,6 @@ impl SearchIndex {
         out_filtered.extend(self.scored_buf.iter().map(|&(_, i)| i));
     }
 
-    /// Rank `targets` against `query`, boosted by the frecency scores
-    /// from `history`, and return all matching ones as a ready-to-render
-    /// `Vec<Target>`, best match first.
-    #[allow(dead_code)]
-    pub fn filter_and_rank(
-        &mut self,
-        history: &History,
-        targets: &[Target],
-        query: &str,
-    ) -> Vec<Target> {
-        let mut indices = Vec::new();
-        self.search(query, targets, history, &mut indices);
-        indices.iter().map(|&i| targets[i].clone()).collect()
-    }
 }
 
 // ---------------------------------------------------------------------------

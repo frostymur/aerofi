@@ -156,13 +156,6 @@ impl GuiSession {
         ReadResult::Burst(GuiBurst::from_lines(&lines))
     }
 
-    /// Write the selected row's display text to the script's stdin.
-    #[allow(dead_code)]
-    pub fn send_selection(&mut self, text: &str) -> std::io::Result<()> {
-        writeln!(self.stdin, "{text}")?;
-        self.stdin.flush()
-    }
-
     /// Write a structured GUI event to the script's stdin.
     pub fn send_event(
         &mut self,
@@ -184,17 +177,6 @@ impl GuiSession {
         let _ = self.child.wait();
     }
 
-    /// Check whether the child process is still running.
-    #[allow(dead_code)]
-    pub fn is_alive(&mut self) -> bool {
-        matches!(self.child.try_wait(), Ok(None))
-    }
-
-    /// Wait for the child to exit and return the exit code.
-    #[allow(dead_code)]
-    pub fn wait_exit_code(&mut self) -> Option<i32> {
-        self.child.wait().ok().and_then(|s| s.code())
-    }
 }
 
 impl Drop for GuiSession {

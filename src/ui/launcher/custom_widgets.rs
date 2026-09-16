@@ -9,7 +9,7 @@ use gpui::{Context, CursorStyle, div, img, prelude::*, px, rgb, rgba};
 use crate::core::item::Target;
 use crate::core::theme::{FontWeightSpec, WidgetDef, parse_hex_color, parse_hex_color_alpha};
 
-use super::helpers::{expand_tilde_path, format_combo, is_primary_click, resolve_font_weight};
+use super::helpers::{expand_tilde_path, format_combo, is_image_path, is_primary_click, resolve_font_weight};
 use super::state::Launcher;
 
 impl Launcher {
@@ -188,14 +188,7 @@ impl Launcher {
         let t = &self.theme;
         let sz = size.unwrap_or(t.element.icon_size);
 
-        let is_image = icon.starts_with('/')
-            || icon.starts_with('~')
-            || icon.starts_with("./")
-            || icon.ends_with(".png")
-            || icon.ends_with(".jpg")
-            || icon.ends_with(".jpeg")
-            || icon.ends_with(".webp")
-            || icon.ends_with(".tiff");
+        let is_image = is_image_path(icon);
 
         if is_image {
             let resolved = expand_tilde_path(icon);
@@ -437,14 +430,7 @@ impl Launcher {
         }
 
         if let Some(ic) = icon {
-            let is_image = ic.starts_with('/')
-                || ic.starts_with('~')
-                || ic.starts_with("./")
-                || ic.ends_with(".png")
-                || ic.ends_with(".jpg")
-                || ic.ends_with(".jpeg")
-                || ic.ends_with(".webp")
-                || ic.ends_with(".tiff");
+            let is_image = is_image_path(ic);
 
             if is_image {
                 let resolved = expand_tilde_path(ic);

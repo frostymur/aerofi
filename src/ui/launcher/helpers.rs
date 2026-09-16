@@ -2,6 +2,17 @@
 
 use gpui::Styled;
 
+/// Returns true if `s` looks like a local image file path.
+pub(super) fn is_image_path(s: &str) -> bool {
+    s.starts_with('/')
+        || s.starts_with("./")
+        || s.ends_with(".png")
+        || s.ends_with(".jpg")
+        || s.ends_with(".jpeg")
+        || s.ends_with(".webp")
+        || s.ends_with(".tiff")
+}
+
 /// Apply a full `TextStyle` to an element so its text children (including
 /// `StyledText`, which inherits the parent style) render with it.
 pub(super) fn apply_md_style(mut el: gpui::Div, style: &gpui::TextStyle) -> gpui::Div {
@@ -123,40 +134,58 @@ pub(super) fn expand_tilde_path(path: &str) -> String {
     path.to_string()
 }
 
+/// Parsed key-combo: modifiers + key token.
+struct ParsedCombo {
+    ctrl: bool,
+    alt: bool,
+    shift: bool,
+    cmd: bool,
+    key: String,
+}
+
+impl ParsedCombo {
+    fn parse(combo: &str) -> Self {
+        let mut p = ParsedCombo {
+            ctrl: false,
+            alt: false,
+            shift: false,
+            cmd: false,
+            key: String::new(),
+        };
+        for token in combo.split('+') {
+            let token = token.trim().to_ascii_lowercase();
+            match token.as_str() {
+                "ctrl" | "control" => p.ctrl = true,
+                "alt" | "option" | "opt" => p.alt = true,
+                "shift" => p.shift = true,
+                "cmd" | "command" | "super" => p.cmd = true,
+                other if !other.is_empty() => p.key = other.to_string(),
+                _ => {}
+            }
+        }
+        p
+    }
+}
+
 /// Render a config combo (`"cmd+shift+r"`, `"opt+space"`) in macOS glyph
 /// form: modifiers in the canonical order ⌃⌥⇧⌘, then the key glyph
 /// (`"⌃⇧⌘R"`, `"⌥␣"`).
 pub(super) fn format_combo(combo: &str) -> String {
-    let mut ctrl = false;
-    let mut alt = false;
-    let mut shift = false;
-    let mut cmd = false;
-    let mut key = String::new();
-    for token in combo.split('+') {
-        let token = token.trim().to_ascii_lowercase();
-        match token.as_str() {
-            "ctrl" | "control" => ctrl = true,
-            "alt" | "option" | "opt" => alt = true,
-            "shift" => shift = true,
-            "cmd" | "command" | "super" => cmd = true,
-            other if !other.is_empty() => key = other.to_string(),
-            _ => {}
-        }
-    }
+    let p = ParsedCombo::parse(combo);
     let mut label = String::new();
-    if ctrl {
+    if p.ctrl {
         label.push('⌃');
     }
-    if alt {
+    if p.alt {
         label.push('⌥');
     }
-    if shift {
+    if p.shift {
         label.push('⇧');
     }
-    if cmd {
+    if p.cmd {
         label.push('⌘');
     }
-    label.push_str(&key_glyph(&key));
+    label.push_str(&key_glyph(&p.key));
     label
 }
 
@@ -189,27 +218,12 @@ fn key_glyph(key: &str) -> String {
 /// names: `cmd`/`command`/`super`, `ctrl`/`control`, `alt`/`option`/`opt`,
 /// `shift`; the key is the remaining token (case-insensitive).
 pub(super) fn combo_matches(combo: &str, ks: &gpui::Keystroke) -> bool {
-    let mut want_platform = false;
-    let mut want_control = false;
-    let mut want_alt = false;
-    let mut want_shift = false;
-    let mut key: Option<String> = None;
-    for token in combo.split('+') {
-        let token = token.trim().to_ascii_lowercase();
-        match token.as_str() {
-            "cmd" | "command" | "super" => want_platform = true,
-            "ctrl" | "control" => want_control = true,
-            "alt" | "option" | "opt" => want_alt = true,
-            "shift" => want_shift = true,
-            other if !other.is_empty() => key = Some(other.to_string()),
-            _ => {}
-        }
-    }
-    let key_matches = matches!(key.as_deref(), Some(k) if k == ks.key.to_ascii_lowercase() || (k == "r" && (ks.key == "к" || ks.key == "К")));
-    let mods_match = want_platform == ks.modifiers.platform
-        && want_control == ks.modifiers.control
-        && want_alt == ks.modifiers.alt
-        && want_shift == ks.modifiers.shift;
+    let p = ParsedCombo::parse(combo);
+    let key_matches = matches!(p.key.as_str(), k if k == ks.key.to_ascii_lowercase().as_str() || (k == "r" && (ks.key == "к" || ks.key == "К")));
+    let mods_match = p.cmd == ks.modifiers.platform
+        && p.ctrl == ks.modifiers.control
+        && p.alt == ks.modifiers.alt
+        && p.shift == ks.modifiers.shift;
     key_matches && mods_match
 }
 

@@ -84,7 +84,7 @@ pub struct GuiRow {
 
 impl GuiRow {
     /// Create a new plain GUI row with default attributes.
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn new(text: impl Into<String>) -> Self {
         Self {
             text: text.into(),
@@ -211,7 +211,7 @@ impl GuiEvent {
     }
 
     /// Format selection as a pipe/unit-separated line for scripts expecting `<text>\x1f<id>\x1f<index>`.
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn to_pipe_line(&self) -> String {
         match self {
             GuiEvent::Select {

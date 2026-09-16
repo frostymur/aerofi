@@ -1,20 +1,17 @@
 use libloading::{Library, Symbol};
 use std::ffi::{CStr, CString};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 
 use aerofi_plugin_api::{AerofiPlugin, PluginResults};
 
 /// Wraps a single loaded `.dylib` plugin.
-#[allow(dead_code)]
 pub struct LoadedPlugin {
     /// Keep the library loaded as long as the plugin lives.
     _lib: Library,
     plugin: AerofiPlugin,
     pub name: String,
-    pub description: String,
     pub prefix: String,
-    pub path: PathBuf,
 }
 
 unsafe impl Send for LoadedPlugin {}
@@ -22,7 +19,6 @@ unsafe impl Sync for LoadedPlugin {}
 
 impl LoadedPlugin {
     /// Load a plugin from a `.dylib` file.
-    #[allow(dead_code)]
     pub fn load(path: impl AsRef<Path>) -> Result<Self, String> {
         let path = path.as_ref();
         let lib =
@@ -60,14 +56,6 @@ impl LoadedPlugin {
                 .into_owned()
         };
 
-        let description = if metadata.description.is_null() {
-            String::new()
-        } else {
-            unsafe { CStr::from_ptr(metadata.description) }
-                .to_string_lossy()
-                .into_owned()
-        };
-
         let prefix = if metadata.prefix.is_null() {
             String::new()
         } else {
@@ -80,9 +68,7 @@ impl LoadedPlugin {
             _lib: lib,
             plugin,
             name,
-            description,
             prefix,
-            path: path.to_path_buf(),
         })
     }
 

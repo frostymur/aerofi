@@ -276,15 +276,6 @@ impl Target {
         }
     }
 
-    /// Parsed Raycast metadata for scripts. Returns `None` for apps and built-ins.
-    #[allow(dead_code)]
-    pub fn metadata(&self) -> Option<&RaycastMetadata> {
-        match self {
-            Self::Script { metadata, .. } => Some(metadata),
-            Self::App { .. } | Self::Builtin { .. } | Self::PluginItem { .. } => None,
-        }
-    }
-
     /// Cached inline output for scripts with `mode = inline`.
     pub fn inline_output(&self) -> Option<&str> {
         match self {
@@ -301,7 +292,6 @@ impl Target {
     }
 
     /// The `refreshTime` string from metadata (e.g. "5m", "1h").
-    #[allow(dead_code)]
     pub fn refresh_time(&self) -> Option<&str> {
         match self {
             Self::Script { metadata, .. } => metadata.refresh_time.as_deref(),
@@ -319,7 +309,6 @@ impl Target {
     }
 
     /// Whether the script requires confirmation before running.
-    #[allow(dead_code)]
     pub fn needs_confirmation(&self) -> bool {
         match self {
             Self::Script { metadata, .. } => metadata.needs_confirmation.unwrap_or(false),
@@ -327,17 +316,7 @@ impl Target {
         }
     }
 
-    /// Dark mode icon path (from `@raycast.iconDark`).
-    #[allow(dead_code)]
-    pub fn icon_dark(&self) -> Option<&str> {
-        match self {
-            Self::Script { metadata, .. } => metadata.icon_dark.as_deref(),
-            _ => None,
-        }
-    }
-
     /// Extract all defined arguments from the script.
-    #[allow(dead_code)]
     pub fn arguments(&self) -> Vec<&ScriptArgument> {
         match self {
             Self::Script { metadata, .. } => {

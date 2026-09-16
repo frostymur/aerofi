@@ -5,8 +5,6 @@
 //! name `"default"` returns the built-in Tokyo Night palette without
 //! reading any file.
 
-#![allow(dead_code)]
-
 use std::collections::HashMap;
 
 use serde::Deserialize;
@@ -32,11 +30,7 @@ pub enum Widget {
 pub enum BuiltinWidget {
     InputBar,
     ListView,
-    Prompt,
-    Entry,
     Banner,
-    SidebarImage,
-    ContentBox,
 }
 
 /// Deserialise a `BuiltinWidget` from its case-sensitive name.
@@ -48,13 +42,9 @@ where
     match s.as_str() {
         "InputBar" => Ok(BuiltinWidget::InputBar),
         "ListView" => Ok(BuiltinWidget::ListView),
-        "Prompt" => Ok(BuiltinWidget::Prompt),
-        "Entry" => Ok(BuiltinWidget::Entry),
         "Banner" => Ok(BuiltinWidget::Banner),
-        "SidebarImage" => Ok(BuiltinWidget::SidebarImage),
-        "ContentBox" => Ok(BuiltinWidget::ContentBox),
         _ => Err(serde::de::Error::custom(format!(
-            "unknown builtin widget: {s}"
+            "unknown builtin widget: {s} (valid: InputBar, ListView, Banner)"
         ))),
     }
 }

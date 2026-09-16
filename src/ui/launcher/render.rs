@@ -10,7 +10,7 @@ use crate::core::theme::{BuiltinWidget, Widget, parse_hex_color_alpha};
 
 use super::helpers::{
     apply_md_style, element_font, expand_tilde_path, font_fallback_families, format_combo,
-    is_primary_click, resolve_font_weight,
+    is_image_path, is_primary_click, resolve_font_weight,
 };
 use super::state::Launcher;
 use super::types::LauncherState;
@@ -129,7 +129,6 @@ impl Render for Launcher {
                             inner_box = inner_box.child(element);
                         }
                     }
-                    _ => {}
                 }
             }
             inner_box.into_any()
@@ -419,14 +418,7 @@ impl Launcher {
         let padding_v = ib.padding.get(1).copied().unwrap_or(16.0);
         let margin_bottom = ib.margin.get(2).copied().unwrap_or(8.0);
 
-        let is_image = icon_label.starts_with('/')
-            || icon_label.starts_with('~')
-            || icon_label.starts_with("./")
-            || icon_label.ends_with(".png")
-            || icon_label.ends_with(".jpg")
-            || icon_label.ends_with(".jpeg")
-            || icon_label.ends_with(".webp")
-            || icon_label.ends_with(".tiff");
+        let is_image = is_image_path(icon_label);
 
         let icon_el = if is_image {
             let resolved = crate::ui::launcher::helpers::expand_tilde_path(icon_label);
@@ -913,10 +905,7 @@ impl Launcher {
         if let Some(icon_str) = icon {
             // Strip the "emoji:" prefix used by scripts to hint the type
             let display = icon_str.strip_prefix("emoji:").unwrap_or(icon_str.as_str());
-            let is_image = display.starts_with('/')
-                || display.starts_with('~')
-                || display.ends_with(".png")
-                || display.ends_with(".jpg");
+            let is_image = is_image_path(display);
             if is_image {
                 let resolved = expand_tilde_path(display);
                 img(std::path::PathBuf::from(resolved))
@@ -1629,14 +1618,7 @@ impl Launcher {
                     .into_any()
             } else {
                 let fallback = item.icon().unwrap_or("•");
-                let is_image = fallback.starts_with('/')
-                    || fallback.starts_with('~')
-                    || fallback.starts_with("./")
-                    || fallback.ends_with(".png")
-                    || fallback.ends_with(".jpg")
-                    || fallback.ends_with(".jpeg")
-                    || fallback.ends_with(".webp")
-                    || fallback.ends_with(".tiff");
+                let is_image = is_image_path(fallback);
                 if is_image {
                     let p = expand_tilde_path(fallback);
                     img(std::path::PathBuf::from(p))
@@ -1863,14 +1845,7 @@ impl Launcher {
                     .rounded(px(el.icon_radius))
                     .into_any()
             } else if let Some(icon_str) = item.icon() {
-                let is_image = icon_str.starts_with('/')
-                    || icon_str.starts_with('~')
-                    || icon_str.starts_with("./")
-                    || icon_str.ends_with(".png")
-                    || icon_str.ends_with(".jpg")
-                    || icon_str.ends_with(".jpeg")
-                    || icon_str.ends_with(".webp")
-                    || icon_str.ends_with(".tiff");
+                let is_image = is_image_path(icon_str);
 
                 if is_image {
                     let resolved = if icon_str.starts_with('~') || icon_str.starts_with('/') {
