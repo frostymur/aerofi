@@ -20,6 +20,9 @@ blur = false
 [mainbox]
 gap = 0.0
 
+[gui]
+padding = 10.0
+
 # Wider left-panel padding than the generic split layout.
 [widgets.left_panel]
 padding = [20.0, 24.0]
