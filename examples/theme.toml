@@ -93,6 +93,20 @@ y_offset = 0.0
 
 
 # ------------------------------------------------------------------------------
+# [gui] - GUI Mode (Script Output / Theme Switcher)
+# ------------------------------------------------------------------------------
+# GUI mode renders outside the [mainbox] layout. Use this section to control
+# its appearance independently of the normal launcher layout.
+#
+# Extra padding around GUI-mode content, in points. Adds to the existing
+# [window].padding. Useful when [window].padding = 0 (e.g. image pane
+# reaches the window edge) but you still want the script output inset.
+# Type: Float (f32)
+# Default: 0.0
+# padding = 10.0
+
+
+# ------------------------------------------------------------------------------
 # [mainbox] - Top-Level Container & Layout
 # ------------------------------------------------------------------------------
 [mainbox]

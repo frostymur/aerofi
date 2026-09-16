@@ -1112,8 +1112,8 @@ accent = "#7aa2f7"
     fn example_gruvbox_file_is_valid() {
         let t = load_example_theme("gruvbox.toml");
         assert_eq!(t.name, "Gruvbox Dark");
-        assert_eq!(t.window.background, "#282828f2");
-        assert_eq!(t.status_colors.accent, "#fabd2f");
+        assert_eq!(t.window.background, "#282828");
+        assert_eq!(t.status_colors.accent, "#8ec07c");
     }
 
     #[test]
@@ -1147,10 +1147,10 @@ accent = "#7aa2f7"
         assert_eq!(t.window.width, 912.0);
         assert_eq!(t.font.size, 15.0);
         assert_eq!(t.element.icon_size, 24.0);
-        // Tinted blur: base colour at 75% opacity over frosted glass.
+        // No blur; $bg at 80% opacity (unblurred desktop shows through).
         assert_eq!(t.window.background, "#1e1e2e");
-        assert_eq!(t.window.background_opacity, Some(0.75));
-        assert!(t.window.blur);
+        assert_eq!(t.window.background_opacity, Some(0.8));
+        assert!(!t.window.blur);
         // Two EQUAL panes: horizontal mainbox with two flex custom widgets.
         assert_eq!(t.mainbox.orientation, "horizontal");
         assert_eq!(t.mainbox.children.len(), 2);

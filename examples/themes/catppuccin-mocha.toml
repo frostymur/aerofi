@@ -1,7 +1,7 @@
 # Catppuccin Mocha Theme for aerofi
-# Composed from the Catppuccin Mocha palette and the split two-pane layout:
-# a transparent left pane with the search bar on top, and a semi-transparent
-# right pane holding big-icon results.
+# Composed from the Catppuccin Mocha palette and the split two-pane layout.
+# Overrides the generic split layout: no blur, zero window padding, flush
+# right pane (no radius), and wider left-panel padding.
 
 name   = "Catppuccin Mocha"
 author = "aerofi"
@@ -12,6 +12,18 @@ imports = [
 ]
 
 [window]
-# Tinted blur: base colour at 75% instead of the layout's pure frosted glass.
 background = "$bg"
-background_opacity = 0.75
+background_opacity = 0.8
+padding = 0.0
+blur = false
+
+[mainbox]
+gap = 0.0
+
+# Wider left-panel padding than the generic split layout.
+[widgets.left_panel]
+padding = [20.0, 24.0]
+
+# Right pane flush to the window edges (window corner_radius clips it).
+[widgets.right_panel]
+radius = 0.0

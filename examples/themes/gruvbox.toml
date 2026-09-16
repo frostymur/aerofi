@@ -1,6 +1,7 @@
 # Gruvbox Dark Theme for aerofi
 # A warm, retro-groove theme composed from the Gruvbox palette and the
-# compact list layout.
+# compact list layout. Overrides the generic compact layout with a
+# narrow 380pt window, squared corners, and a bordered Rofi-style look.
 
 name   = "Gruvbox Dark"
 author = "aerofi"
@@ -12,3 +13,43 @@ imports = [
 
 [font]
 weight = 200
+
+[window]
+width = 380.0
+height = 480.0
+padding = 12.0
+background_opacity = 0.92
+corner_radius = 0.0
+border_width = 2.0
+border_color = "#3c3836"
+
+[inputbar]
+height = 44.0
+padding = [10.0, 12.0]
+margin = [0.0, 0.0, 8.0, 0.0]
+background = "transparent"
+placeholder = "Search..."
+corner_radius = 6.0
+border_width = 2.0
+border_color = "#b8bb26"
+
+[listview]
+spacing = 2.0
+
+[listview.category_badge]
+show = false
+
+[listview.alias_badge]
+show = false
+
+[element]
+padding = [10.0, 12.0]
+corner_radius = 4.0
+icon_size = 32.0
+icon_gap = 10.0
+border_width = 2.0
+icon_radius = 4.0
+layout = ["icon", "name"]
+
+[element.selected]
+background = "transparent"

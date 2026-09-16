@@ -1,0 +1,163 @@
+# ==============================================================================
+# Graphite Mono Theme for aerofi (split two-pane layout)
+# ==============================================================================
+# The window is divided into two vertical panes:
+#   • LEFT   — artwork: a sketch image, cropped to cover the whole
+#              left half (object-fit: cover).
+#   • RIGHT  — solid graphite background with the search bar on top and
+#              the results list below.
+# Monochrome graphite palette.
+# The artwork lives in themes/images/ (path is relative to ~/.config/aerofi/).
+# ==============================================================================
+
+name   = "Graphite Mono"
+author = "aerofi"
+
+# ------------------------------------------------------------------------------
+# [colors] — graphite monochrome palette
+# ------------------------------------------------------------------------------
+[colors]
+bg       = "#18181b"   # graphite-950
+surface  = "#27272a"   # graphite-800
+surface2 = "#3f3f46"   # graphite-700
+border   = "#52525b66" # graphite-600 @ 40%
+text     = "#f4f4f5"   # graphite-100
+subtle   = "#a1a1aa"   # graphite-400
+accent   = "#e4e4e7"   # graphite-200 (monochrome accent)
+green    = "#d4d4d8"
+urgent   = "#f4f4f5"
+
+[status_colors]
+urgent_background     = "$urgent"
+urgent_text           = "#18181b"
+urgent_row_background = "#f4f4f51a"
+active_background     = "$subtle"
+active_text           = "#18181b"
+active_row_background = "#a1a1aa22"
+accent                = "$text"
+muted                 = "$subtle"
+
+[toast]
+running_dot = "$subtle"
+success_dot = "$text"
+error_dot   = "$urgent"
+
+# ------------------------------------------------------------------------------
+# [font] — monospace
+# ------------------------------------------------------------------------------
+[font]
+family = "JetBrainsMono Nerd Font Mono"
+size = 15.0
+weight = 300
+fallback = ["JetBrainsMono Nerd Font", "SF Mono", "Menlo"]
+
+# ------------------------------------------------------------------------------
+# [window] — opaque; 0 padding so the panes reach the window edges
+# ------------------------------------------------------------------------------
+[window]
+width = 912.0
+height = 480.0
+padding = 0.0
+background = "$bg"
+background_opacity = 1.0
+blur = false
+corner_radius = 18.0
+border_width = 0.0
+border_color = "$border"
+
+# ------------------------------------------------------------------------------
+# [gui] — padding for GUI-mode (theme switcher, script output)
+# Window padding is 0 for the image, but GUI-mode needs inset.
+# ------------------------------------------------------------------------------
+[gui]
+padding = 10.0
+
+# ------------------------------------------------------------------------------
+# [mainbox] — two vertical panes, side by side, no gap
+# ------------------------------------------------------------------------------
+[mainbox]
+orientation = "horizontal"
+gap = 0.0
+children = ["left_panel", "right_panel"]
+
+# ------------------------------------------------------------------------------
+# [inputbar]
+# ------------------------------------------------------------------------------
+[inputbar]
+height = 46.0
+padding = [10.0, 14.0]
+margin = [0.0, 0.0, 0.0, 0.0]
+background = "$surface"
+text_color = "$text"
+placeholder = "Search apps, scripts, commands…"
+placeholder_color = "$subtle"
+corner_radius = 10.0
+icon = "❯"
+icon_color = "$accent"
+
+# ------------------------------------------------------------------------------
+# [listview]
+# ------------------------------------------------------------------------------
+[listview]
+columns = 1
+spacing = 8.0
+empty_text = "No matching results"
+empty_text_color = "$subtle"
+
+[listview.category_badge]
+show = false
+color = "$subtle"
+
+[listview.alias_badge]
+show = false
+color = "$accent"
+
+# ------------------------------------------------------------------------------
+# [element]
+# ------------------------------------------------------------------------------
+[element]
+padding = [8.0, 12.0]
+corner_radius = 8.0
+background = "transparent"
+text_color = "$text"
+description_color = "$subtle"
+show_icons = true
+icon_size = 24.0
+icon_gap = 8.0
+border_width = 0.0
+icon_radius = 6.0
+layout = ["icon", "name", "spacer"]
+
+[element.selected]
+background = "$accent"
+text_color = "#18181b"
+description_color = "#18181b"
+
+# ------------------------------------------------------------------------------
+# Left pane: artwork covering the entire left half (cover-cropped).
+# Replace the path with your own image in themes/images/.
+# ------------------------------------------------------------------------------
+[widgets.left_panel]
+type = "box"
+orientation = "vertical"
+width = 380.0
+background = "$bg"
+children = ["art_image"]
+
+[widgets.art_image]
+type = "image"
+path = "./themes/images/chainsawman_sketch.jpg"
+width = 380.0
+height = 480.0
+
+# ------------------------------------------------------------------------------
+# Right pane: solid graphite background, search bar on top, list below.
+# ------------------------------------------------------------------------------
+[widgets.right_panel]
+type = "box"
+orientation = "vertical"
+flex = true
+gap = 8.0
+padding = [16.0, 10.0]
+background = "$bg"
+children = ["InputBar", "ListView"]
