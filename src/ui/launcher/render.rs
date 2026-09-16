@@ -62,11 +62,14 @@ impl Render for Launcher {
                 }
             }
         };
-        let win_width = self
-            .sticky_metatags
-            .as_ref()
-            .and_then(|m| m.width)
-            .unwrap_or(t.window.width);
+        let win_width = if matches!(&self.state, LauncherState::GuiMode { .. }) {
+            self.sticky_metatags
+                .as_ref()
+                .and_then(|m| m.width)
+                .unwrap_or(t.window.width)
+        } else {
+            t.window.width
+        };
         window.resize(size(px(win_width), px(target_height)));
 
         // Re-center the window after a theme reload (deferred from reload() so
