@@ -670,7 +670,7 @@ impl Launcher {
                                             st = st.with_highlights(highlights);
                                         }
                                         text_div.child(st)
-                                    } else if let Some(st) = _this.query_highlighted_text(&row.text)
+                                    } else if let Some(st) = _this.query_highlighted_text(&row.text, None)
                                     {
                                         text_div.child(st)
                                     } else {
@@ -795,7 +795,7 @@ impl Launcher {
                                             st = st.with_highlights(highlights);
                                         }
                                         text_div.child(st)
-                                    } else if let Some(st) = _this.query_highlighted_text(&row.text)
+                                    } else if let Some(st) = _this.query_highlighted_text(&row.text, None)
                                     {
                                         text_div.child(st)
                                     } else {
@@ -1144,7 +1144,7 @@ impl Launcher {
                     st = st.with_highlights(highlights);
                 }
                 text_el.child(st)
-            } else if let Some(st) = self.query_highlighted_text(&row.text) {
+            } else if let Some(st) = self.query_highlighted_text(&row.text, None) {
                 text_el.child(st)
             } else {
                 text_el.child(row.text.clone())
@@ -1718,7 +1718,7 @@ impl Launcher {
         }
 
         let cell_name = item.name().to_string();
-        let cell_name_el: gpui::AnyElement = match self.query_highlighted_text(&cell_name) {
+        let cell_name_el: gpui::AnyElement = match self.query_highlighted_text(&cell_name, None) {
             Some(st) => st.into_any(),
             None => cell_name.into_any_element(),
         };
@@ -1816,7 +1816,7 @@ impl Launcher {
                         row = row.child(self.render_row_icon(item, icon_color));
                     }
                     "name" => {
-                        row = row.child(self.render_row_name(item, name_color, desc_color));
+                        row = row.child(self.render_row_name(item, name_color, desc_color, is_selected));
                     }
                     "spacer" | "flex" => {
                         row = row.child(div().flex_1());
@@ -1848,7 +1848,7 @@ impl Launcher {
         } else {
             row = row
                 .child(self.render_row_icon(item, icon_color))
-                .child(self.render_row_name(item, name_color, desc_color));
+                .child(self.render_row_name(item, name_color, desc_color, is_selected));
             if let Some(alias) = self.render_alias_badge(item) {
                 row = row.child(alias);
             }
@@ -1929,6 +1929,7 @@ impl Launcher {
     fn name_highlights(
         &self,
         name: &str,
+        selected_color: Option<gpui::Hsla>,
     ) -> Option<Vec<(std::ops::Range<usize>, gpui::HighlightStyle)>> {
         let t = &self.theme;
         if !t.listview.highlight_matches || self.query.is_empty() || name.is_empty() {
@@ -1938,12 +1939,14 @@ impl Launcher {
         if ranges.is_empty() {
             return None;
         }
-        let color = Self::hsla_hex(Self::color(
-            t.listview
-                .match_color
-                .as_deref()
-                .unwrap_or(&t.status_colors.accent),
-        ));
+        let color = selected_color.unwrap_or_else(|| {
+            Self::hsla_hex(Self::color(
+                t.listview
+                    .match_color
+                    .as_deref()
+                    .unwrap_or(&t.status_colors.accent),
+            ))
+        });
         Some(
             ranges
                 .into_iter()
@@ -1971,8 +1974,8 @@ impl Launcher {
 
     /// A `StyledText` with the query match highlighted, or `None` when there
     /// is nothing to highlight.
-    fn query_highlighted_text(&self, text: &str) -> Option<gpui::StyledText> {
-        let hl = self.name_highlights(text)?;
+    fn query_highlighted_text(&self, text: &str, selected_color: Option<gpui::Hsla>) -> Option<gpui::StyledText> {
+        let hl = self.name_highlights(text, selected_color)?;
         Some(gpui::StyledText::new(text.to_string()).with_highlights(hl))
     }
 
@@ -1981,12 +1984,18 @@ impl Launcher {
         item: &Target,
         name_color: gpui::Rgba,
         desc_color: gpui::Rgba,
+        is_selected: bool,
     ) -> gpui::AnyElement {
         let t = &self.theme;
         let subtitle_opt = item.inline_output().or_else(|| item.package_name());
 
         let name = item.name().to_string();
-        let name_el: gpui::AnyElement = match self.query_highlighted_text(&name) {
+        let sel_color = if is_selected {
+            Some(Self::hsla_hex(Self::color(&t.element.selected.text_color)))
+        } else {
+            None
+        };
+        let name_el: gpui::AnyElement = match self.query_highlighted_text(&name, sel_color) {
             Some(st) => st.into_any(),
             None => name.into_any_element(),
         };
