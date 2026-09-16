@@ -46,7 +46,7 @@ fn grid_item(name: &str) -> Target {
         *metatags = ScriptMetatags {
             show_search: Some(false),
             columns: Some(3),
-            mode_name: None,
+            layout: None,
         };
     }
     t
@@ -367,7 +367,7 @@ fn gui_arrow_key_defers_scroll_to_selected_row() {
         multi_select: false,
         toggled_indices: std::collections::HashSet::new(),
         markup_rows: false,
-        mode_name: None,
+        layout: None,
     };
 
     for _ in 0..4 {

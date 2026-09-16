@@ -20,7 +20,7 @@ surface2 = "#343b58"
 
 # GUI-mode rows use the regular Tokyo Night element sizes (compact list),
 # not the grid's 72pt icon / 20pt padding.
-[modes.compact.element]
+[layouts.compact.element]
 padding = [8.0, 12.0]
 icon_size = 22.0
 corner_radius = 8.0

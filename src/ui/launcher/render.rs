@@ -253,10 +253,10 @@ impl Launcher {
         gpui::SharedString::from(mono.to_string())
     }
 
-    /// Current GUI-mode name (from `@aerofi.mode_name`), if in GUI mode.
-    fn gui_mode_name(&self) -> Option<&str> {
+    /// Current GUI-mode name (from `@aerofi.layout`), if in GUI mode.
+    fn gui_layout(&self) -> Option<&str> {
         match &self.state {
-            LauncherState::GuiMode { mode_name, .. } => mode_name.as_deref(),
+            LauncherState::GuiMode { layout, .. } => layout.as_deref(),
             _ => None,
         }
     }
@@ -517,8 +517,8 @@ impl Launcher {
             );
         } else {
             let mode_el = self
-                .gui_mode_name()
-                .and_then(|name| t.modes.get(name))
+                .gui_layout()
+                .and_then(|name| t.layouts.get(name))
                 .map(|m| &m.element);
             let pad_h = mode_el
                 .and_then(|m| m.padding.as_deref().and_then(|p| p.get(1).copied()))
@@ -533,8 +533,8 @@ impl Launcher {
             ));
 
             let cols = self
-                .gui_mode_name()
-                .and_then(|name| t.modes.get(name))
+                .gui_layout()
+                .and_then(|name| t.layouts.get(name))
                 .and_then(|m| m.element.columns)
                 .unwrap_or_else(|| self.gui_columns())
                 .max(1);
@@ -1011,8 +1011,8 @@ impl Launcher {
         let t = &self.theme;
         let el = &t.element;
         let mode_el = self
-            .gui_mode_name()
-            .and_then(|name| t.modes.get(name))
+            .gui_layout()
+            .and_then(|name| t.layouts.get(name))
             .map(|m| &m.element);
         let icon_size = px(mode_el.and_then(|m| m.icon_size).unwrap_or(el.icon_size));
         let pad_h = mode_el

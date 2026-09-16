@@ -3,7 +3,7 @@
 # @aerofi.schemaVersion 1
 # @aerofi.title Emoji Picker
 # @aerofi.mode gui
-# @aerofi.mode_name emoji
+# @aerofi.layout emoji
 # @aerofi.icon 😀
 # @aerofi.packageName Fun
 # @aerofi.description Pick an emoji from a grid and copy it to your clipboard
