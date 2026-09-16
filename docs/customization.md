@@ -244,25 +244,25 @@ padding = 10.0               # Inset from window edges (default: 0)
 Useful when `[window].padding = 0` (image pane reaches the edge) but
 GUI-mode still needs an inset.
 
-### Per-Mode Element Overrides (`[layouts.*]`)
+### Per-Mode Element Overrides (`[presets.*]`)
 
-Scripts declare a mode name via `# @aerofi.layout <name>`.
+Scripts declare a mode name via `# @aerofi.preset <name>`.
 Themes override `[element]` sizes per mode — unset fields inherit:
 
 ```toml
-# For a script with: # @aerofi.layout emoji
-[layouts.emoji.element]
+# For a script with: # @aerofi.preset emoji
+[presets.emoji.element]
 padding = [4.0, 4.0]
 icon_size = 48.0
 corner_radius = 8.0
 columns = 8
 
-# For a script with: # @aerofi.layout clipboard
-[layouts.clipboard.element]
+# For a script with: # @aerofi.preset clipboard
+[presets.clipboard.element]
 padding = [10.0, 14.0]
 ```
 
-No `@aerofi.layout` in the script → no overrides applied.
+No `@aerofi.preset` in the script → no overrides applied.
 
 ### Layout Hierarchy (`[mainbox]`)
 

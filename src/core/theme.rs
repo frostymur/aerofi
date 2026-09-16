@@ -344,10 +344,10 @@ pub struct GuiConfig {
 // ---------------------------------------------------------------------------
 
 /// Optional element overrides for a specific GUI-mode (identified by
-/// `@aerofi.layout` in the script). Unset fields inherit from `[element]`.
+/// `@aerofi.preset` in the script). Unset fields inherit from `[element]`.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
-pub struct LayoutElementOverride {
+pub struct PresetElementOverride {
     /// Override `[element].padding` — `[vertical, horizontal]`.
     pub padding: Option<Vec<f32>>,
     /// Override `[element].icon_size`.
@@ -358,20 +358,20 @@ pub struct LayoutElementOverride {
     pub columns: Option<usize>,
 }
 
-/// Config for a single GUI-mode (e.g. `[layouts.emoji]`).
+/// Config for a single GUI-mode (e.g. `[presets.emoji]`).
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
-pub struct LayoutConfig {
-    pub element: LayoutElementOverride,
+pub struct PresetConfig {
+    pub element: PresetElementOverride,
 }
 
-/// Map of layout name → config. Populated from `[layouts.<name>]` tables.
+/// Map of preset name → config. Populated from `[presets.<name>]` tables.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
-pub struct LayoutsConfig(HashMap<String, LayoutConfig>);
+pub struct PresetsConfig(HashMap<String, PresetConfig>);
 
-impl LayoutsConfig {
-    pub fn get(&self, name: &str) -> Option<&LayoutConfig> {
+impl PresetsConfig {
+    pub fn get(&self, name: &str) -> Option<&PresetConfig> {
         self.0.get(name)
     }
 }
@@ -693,7 +693,7 @@ pub struct ThemeConfig {
     pub font: FontConfig,
     pub window: WindowConfig,
     pub gui: GuiConfig,
-    pub layouts: LayoutsConfig,
+    pub presets: PresetsConfig,
     pub mainbox: ContainerConfig,
     pub banner: Option<BannerConfig>,
     pub inputbar: InputBarConfig,
@@ -721,7 +721,7 @@ impl Default for ThemeConfig {
             font: FontConfig::default(),
             window: WindowConfig::default(),
             gui: GuiConfig::default(),
-            layouts: LayoutsConfig::default(),
+            presets: PresetsConfig::default(),
             mainbox: ContainerConfig::default(),
             banner: None,
             inputbar: InputBarConfig::default(),
@@ -1879,17 +1879,17 @@ weight = 700
     }
 
     #[test]
-    fn layouts_element_overrides_deserialize() {
+    fn presets_element_overrides_deserialize() {
         let theme: ThemeConfig = toml::from_str(
-            "[layouts.emoji.element]\npadding = [4.0, 4.0]\nicon_size = 48.0\ncorner_radius = 8.0\ncolumns = 8",
+            "[presets.emoji.element]\npadding = [4.0, 4.0]\nicon_size = 48.0\ncorner_radius = 8.0\ncolumns = 8",
         )
         .unwrap();
-        let m = theme.layouts.get("emoji").unwrap();
+        let m = theme.presets.get("emoji").unwrap();
         assert_eq!(m.element.padding, Some(vec![4.0, 4.0]));
         assert_eq!(m.element.icon_size, Some(48.0));
         assert_eq!(m.element.corner_radius, Some(8.0));
         assert_eq!(m.element.columns, Some(8));
-        assert!(theme.layouts.get("clipboard").is_none());
+        assert!(theme.presets.get("clipboard").is_none());
     }
 
     #[test]

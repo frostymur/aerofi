@@ -91,7 +91,7 @@ pub enum LauncherState {
         toggled_indices: std::collections::HashSet<usize>,
         /// Whether inline Pango-like markup is enabled for row text.
         markup_rows: bool,
-        /// Mode name from `@aerofi.layout` for theme `[layouts.*]` overrides.
+        /// Mode name from `@aerofi.preset` for theme `[presets.*]` overrides.
         layout: Option<String>,
     },
 }

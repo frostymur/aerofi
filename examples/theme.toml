@@ -107,18 +107,18 @@ y_offset = 0.0
 
 
 # ------------------------------------------------------------------------------
-# [layouts.<name>.element] - Per-Mode Element Overrides
+# [presets.<name>.element] - Per-Mode Element Overrides
 # ------------------------------------------------------------------------------
-# Scripts declare a mode name via `# @aerofi.layout <name>`.
+# Scripts declare a mode name via `# @aerofi.preset <name>`.
 # Unset fields inherit from [element].
 #
-# [layouts.emoji.element]
+# [presets.emoji.element]
 # padding = [4.0, 4.0]
 # icon_size = 48.0
 # corner_radius = 8.0
 # columns = 8
 #
-# [layouts.clipboard.element]
+# [presets.clipboard.element]
 # padding = [10.0, 14.0]
 
 

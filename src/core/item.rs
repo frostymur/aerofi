@@ -161,7 +161,7 @@ pub struct ScriptMetatags {
     pub show_search: Option<bool>,
     /// Override the number of list columns (`# @aerofi.columns N`).
     pub columns: Option<usize>,
-    /// Mode name for theme overrides (`# @aerofi.layout emoji`).
+    /// Mode name for theme overrides (`# @aerofi.preset emoji`).
     pub layout: Option<String>,
 }
 

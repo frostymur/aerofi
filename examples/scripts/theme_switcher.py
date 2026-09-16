@@ -8,7 +8,7 @@
 # @aerofi.description Switch the active aerofi theme
 # @aerofi.show_search true
 # @aerofi.columns 1
-# @aerofi.layout list
+# @aerofi.preset list
 
 Interactive theme switcher for aerofi's gui mode. Scans
 ~/.config/aerofi/themes/*.toml plus the built-in default, renders each

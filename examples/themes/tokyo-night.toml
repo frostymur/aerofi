@@ -13,7 +13,7 @@ imports = [
 [window]
 background_opacity = 0.75
 
-[layouts.grid.element]
+[presets.grid.element]
 columns = 8
 icon_size = 48.0
 padding = [4.0, 4.0]
