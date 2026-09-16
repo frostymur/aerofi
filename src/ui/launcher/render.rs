@@ -548,12 +548,15 @@ impl Launcher {
                 el.description_color.as_deref().unwrap_or(&el.text_color),
             ));
 
-            let cols = self
-                .gui_layout()
-                .and_then(|name| t.presets.get(name))
-                .and_then(|m| m.element.columns)
-                .unwrap_or_else(|| self.gui_columns())
-                .max(1);
+            let cols = if self.gui_columns() > 1 {
+                self.gui_columns()
+            } else {
+                self.gui_layout()
+                    .and_then(|name| t.presets.get(name))
+                    .and_then(|m| m.element.columns)
+                    .unwrap_or(1)
+                    .max(1)
+            };
             if cols > 1 {
                 // Grid mode: virtualized rows of `cols` cells each.
                 let total_rows = filtered_rows.len().div_ceil(cols);

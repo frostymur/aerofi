@@ -546,8 +546,6 @@ impl Launcher {
     pub fn on_hide(&mut self) {
         self.filtered.clear();
         self.full_output_blocks.clear();
-        // The sticky layout override only lasts for the session.
-        self.sticky_metatags = None;
         // Kill any active GUI session.
         if let Some(session) = self.gui_session.take()
             && let Ok(mut s) = session.lock()
