@@ -38,7 +38,7 @@ chmod +x ~/.config/aerofi/scripts/theme_switcher.py
 
 ## 📋 Clipboard History Manager (`clipboard.py`)
 
-A glamorous, fully functional clipboard history manager for aerofi powered by the [`clipy`](https://crates.io/crates/clipy) minimal clipboard history CLI and aerofi's interactive `gui` mode.
+A glamorous, fully functional clipboard history manager for aerofi powered by the [`clipy`](https://crates.io/crates/clipy) minimal clipboard history CLI, the [clippy suite](https://github.com/neilberkman/clippy) for image support (`brew install clippy`), and aerofi's interactive `gui` mode.
 
 ### ✨ Highlights & Aesthetics
 
@@ -49,6 +49,7 @@ A glamorous, fully functional clipboard history manager for aerofi powered by th
   - 📦 **JSON**: Compact formatted preview with object/array item count badge.
   - ✉️ **Emails**: Highlighted email badge.
   - 📄 **Multiline Text**: Emphasized first line with subtle italic subsequent line snippet (`↵`).
+- **Image History**: Images copied to the pasteboard are captured on demand (`pasty`), stored as PNG in `~/.config/aerofi/clipboard-history/`, deduplicated by content hash, and pruned to the 50 most recent. Rows show a thumbnail preview and dimensions; selecting one puts the image back on the clipboard (`clippy`), `Ctrl+D` deletes the file. Without the clippy suite the script degrades to text-only.
 - **Full-Text Fuzzy Search**: aerofi's high-speed fuzzy search engine matches across the entire un-truncated text of every entry using the `meta` attribute.
 - **Multi-Selection**: Press `Tab` to select multiple clipboard entries; hitting `Enter` copies all selected snippets combined to the clipboard.
 - **Interactive Deletion**: Press `Ctrl+D` (or secondary action) on any entry to immediately delete it from history.

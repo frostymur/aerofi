@@ -72,12 +72,16 @@ The `icon` field (headers and `icon:` row fields) accepts three kinds of values:
 | Image path | `/path/or.png`, `~/img.jpg` | Thumbnail, scaled to `icon_size` |
 
 Nerd Font glyphs (Font Awesome, Material Design Icons, …) live in the
-private-use area and only render when the theme font is a Nerd Font variant
-(the examples use `JetBrainsMono Nerd Font Mono`; install any
-[nerd-fonts](https://www.nerdfonts.com/) build of your favorite font).
-Without a Nerd Font the glyph shows as a missing-glyph box — text is
-unaffected. Prefer Nerd Font glyphs for launcher chrome and keep real emoji
-for content (e.g. the emoji picker). The `emoji:` prefix
+private-use area. They render in the theme font when it is a Nerd Font
+variant (the examples use `JetBrainsMono Nerd Font Mono`), and in any other
+theme they resolve through aerofi's automatic glyph-fallback cascade, which
+tries common Nerd Font families — so installing any
+[nerd-fonts](https://www.nerdfonts.com/) build of your favorite font makes
+icon glyphs work in every theme, including the default one. If no Nerd Font
+is installed at all the glyph shows as a missing-glyph box — text and emoji
+are unaffected (the same "install a Nerd Font" state rofi has for
+font-based icons). Prefer Nerd Font glyphs for launcher chrome and keep real
+emoji for content (e.g. the emoji picker). The `emoji:` prefix
 (`emoji:🚀`) is a hint that the glyph is a color emoji and is stripped
 before rendering.
 
