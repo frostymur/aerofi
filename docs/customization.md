@@ -300,7 +300,7 @@ description_color = "$subtle"
 show_icons = true
 icon_size = 22.0
 icon_gap = 6.0        # gap between the icon and name in a grid cell
-border_width = 1.0    # item border width; 0.0 = borderless tile
+border_width = 0.0    # item border width (default: borderless tile)
 icon_radius = 4.0     # corner radius applied to the item's icon
 
 # Customize the slot ordering inside each row!

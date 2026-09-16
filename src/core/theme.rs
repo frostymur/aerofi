@@ -563,7 +563,7 @@ impl Default for ElementConfig {
             show_icons: true,
             icon_size: 24.0,
             icon_gap: 6.0,
-            border_width: 1.0,
+            border_width: 0.0,
             icon_radius: 4.0,
             layout: Some(vec![
                 "icon".to_string(),
@@ -1015,6 +1015,8 @@ mod tests {
         assert_eq!(t.inputbar.background, "transparent");
         assert_eq!(t.inputbar.text_color, "#ffffff");
         assert_eq!(t.element.selected.background, "#ffffff20");
+        // Selection is highlight-only in the builtin theme: no border.
+        assert_eq!(t.element.border_width, 0.0);
     }
 
     #[test]
@@ -1170,7 +1172,7 @@ accent = "#7aa2f7"
         let el: ElementConfig = toml::from_str("icon_size = 40.0").unwrap();
         assert_eq!(el.icon_size, 40.0);
         assert_eq!(el.icon_gap, 6.0);
-        assert_eq!(el.border_width, 1.0);
+        assert_eq!(el.border_width, 0.0);
         assert_eq!(el.icon_radius, 4.0);
     }
 
