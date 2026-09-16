@@ -262,7 +262,7 @@ columns = 8
 padding = [10.0, 14.0]
 ```
 
-No `mode_name` in the script → no overrides applied.
+No `@aerofi.layout` in the script → no overrides applied.
 
 ### Layout Hierarchy (`[mainbox]`)
 
