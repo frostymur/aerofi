@@ -8,6 +8,7 @@
 # @aerofi.show_search false
 # @aerofi.columns 1
 # @aerofi.preset list
+# @aerofi.width 320
 
 printf '\0no-custom\x1ftrue\n'
 printf 'Sleep\0icon\x1f💤\0id\x1fsleep\n'

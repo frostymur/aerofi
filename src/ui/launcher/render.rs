@@ -62,7 +62,12 @@ impl Render for Launcher {
                 }
             }
         };
-        window.resize(size(px(t.window.width), px(target_height)));
+        let win_width = self
+            .sticky_metatags
+            .as_ref()
+            .and_then(|m| m.width)
+            .unwrap_or(t.window.width);
+        window.resize(size(px(win_width), px(target_height)));
 
         // Re-center the window after a theme reload (deferred from reload() so
         // it fires in the same frame as the window.resize() call above).

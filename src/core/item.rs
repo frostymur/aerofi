@@ -155,7 +155,7 @@ pub enum BuiltinAction {
 /// aerofi-specific script metatags parsed from `# @aerofi.*` annotations.
 /// Committed when the script is executed; stay active until the launcher
 /// is hidden. Selecting the script never applies them.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct ScriptMetatags {
     /// Hide the search input bar (`# @aerofi.show_search false`).
     pub show_search: Option<bool>,
@@ -163,6 +163,8 @@ pub struct ScriptMetatags {
     pub columns: Option<usize>,
     /// Mode name for theme overrides (`# @aerofi.preset emoji`).
     pub layout: Option<String>,
+    /// Override window width in points (`# @aerofi.width 320`).
+    pub width: Option<f32>,
 }
 
 /// A single launchable element: an application bundle, a shell script, or
@@ -414,6 +416,11 @@ impl Target {
                     }
                     "layout" if is_aerofi || metatags.layout.is_none() => {
                         metatags.layout = Some(value.to_string());
+                    }
+                    "width" if is_aerofi || metatags.width.is_none() => {
+                        if let Ok(w) = value.parse::<f32>() {
+                            metatags.width = Some(w);
+                        }
                     }
                     // Metadata annotations (supported via @aerofi.* and @raycast.*)
                     "schemaVersion" if is_aerofi || metadata.schema_version.is_none() => {
