@@ -389,7 +389,7 @@ impl Launcher {
             return div().into_any();
         };
 
-        let gui_padding = t.gui.padding.unwrap_or(t.window.padding);
+        let gui_padding = t.gui.padding.unwrap_or(0.0);
         let mut container = div()
             .flex_1()
             .flex()

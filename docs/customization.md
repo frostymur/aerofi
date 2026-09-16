@@ -238,7 +238,7 @@ layout. Use `[gui]` to control its appearance independently:
 
 ```toml
 [gui]
-padding = 10.0            # Inset from window edges (default: window.padding)
+padding = 10.0            # Inset from window edges (default: 0)
 ```
 
 This is useful when `[window].padding = 0` (e.g. to let an image pane

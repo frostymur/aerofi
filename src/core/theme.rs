@@ -344,8 +344,8 @@ impl Default for WindowConfig {
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct GuiConfig {
-    /// Padding around GUI-mode content (script output, theme switcher, etc.).
-    /// When unset, falls back to `[window].padding`.
+    /// Extra padding around GUI-mode content (script output, theme switcher).
+    /// Adds to the existing `[window].padding`. Default: 0.
     pub padding: Option<f32>,
 }
 
