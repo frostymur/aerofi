@@ -389,7 +389,13 @@ impl Launcher {
             return div().into_any();
         };
 
-        let mut container = div().flex_1().flex().flex_col().gap(px(t.listview.spacing));
+        let gui_padding = t.gui.padding.unwrap_or(t.window.padding);
+        let mut container = div()
+            .flex_1()
+            .flex()
+            .flex_col()
+            .gap(px(t.listview.spacing))
+            .p(px(gui_padding));
 
         // ── Input bar with optional prompt override and loading badge ───
         let placeholder = prompt.as_deref().unwrap_or(title.as_str());

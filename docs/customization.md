@@ -19,6 +19,7 @@ aerofi is configured via transparent, human-readable TOML files located in `~/.c
   - [Modular Themes & Imports (`imports`)](#modular-themes--imports-imports--)
   - [Font & Typography](#font--typography)
   - [Window & Frosted Glassmorphism](#window--frosted-glassmorphism)
+  - [GUI Mode (`[gui]`)](#gui-mode-gui)
   - [Layout Hierarchy (`[mainbox]`)](#layout-hierarchy-mainbox)
   - [Search Bar (`[inputbar]`)](#search-bar-inputbar)
   - [Results List & Badges (`[listview]`)](#results-list--badges-listview)
@@ -229,6 +230,19 @@ y_offset = -40.0
 # background_image = "~/.config/aerofi/themes/wallpaper.jpg"
 # background_position = "cover" # "cover" (default), "left", "right"
 ```
+
+### GUI Mode (`[gui]`)
+
+GUI mode (theme switcher, script output) renders outside the mainbox
+layout. Use `[gui]` to control its appearance independently:
+
+```toml
+[gui]
+padding = 10.0            # Inset from window edges (default: window.padding)
+```
+
+This is useful when `[window].padding = 0` (e.g. to let an image pane
+reach the window edge) but you still want the script output inset.
 
 ### Layout Hierarchy (`[mainbox]`)
 

@@ -338,6 +338,18 @@ impl Default for WindowConfig {
 }
 
 // ---------------------------------------------------------------------------
+// GUI mode
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct GuiConfig {
+    /// Padding around GUI-mode content (script output, theme switcher, etc.).
+    /// When unset, falls back to `[window].padding`.
+    pub padding: Option<f32>,
+}
+
+// ---------------------------------------------------------------------------
 // Container
 // ---------------------------------------------------------------------------
 
@@ -653,6 +665,7 @@ pub struct ThemeConfig {
     pub author: Option<String>,
     pub font: FontConfig,
     pub window: WindowConfig,
+    pub gui: GuiConfig,
     pub mainbox: ContainerConfig,
     pub banner: Option<BannerConfig>,
     pub inputbar: InputBarConfig,
@@ -679,6 +692,7 @@ impl Default for ThemeConfig {
             author: Some("aerofi".to_string()),
             font: FontConfig::default(),
             window: WindowConfig::default(),
+            gui: GuiConfig::default(),
             mainbox: ContainerConfig::default(),
             banner: None,
             inputbar: InputBarConfig::default(),
@@ -1825,6 +1839,14 @@ weight = 700
         assert_eq!(theme.mainbox.gap, Some(0.0));
         let theme: ThemeConfig = toml::from_str("").unwrap();
         assert_eq!(theme.mainbox.gap, None);
+    }
+
+    #[test]
+    fn gui_padding_deserializes() {
+        let theme: ThemeConfig = toml::from_str("[gui]\npadding = 12.0").unwrap();
+        assert_eq!(theme.gui.padding, Some(12.0));
+        let theme: ThemeConfig = toml::from_str("").unwrap();
+        assert_eq!(theme.gui.padding, None);
     }
 
     #[test]
