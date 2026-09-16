@@ -1,0 +1,29 @@
+# Graphite Monochrome Palette
+# Location: ~/.config/aerofi/themes/colors/graphite-mono.toml
+# Import via: imports = ["colors/graphite-mono.toml"]
+
+[colors]
+bg       = "#18181b"   # graphite-950
+surface  = "#27272a"   # graphite-800
+surface2 = "#3f3f46"   # graphite-700
+border   = "#52525b66" # graphite-600 @ 40%
+text     = "#f4f4f5"   # graphite-100
+subtle   = "#a1a1aa"   # graphite-400
+accent   = "#e4e4e7"   # graphite-200 (monochrome accent)
+green    = "#d4d4d8"
+urgent   = "#f4f4f5"
+
+[status_colors]
+urgent_background     = "$urgent"
+urgent_text           = "#18181b"
+urgent_row_background = "#f4f4f51a"
+active_background     = "$subtle"
+active_text           = "#18181b"
+active_row_background = "#a1a1aa22"
+accent                = "$text"
+muted                 = "$subtle"
+
+[toast]
+running_dot = "$subtle"
+success_dot = "$text"
+error_dot   = "$urgent"

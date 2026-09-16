@@ -1,0 +1,69 @@
+# ==============================================================================
+# Gruvbox Compact Layout (Mixin)
+# ==============================================================================
+# Narrow 380pt window, squared corners, bordered Rofi-style look.
+# Import via: imports = ["layouts/gruvbox-compact.toml"]
+# ==============================================================================
+
+[font]
+family = "SF Pro Text"
+size = 15.0
+weight = 200
+fallback = ["SF Pro", "Helvetica Neue", "Arial"]
+
+[window]
+width = 380.0
+height = 480.0
+padding = 12.0
+background = "$bg"
+blur = true
+background_opacity = 0.92
+corner_radius = 0.0
+border_width = 2.0
+border_color = "#3c3836"
+
+[mainbox]
+orientation = "vertical"
+children = ["InputBar", "ListView"]
+
+[inputbar]
+height = 44.0
+padding = [10.0, 12.0]
+margin = [0.0, 0.0, 8.0, 0.0]
+background = "transparent"
+text_color = "$text"
+placeholder = "Search..."
+placeholder_color = "$subtle"
+corner_radius = 6.0
+border_width = 2.0
+border_color = "#b8bb26"
+
+[listview]
+columns = 1
+spacing = 2.0
+empty_text = "No matching results"
+empty_text_color = "$subtle"
+
+[listview.category_badge]
+show = false
+
+[listview.alias_badge]
+show = false
+
+[element]
+padding = [10.0, 12.0]
+corner_radius = 4.0
+background = "transparent"
+text_color = "$text"
+description_color = "$subtle"
+show_icons = true
+icon_size = 32.0
+icon_gap = 10.0
+border_width = 2.0
+icon_radius = 4.0
+layout = ["icon", "name"]
+
+[element.selected]
+background = "transparent"
+text_color = "$text"
+description_color = "$subtle"

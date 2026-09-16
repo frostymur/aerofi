@@ -1,7 +1,4 @@
 # Tokyo Night Theme for aerofi
-# Composed from the reusable Tokyo Night palette and the compact list layout.
-# Inspired by Tokyo Night for Neovim/Alacritty/VSCode.
-
 name   = "Tokyo Night"
 author = "aerofi"
 
@@ -17,4 +14,9 @@ background_opacity = 0.75
 columns = 8
 icon_size = 48.0
 padding = [4.0, 4.0]
+corner_radius = 8.0
+
+[presets.list.element]
+icon_size = 22.0
+padding = [8.0, 12.0]
 corner_radius = 8.0

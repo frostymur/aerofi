@@ -1,6 +1,4 @@
 # Tokyo Night Grid Theme for aerofi
-# Tokyo Night palette with a compact square tile grid layout.
-
 name   = "Tokyo Night Grid"
 author = "aerofi"
 
@@ -12,28 +10,22 @@ imports = [
 [window]
 background_opacity = 0.75
 
-# The grid variant uses a slightly more opaque background and a distinct tile
-# surface, overriding those two values from the shared Tokyo Night palette.
 [colors]
 bg       = "#1a1b26f4"
 surface2 = "#343b58"
 
-# GUI-mode rows use the regular Tokyo Night element sizes (compact list),
-# not the grid's 72pt icon / 20pt padding.
-[presets.compact.element]
-padding = [8.0, 12.0]
-icon_size = 22.0
-corner_radius = 8.0
-
-# Grid preset for emoji picker and similar grid-based scripts.
 [presets.grid.element]
 columns = 8
 icon_size = 48.0
 padding = [4.0, 4.0]
 corner_radius = 8.0
 
-# List preset for theme switcher, script output, and other list-based scripts.
 [presets.list.element]
 icon_size = 22.0
 padding = [8.0, 12.0]
+corner_radius = 8.0
+
+[presets.compact.element]
+padding = [8.0, 12.0]
+icon_size = 22.0
 corner_radius = 8.0

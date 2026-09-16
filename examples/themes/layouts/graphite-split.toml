@@ -1,0 +1,98 @@
+# ==============================================================================
+# Graphite Split Layout (Mixin)
+# ==============================================================================
+# Two vertical panes: left = artwork (cover-cropped), right = solid graphite
+# with search bar + list. Opaque window, zero padding.
+# Import via: imports = ["layouts/graphite-split.toml"]
+# The artwork lives in themes/images/ (path is relative to ~/.config/aerofi/).
+# ==============================================================================
+
+[font]
+family = "JetBrainsMono Nerd Font Mono"
+size = 15.0
+weight = 300
+fallback = ["JetBrainsMono Nerd Font", "SF Mono", "Menlo"]
+
+[window]
+width = 912.0
+height = 480.0
+padding = 0.0
+background = "$bg"
+background_opacity = 1.0
+blur = false
+corner_radius = 18.0
+border_width = 0.0
+border_color = "$border"
+
+[mainbox]
+orientation = "horizontal"
+gap = 0.0
+children = ["left_panel", "right_panel"]
+
+[inputbar]
+height = 46.0
+padding = [10.0, 14.0]
+margin = [0.0, 0.0, 0.0, 0.0]
+background = "$surface"
+text_color = "$text"
+placeholder = "Search apps, scripts, commands…"
+placeholder_color = "$subtle"
+corner_radius = 10.0
+icon = "❯"
+icon_color = "$accent"
+
+[listview]
+columns = 1
+spacing = 8.0
+empty_text = "No matching results"
+empty_text_color = "$subtle"
+
+[listview.category_badge]
+show = false
+color = "$subtle"
+
+[listview.alias_badge]
+show = false
+color = "$accent"
+
+[element]
+padding = [8.0, 12.0]
+corner_radius = 8.0
+background = "transparent"
+text_color = "$text"
+description_color = "$subtle"
+show_icons = true
+icon_size = 24.0
+icon_gap = 8.0
+border_width = 0.0
+icon_radius = 6.0
+layout = ["icon", "name", "spacer"]
+
+[element.selected]
+background = "$accent"
+text_color = "#18181b"
+description_color = "#18181b"
+
+# Left pane: artwork covering the entire left half (cover-cropped).
+[widgets.left_panel]
+type = "box"
+orientation = "vertical"
+width = 380.0
+background = "$bg"
+children = ["art_image"]
+
+[widgets.art_image]
+type = "image"
+path = "./themes/images/chainsawman_sketch.jpg"
+width = 380.0
+height = 480.0
+
+# Right pane: solid graphite background, search bar on top, list below.
+[widgets.right_panel]
+type = "box"
+orientation = "vertical"
+flex = true
+gap = 8.0
+padding = [16.0, 10.0]
+background = "$bg"
+children = ["InputBar", "ListView"]
