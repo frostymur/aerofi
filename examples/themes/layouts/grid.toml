@@ -56,7 +56,7 @@ color = "$accent"
 
 [element]
 padding = [10.0, 20.0]
-corner_radius = 10.0
+corner_radius = 12.0
 background = "transparent"
 text_color = "$text"
 description_color = "$subtle"
@@ -64,7 +64,7 @@ show_icons = true
 icon_size = 72.0
 icon_gap = 15.0
 border_width = 0.0
-layout = ["icon", "name"]
+layout = ["icon"]
 
 [element.selected]
 background = "$surface2"

@@ -71,13 +71,7 @@ impl Render for Launcher {
             t.window.width
         };
         window.resize(size(px(win_width), px(target_height)));
-
-        // Re-center the window after a theme reload (deferred from reload() so
-        // it fires in the same frame as the window.resize() call above).
-        if self.needs_center {
-            self.needs_center = false;
-            crate::sys::appkit::center_window(t.window.x_offset as f64, t.window.y_offset as f64);
-        }
+        crate::sys::appkit::center_window(t.window.x_offset as f64, t.window.y_offset as f64);
 
         // Inner content: the actual launcher widgets or full page views.
         let inner = if let LauncherState::FullOutput { title } = &self.state {
@@ -557,7 +551,6 @@ impl Launcher {
                     .unwrap_or(1)
                     .max(1)
             };
-            eprintln!("[aerofi] render_gui: gui_columns()={}, layout={:?}, cols={}", self.gui_columns(), self.gui_layout(), cols);
             if cols > 1 {
                 // Grid mode: virtualized rows of `cols` cells each.
                 let total_rows = filtered_rows.len().div_ceil(cols);

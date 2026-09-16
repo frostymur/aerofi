@@ -12,9 +12,9 @@ background_opacity = 0.75
 
 [presets.grid.element]
 columns = 8
-icon_size = 48.0
-padding = [4.0, 4.0]
-corner_radius = 8.0
+icon_size = 72.0
+padding = [10.0, 20.0]
+corner_radius = 12.0
 
 [presets.list.element]
 icon_size = 22.0

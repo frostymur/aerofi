@@ -6,21 +6,21 @@
 # @aerofi.packageName System
 # @aerofi.description Sleep, lock, restart, or shut down
 # @aerofi.show_search false
-# @aerofi.columns 4
+# @aerofi.columns 5
 # @aerofi.preset grid
-# @aerofi.width 480
+# @aerofi.width 420
 
 printf '\0no-custom\x1ftrue\n'
-printf 'Sleep\0icon\x1f💤\0id\x1fsleep\n'
-printf 'Lock\0icon\x1f🔒\0id\x1flock\n'
-printf 'Restart\0icon\x1f🔄\0id\x1frestart\n'
-printf 'Shut Down\0icon\x1f⏻\0id\x1fshutdown\n'
+printf '󰌾\0id\x1flock\n'
+printf '󰤄\0id\x1fsleep\n'
+printf '󰜉\0id\x1frestart\n'
+printf '⏻\0id\x1fshutdown\n'
 
 read -r choice
 
 case "$choice" in
-  sleep)    pmset sleepnow ;;
-  lock)     pmset displaysleepnow ;;
-  restart)  sudo shutdown -r now ;;
-  shutdown) sudo shutdown -h now ;;
+  󰌾)     pmset displaysleepnow ;;
+  󰤄)    pmset sleepnow ;;
+  󰜉)  sudo shutdown -r now ;;
+  ⏻) sudo shutdown -h now ;;
 esac
