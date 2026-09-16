@@ -107,6 +107,22 @@ y_offset = 0.0
 
 
 # ------------------------------------------------------------------------------
+# [modes.<name>.element] - Per-Mode Element Overrides
+# ------------------------------------------------------------------------------
+# Scripts declare a mode name via `# @aerofi.mode_name <name>`.
+# Unset fields inherit from [element].
+#
+# [modes.emoji.element]
+# padding = [4.0, 4.0]
+# icon_size = 48.0
+# corner_radius = 8.0
+# columns = 8
+#
+# [modes.clipboard.element]
+# padding = [10.0, 14.0]
+
+
+# ------------------------------------------------------------------------------
 # [mainbox] - Top-Level Container & Layout
 # ------------------------------------------------------------------------------
 [mainbox]
