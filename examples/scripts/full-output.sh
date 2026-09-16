@@ -4,7 +4,7 @@
 # @aerofi.title Full Output Mode Example
 # @aerofi.mode fullOutput
 # @aerofi.packageName Examples
-# @aerofi.icon 📄
+# @aerofi.icon 
 # @aerofi.description Renders stdout in the built-in rich Markdown viewer
 
 # FullOutput mode opens aerofi's built-in Markdown and ANSI viewer.

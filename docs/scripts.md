@@ -49,7 +49,7 @@ Annotations are placed inside comments (`#`) at the top of your script:
 |---|---|---|
 | `title` | The display title in the search results | `@aerofi.title Quick Note` |
 | `mode` | Execution mode (see below) | `@aerofi.mode silent` |
-| `icon` | Emoji or system icon identifier | `@aerofi.icon 🚀` |
+| `icon` | Emoji, Nerd Font glyph, or image path (see [Icons](#icons)) | `@aerofi.icon 🚀` |
 | `iconDark` | Optional dark mode icon identifier | `@aerofi.iconDark 🌟` |
 | `packageName` | Category/namespace displayed as subtitle | `@aerofi.packageName Git` |
 | `argument[1-3]` | Interactive argument prompt specification | `{"type": "text", "placeholder": "URL"}` |
@@ -60,6 +60,26 @@ Annotations are placed inside comments (`#`) at the top of your script:
 | `authorURL` | Author website URL | `@aerofi.authorURL https://github.com/...` |
 | `show_search` | Toggle search bar in GUI mode (default `true`) | `@aerofi.show_search false` |
 | `columns` | Override list column count (default `1`) | `@aerofi.columns 2` |
+
+### Icons
+
+The `icon` field (headers and `icon:` row fields) accepts three kinds of values:
+
+| Kind | Example | Rendering |
+|---|---|---|
+| Emoji | `🚀` | Color, via Apple Color Emoji fallback |
+| Nerd Font glyph | literal char, e.g. `U+F0EA` (fa-clipboard) | Monochrome in the theme font, tinted with `icon_color` |
+| Image path | `/path/or.png`, `~/img.jpg` | Thumbnail, scaled to `icon_size` |
+
+Nerd Font glyphs (Font Awesome, Material Design Icons, …) live in the
+private-use area and only render when the theme font is a Nerd Font variant
+(the examples use `JetBrainsMono Nerd Font Mono`; install any
+[nerd-fonts](https://www.nerdfonts.com/) build of your favorite font).
+Without a Nerd Font the glyph shows as a missing-glyph box — text is
+unaffected. Prefer Nerd Font glyphs for launcher chrome and keep real emoji
+for content (e.g. the emoji picker). The `emoji:` prefix
+(`emoji:🚀`) is a hint that the glyph is a color emoji and is stripped
+before rendering.
 
 ---
 

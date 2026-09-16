@@ -4,7 +4,7 @@
 # @aerofi.title Inline Mode Example
 # @aerofi.mode inline
 # @aerofi.packageName Examples
-# @aerofi.icon ⚡
+# @aerofi.icon 
 # @aerofi.refreshTime 10s
 # @aerofi.description Displays output directly as a subtitle in the launcher list
 

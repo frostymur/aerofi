@@ -4,7 +4,7 @@
 # @aerofi.title Silent Mode Example
 # @aerofi.mode silent
 # @aerofi.packageName Examples
-# @aerofi.icon 🤫
+# @aerofi.icon 
 # @aerofi.description Runs detached in the background without keeping the launcher open
 
 # Silent mode runs completely detached.

@@ -3,7 +3,7 @@
 # @aerofi.schemaVersion 1
 # @aerofi.title Quick Links
 # @aerofi.mode gui
-# @aerofi.icon 🔗
+# @aerofi.icon 
 # @aerofi.packageName Productivity
 # @aerofi.description Your quick links — type a URL to add a new one
 # @aerofi.show_search true
@@ -34,6 +34,11 @@ from urllib.parse import urlparse
 USER_FILE = Path.home() / ".config/aerofi/quicklinks.json"
 CUSTOM_FOLDER = "Custom"
 
+IC_GLOBE = "\uF0AC"
+IC_FOLDER = "\uF07B"
+IC_PLUS = "\uF067"
+IC_EDIT = "\uF044"
+
 
 # ── aerofi helpers ───────────────────────────────────────────────────────
 
@@ -51,13 +56,13 @@ def emit(groups: list[tuple[str, list[tuple[str, str]]]], message: str) -> None:
     send("\0prompt\x1fSearch or type a URL to add…")
     send(f"\0message\x1f{message}")
     if not groups:
-        send("Type a URL, e.g. https://example.com\0icon\x1f➕\0nonselectable\x1ftrue")
-        send("or with a title: GitHub: https://github.com\0icon\x1f✍️\0nonselectable\x1ftrue")
+        send(f"Type a URL, e.g. https://example.com\0icon\x1f{IC_PLUS}\0nonselectable\x1ftrue")
+        send(f"or with a title: GitHub: https://github.com\0icon\x1f{IC_EDIT}\0nonselectable\x1ftrue")
     for folder, links in groups:
-        send(f"{folder}\0icon\x1f📁\0info\x1f{len(links)}\0nonselectable\x1ftrue")
+        send(f"{folder}\0icon\x1f{IC_FOLDER}\0info\x1f{len(links)}\0nonselectable\x1ftrue")
         for title, url in links:
             parts = [title]
-            parts.append("\0icon\x1f🌐")
+            parts.append(f"\0icon\x1f{IC_GLOBE}")
             parts.append(f"\0info\x1f{short_domain(url)}")
             parts.append(f"\0meta\x1f{folder} {title} {url}")
             send("".join(parts))

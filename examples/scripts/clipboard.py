@@ -3,7 +3,7 @@
 # @aerofi.schemaVersion 1
 # @aerofi.title Clipboard History
 # @aerofi.mode gui
-# @aerofi.icon 📋
+# @aerofi.icon 
 # @aerofi.packageName System
 # @aerofi.description Search and manage your clipboard history
 # @aerofi.show_search true
@@ -30,7 +30,18 @@ import subprocess
 import sys
 import time
 
-HINT = "↵ Copy · ⇥ Multi-select · ⌃D Delete · 🖼 images auto-saved"
+HINT = "↵ Copy · ⇥ Multi-select · ⌃D Delete · images auto-saved"
+
+IC_CLIPBOARD = "\uF0EA"
+IC_GLOBE = "\uF0AC"
+IC_PAINT = "\uF1FC"
+IC_ENVELOPE = "\uF0E0"
+IC_CUBE = "\uF1B2"
+IC_TERMINAL = "\uF120"
+IC_FILE = "\uF15B"
+IC_EDIT = "\uF044"
+IC_IMAGE = "\uF03E"
+IC_WARNING = "\uF071"
 
 MAX_IMAGES = 50
 IMG_LIST_CAP = 20
@@ -303,7 +314,7 @@ def render_image_entry(digest: str, entry: dict) -> str:
     w, h = entry.get("w"), entry.get("h")
     size = f"{w}×{h} " if w and h else ""
     return (
-        f"🖼️ <b>{size}image</b>\0id\x1fimg:{digest[:8]}"
+        f"{IC_IMAGE} <b>{size}image</b>\0id\x1fimg:{digest[:8]}"
         f"\0icon\x1f{entry['path']}\0info\x1f{relative_time(entry.get('ts', time.time()))}"
         f"\0meta\x1fcopied image {size}".rstrip()
     )
@@ -324,14 +335,14 @@ def describe(content: str) -> tuple[str, str]:
                 path = html.escape(path[:48]) + "…"
             else:
                 path = html.escape(path)
-            return "🌐", f"<b>{domain}</b>{path}"
-        return "🌐", f"<b>{first[:70]}</b>"
+            return IC_GLOBE, f"<b>{domain}</b>{path}"
+        return IC_GLOBE, f"<b>{first[:70]}</b>"
 
     if re.fullmatch(r"#[0-9a-fA-F]{3,8}", raw):
-        return "🎨", f'<span foreground="{raw}">■</span> <b>{raw}</b>'
+        return IC_PAINT, f'<span foreground="{raw}">■</span> <b>{raw}</b>'
 
     if re.fullmatch(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", raw):
-        return "✉️", f"<b>{first}</b>"
+        return IC_ENVELOPE, f"<b>{first}</b>"
 
     if raw[:1] in "{[":
         try:
@@ -342,7 +353,7 @@ def describe(content: str) -> tuple[str, str]:
             compact = html.escape(json.dumps(parsed, separators=(", ", ":")))
             if len(compact) > 64:
                 compact = compact[:64] + "…"
-            return "📦", compact
+            return IC_CUBE, compact
 
     keywords = (
         "def ", "fn ", "pub fn", "import ", "from ", "const ", "let ", "var ",
@@ -358,11 +369,11 @@ def describe(content: str) -> tuple[str, str]:
         is_code = "{" in sample and any(tok in sample for tok in ("=>", ";", ":", "("))
 
     if is_code:
-        icon = "💻"
+        icon = IC_TERMINAL
     elif len(lines) > 1:
-        icon = "📄"
+        icon = IC_FILE
     else:
-        icon = "📝"
+        icon = IC_EDIT
 
     if len(lines) > 1:
         second = html.escape(lines[1].strip()[:36])
@@ -463,13 +474,13 @@ def main() -> None:
             return
         if binary:
             emit(
-                ["Clipboard is empty\0nonselectable\x1ftrue\0icon\x1f📋"],
+                [f"Clipboard is empty\0nonselectable\x1ftrue\0icon\x1f{IC_CLIPBOARD}"],
                 "History is empty",
             )
             return
         rows = [
-            "<b>clipy is not installed</b>\0nonselectable\x1ftrue\0icon\x1f⚠️\0info\x1fmissing dependency",
-            '<b>cargo install clipy</b>\0id\x1finstall_cmd\0icon\x1f📦\0info\x1fEnter copies command',
+            f"<b>clipy is not installed</b>\0nonselectable\x1ftrue\0icon\x1f{IC_WARNING}\0info\x1fmissing dependency",
+            f"<b>cargo install clipy</b>\0id\x1finstall_cmd\0icon\x1f{IC_CUBE}\0info\x1fEnter copies command",
         ]
         if pbpaste().strip():
             rows.append(render_current())

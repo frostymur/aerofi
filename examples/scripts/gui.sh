@@ -4,7 +4,7 @@
 # @aerofi.title GUI Mode Example
 # @aerofi.mode gui
 # @aerofi.packageName Examples
-# @aerofi.icon 🖥️
+# @aerofi.icon 
 # @aerofi.description Interactive two-way Rofi-compatible GUI protocol example
 # @aerofi.show_search true
 # @aerofi.columns 1

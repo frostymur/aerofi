@@ -3,7 +3,7 @@
 # @aerofi.schemaVersion 1
 # @aerofi.title Theme Switcher
 # @aerofi.mode gui
-# @aerofi.icon 🎨
+# @aerofi.icon 
 # @aerofi.packageName aerofi
 # @aerofi.description Switch the active aerofi theme
 # @aerofi.show_search true

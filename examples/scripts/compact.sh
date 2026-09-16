@@ -4,7 +4,7 @@
 # @aerofi.title Compact Mode Example
 # @aerofi.mode compact
 # @aerofi.packageName Examples
-# @aerofi.icon ⏳
+# @aerofi.icon 
 # @aerofi.description Displays a small floating toast showing real-time single-line progress
 
 # Compact mode renders a floating indicator with running status.
