@@ -706,7 +706,7 @@ echo "Theme switcher..."
 
         assert_eq!(name.as_ref(), "Theme Switcher");
         assert_eq!(mode, ScriptMode::Gui);
-        assert_eq!(icon.as_deref(), Some("🎨"));
+        assert_eq!(icon.as_deref(), Some("\u{f1fc}"));
         assert_eq!(metadata.package_name.as_deref(), Some("aerofi"));
     }
 
@@ -728,7 +728,7 @@ echo "Theme switcher..."
 
         assert_eq!(name.as_ref(), "Clipboard History");
         assert_eq!(mode, ScriptMode::Gui);
-        assert_eq!(icon.as_deref(), Some("📋"));
+        assert_eq!(icon.as_deref(), Some("\u{f0ea}"));
         assert_eq!(metadata.package_name.as_deref(), Some("System"));
     }
 

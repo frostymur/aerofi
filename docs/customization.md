@@ -196,6 +196,13 @@ and restart aerofi — it's registered with the text system at startup and can
 be referenced by its real family name. Monospace code blocks in script output
 always use a monospace face (`JetBrains Mono`).
 
+For glyphs the theme font lacks, aerofi walks a fallback cascade: the
+`fallback` list, then common **Nerd Font** families (JetBrainsMono, Hack,
+FiraCode, CascadiaCode, SourceCodePro, Symbols), then Apple Color Emoji and
+the system UI font. That's how the monochrome icon glyphs in script rows
+render: install any [Nerd Font](https://www.nerdfonts.com/) and they work in
+every theme, including the default one. Real emoji always render in color.
+
 ### Window & Frosted Glassmorphism
 ```toml
 [window]

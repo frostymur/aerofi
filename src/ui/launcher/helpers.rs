@@ -35,6 +35,37 @@ pub(super) fn resolve_font_weight(spec: &str) -> gpui::FontWeight {
     }
 }
 
+/// Common Nerd Font families, tried (in order) when the theme font is
+/// missing a glyph. Icon glyphs in script rows and headers live in the
+/// private-use area, so they only render if one of these is installed.
+const NERD_FONT_CANDIDATES: &[&str] = &[
+    "JetBrainsMono Nerd Font Mono",
+    "JetBrainsMono Nerd Font",
+    "Hack Nerd Font Mono",
+    "Hack Nerd Font",
+    "FiraCode Nerd Font",
+    "CascadiaCode Nerd Font",
+    "SourceCodePro Nerd Font",
+    "Symbols Nerd Font",
+];
+
+/// Build the glyph-fallback cascade for the root div: the theme's own
+/// `fallback` list first, then Nerd Font candidates (for icon glyphs),
+/// then Apple Color Emoji and the system UI font as last resorts.
+pub(super) fn font_fallback_families(theme_fallbacks: &Option<Vec<String>>) -> Vec<String> {
+    let mut list = theme_fallbacks.clone().unwrap_or_default();
+    for name in NERD_FONT_CANDIDATES {
+        if !list.iter().any(|f| f.eq_ignore_ascii_case(name)) {
+            list.push(name.to_string());
+        }
+    }
+    if !list.iter().any(|f| f == "Apple Color Emoji") {
+        list.push("Apple Color Emoji".to_string());
+    }
+    list.push(".AppleSystemUIFont".to_string());
+    list
+}
+
 /// True for a left-mouse-button click (keyboard/touch-generated clicks
 /// are ignored).
 pub(super) fn is_primary_click(event: &gpui::ClickEvent) -> bool {
@@ -188,5 +219,44 @@ mod tests {
     fn falls_back_to_normal_for_unknown() {
         assert_eq!(resolve_font_weight("chunky"), FontWeight::NORMAL);
         assert_eq!(resolve_font_weight(""), FontWeight::NORMAL);
+    }
+
+    #[test]
+    fn builds_fallback_cascade_with_nerd_fonts_and_emoji() {
+        let list = font_fallback_families(&None);
+        assert!(list.iter().any(|f| f == "JetBrainsMono Nerd Font Mono"));
+        assert!(list.iter().any(|f| f == "Apple Color Emoji"));
+        assert_eq!(list.last().map(String::as_str), Some(".AppleSystemUIFont"));
+
+        let theme = vec!["SF Mono".to_string()];
+        let list = font_fallback_families(&Some(theme.clone()));
+        assert_eq!(list[0], "SF Mono");
+        assert_eq!(
+            list.iter()
+                .position(|f| f == "JetBrainsMono Nerd Font Mono")
+                .unwrap(),
+            1
+        );
+    }
+
+    #[test]
+    fn fallback_cascade_dedupes_theme_entries() {
+        let theme = vec![
+            "JetBrainsMono Nerd Font Mono".to_string(),
+            "Apple Color Emoji".to_string(),
+        ];
+        let list = font_fallback_families(&Some(theme));
+        assert_eq!(
+            list.iter()
+                .filter(|f| f.as_str() == "JetBrainsMono Nerd Font Mono")
+                .count(),
+            1
+        );
+        assert_eq!(
+            list.iter()
+                .filter(|f| f.as_str() == "Apple Color Emoji")
+                .count(),
+            1
+        );
     }
 }
