@@ -965,6 +965,7 @@ impl Launcher {
             return;
         };
         let title = name.to_string();
+        let mode_name = target.metatags().and_then(|m| m.mode_name.clone());
 
         // Commit metatags (same as other modes).
         self.sticky_metatags = target.metatags().cloned();
@@ -1028,6 +1029,7 @@ impl Launcher {
                     multi_select: false,
                     toggled_indices: std::collections::HashSet::new(),
                     markup_rows: false,
+                    mode_name,
                 };
             }
             Err(e) => {
@@ -1075,6 +1077,7 @@ impl Launcher {
         let mut multi_select = false;
         let mut toggled_indices = std::collections::HashSet::new();
         let mut markup_rows = false;
+        let mut mode_name: Option<String> = None;
 
         // Inherit flags if we are updating an existing GuiMode session
         if let LauncherState::GuiMode {
@@ -1088,6 +1091,7 @@ impl Launcher {
             multi_select: prev_multi_select,
             toggled_indices: prev_toggled_indices,
             markup_rows: prev_markup_rows,
+            mode_name: prev_mode_name,
             ..
         } = &self.state
         {
@@ -1101,6 +1105,7 @@ impl Launcher {
             multi_select = *prev_multi_select;
             toggled_indices = prev_toggled_indices.clone();
             markup_rows = *prev_markup_rows;
+            mode_name = prev_mode_name.clone();
         }
 
         for cmd in &burst.commands {
@@ -1166,6 +1171,7 @@ impl Launcher {
             multi_select,
             toggled_indices,
             markup_rows,
+            mode_name,
         };
     }
 

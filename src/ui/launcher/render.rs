@@ -253,6 +253,14 @@ impl Launcher {
         gpui::SharedString::from(mono.to_string())
     }
 
+    /// Current GUI-mode name (from `@aerofi.mode_name`), if in GUI mode.
+    fn gui_mode_name(&self) -> Option<&str> {
+        match &self.state {
+            LauncherState::GuiMode { mode_name, .. } => mode_name.as_deref(),
+            _ => None,
+        }
+    }
+
     /// Render the input bar styled from `theme.inputbar`.
     pub(super) fn render_inputbar(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
         let t = &self.theme;
@@ -508,20 +516,28 @@ impl Launcher {
                     .child(t.listview.empty_text.clone()),
             );
         } else {
-            let gui_pad = t.gui.item_padding.as_deref();
-            let pad_h = gui_pad
-                .and_then(|p| p.get(1).copied())
+            let mode_el = self
+                .gui_mode_name()
+                .and_then(|name| t.modes.get(name))
+                .map(|m| &m.element);
+            let pad_h = mode_el
+                .and_then(|m| m.padding.as_deref().and_then(|p| p.get(1).copied()))
                 .unwrap_or_else(|| el.padding.get(1).copied().unwrap_or(12.0));
-            let pad_v_el = gui_pad
-                .and_then(|p| p.first().copied())
+            let pad_v_el = mode_el
+                .and_then(|m| m.padding.as_deref().and_then(|p| p.first().copied()))
                 .unwrap_or_else(|| el.padding.first().copied().unwrap_or(8.0));
-            let icon_size = px(t.gui.item_icon_size.unwrap_or(el.icon_size));
-            let gui_radius = t.gui.item_corner_radius.unwrap_or(el.corner_radius);
+            let icon_size = px(mode_el.and_then(|m| m.icon_size).unwrap_or(el.icon_size));
+            let gui_radius = mode_el.and_then(|m| m.corner_radius).unwrap_or(el.corner_radius);
             let desc_color = rgba(Self::color(
                 el.description_color.as_deref().unwrap_or(&el.text_color),
             ));
 
-            let cols = self.gui_columns().max(1);
+            let cols = self
+                .gui_mode_name()
+                .and_then(|name| t.modes.get(name))
+                .and_then(|m| m.element.columns)
+                .unwrap_or_else(|| self.gui_columns())
+                .max(1);
             if cols > 1 {
                 // Grid mode: virtualized rows of `cols` cells each.
                 let total_rows = filtered_rows.len().div_ceil(cols);
@@ -994,15 +1010,18 @@ impl Launcher {
     fn render_gui_grid_cell(&self, vis_ix: usize, cx: &mut Context<Self>) -> gpui::AnyElement {
         let t = &self.theme;
         let el = &t.element;
-        let gui_pad = t.gui.item_padding.as_deref();
-        let icon_size = px(t.gui.item_icon_size.unwrap_or(el.icon_size));
-        let pad_h = gui_pad
-            .and_then(|p| p.get(1).copied())
+        let mode_el = self
+            .gui_mode_name()
+            .and_then(|name| t.modes.get(name))
+            .map(|m| &m.element);
+        let icon_size = px(mode_el.and_then(|m| m.icon_size).unwrap_or(el.icon_size));
+        let pad_h = mode_el
+            .and_then(|m| m.padding.as_deref().and_then(|p| p.get(1).copied()))
             .unwrap_or_else(|| el.padding.get(1).copied().unwrap_or(12.0));
-        let pad_v = gui_pad
-            .and_then(|p| p.first().copied())
+        let pad_v = mode_el
+            .and_then(|m| m.padding.as_deref().and_then(|p| p.first().copied()))
             .unwrap_or_else(|| el.padding.first().copied().unwrap_or(8.0));
-        let gui_radius = t.gui.item_corner_radius.unwrap_or(el.corner_radius);
+        let gui_radius = mode_el.and_then(|m| m.corner_radius).unwrap_or(el.corner_radius);
 
         let (row, is_selected, is_active, is_urgent, is_disabled, is_toggled, markup_rows) =
             if let LauncherState::GuiMode {

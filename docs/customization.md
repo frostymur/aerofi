@@ -239,15 +239,30 @@ layout. Use `[gui]` to control its appearance independently:
 ```toml
 [gui]
 padding = 10.0               # Inset from window edges (default: 0)
-item_padding = [8.0, 12.0]   # Override [element].padding for GUI rows
-item_icon_size = 22.0        # Override [element].icon_size for GUI rows
-item_corner_radius = 8.0     # Override [element].corner_radius for GUI rows
 ```
 
 Useful when `[window].padding = 0` (image pane reaches the edge) but
-GUI-mode still needs an inset. The `item_*` fields let you make GUI-mode
-rows match a different layout (e.g. grid theme uses compact list sizes
-in GUI mode).
+GUI-mode still needs an inset.
+
+### Per-Mode Element Overrides (`[modes.*]`)
+
+Scripts declare a mode name via `# @aerofi.mode_name <name>`.
+Themes override `[element]` sizes per mode — unset fields inherit:
+
+```toml
+# For a script with: # @aerofi.mode_name emoji
+[modes.emoji.element]
+padding = [4.0, 4.0]
+icon_size = 48.0
+corner_radius = 8.0
+columns = 8
+
+# For a script with: # @aerofi.mode_name clipboard
+[modes.clipboard.element]
+padding = [10.0, 14.0]
+```
+
+No `mode_name` in the script → no overrides applied.
 
 ### Layout Hierarchy (`[mainbox]`)
 

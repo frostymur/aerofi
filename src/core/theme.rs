@@ -337,13 +337,43 @@ pub struct GuiConfig {
     /// Extra padding around GUI-mode content (script output, theme switcher).
     /// Adds to the existing `[window].padding`. Default: 0.
     pub padding: Option<f32>,
-    /// Override `[element].padding` for GUI-mode rows.
-    /// Format: `[vertical, horizontal]`. Default: inherits `[element]`.
-    pub item_padding: Option<Vec<f32>>,
-    /// Override `[element].icon_size` for GUI-mode rows. Default: inherits.
-    pub item_icon_size: Option<f32>,
-    /// Override `[element].corner_radius` for GUI-mode rows. Default: inherits.
-    pub item_corner_radius: Option<f32>,
+}
+
+// ---------------------------------------------------------------------------
+// Per-mode element overrides
+// ---------------------------------------------------------------------------
+
+/// Optional element overrides for a specific GUI-mode (identified by
+/// `@aerofi.mode_name` in the script). Unset fields inherit from `[element]`.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct ModeElementOverride {
+    /// Override `[element].padding` — `[vertical, horizontal]`.
+    pub padding: Option<Vec<f32>>,
+    /// Override `[element].icon_size`.
+    pub icon_size: Option<f32>,
+    /// Override `[element].corner_radius`.
+    pub corner_radius: Option<f32>,
+    /// Override listview columns for this mode.
+    pub columns: Option<usize>,
+}
+
+/// Config for a single GUI-mode (e.g. `[modes.emoji]`).
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct ModeConfig {
+    pub element: ModeElementOverride,
+}
+
+/// Map of mode name → config. Populated from `[modes.<name>]` tables.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct ModesConfig(HashMap<String, ModeConfig>);
+
+impl ModesConfig {
+    pub fn get(&self, name: &str) -> Option<&ModeConfig> {
+        self.0.get(name)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -663,6 +693,7 @@ pub struct ThemeConfig {
     pub font: FontConfig,
     pub window: WindowConfig,
     pub gui: GuiConfig,
+    pub modes: ModesConfig,
     pub mainbox: ContainerConfig,
     pub banner: Option<BannerConfig>,
     pub inputbar: InputBarConfig,
@@ -690,6 +721,7 @@ impl Default for ThemeConfig {
             font: FontConfig::default(),
             window: WindowConfig::default(),
             gui: GuiConfig::default(),
+            modes: ModesConfig::default(),
             mainbox: ContainerConfig::default(),
             banner: None,
             inputbar: InputBarConfig::default(),
@@ -1847,17 +1879,17 @@ weight = 700
     }
 
     #[test]
-    fn gui_item_overrides_deserialize() {
-        let theme: ThemeConfig =
-            toml::from_str("[gui]\nitem_padding = [8.0, 12.0]\nitem_icon_size = 22.0\nitem_corner_radius = 8.0")
-                .unwrap();
-        assert_eq!(theme.gui.item_padding, Some(vec![8.0, 12.0]));
-        assert_eq!(theme.gui.item_icon_size, Some(22.0));
-        assert_eq!(theme.gui.item_corner_radius, Some(8.0));
-        let theme: ThemeConfig = toml::from_str("").unwrap();
-        assert_eq!(theme.gui.item_padding, None);
-        assert_eq!(theme.gui.item_icon_size, None);
-        assert_eq!(theme.gui.item_corner_radius, None);
+    fn modes_element_overrides_deserialize() {
+        let theme: ThemeConfig = toml::from_str(
+            "[modes.emoji.element]\npadding = [4.0, 4.0]\nicon_size = 48.0\ncorner_radius = 8.0\ncolumns = 8",
+        )
+        .unwrap();
+        let m = theme.modes.get("emoji").unwrap();
+        assert_eq!(m.element.padding, Some(vec![4.0, 4.0]));
+        assert_eq!(m.element.icon_size, Some(48.0));
+        assert_eq!(m.element.corner_radius, Some(8.0));
+        assert_eq!(m.element.columns, Some(8));
+        assert!(theme.modes.get("clipboard").is_none());
     }
 
     #[test]

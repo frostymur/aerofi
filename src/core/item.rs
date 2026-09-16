@@ -161,6 +161,8 @@ pub struct ScriptMetatags {
     pub show_search: Option<bool>,
     /// Override the number of list columns (`# @aerofi.columns N`).
     pub columns: Option<usize>,
+    /// Mode name for theme overrides (`# @aerofi.mode_name emoji`).
+    pub mode_name: Option<String>,
 }
 
 /// A single launchable element: an application bundle, a shell script, or
@@ -409,6 +411,9 @@ impl Target {
                         if let Ok(n) = value.parse::<usize>() {
                             metatags.columns = Some(n);
                         }
+                    }
+                    "mode_name" if is_aerofi || metatags.mode_name.is_none() => {
+                        metatags.mode_name = Some(value.to_string());
                     }
                     // Metadata annotations (supported via @aerofi.* and @raycast.*)
                     "schemaVersion" if is_aerofi || metadata.schema_version.is_none() => {
