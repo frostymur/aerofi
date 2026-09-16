@@ -249,7 +249,7 @@ impl Launcher {
         let t = &self.theme;
         let col = color
             .and_then(parse_hex_color)
-            .unwrap_or_else(|| parse_hex_color_alpha(&t.window.border_color).unwrap_or(0x414868FF));
+            .unwrap_or_else(|| parse_hex_color_alpha(&t.window.border_color).unwrap_or(0x888888FF));
         let th = thickness.unwrap_or(1.0);
         let m = margin.unwrap_or(4.0);
 
@@ -394,7 +394,7 @@ impl Launcher {
 
         let col = color
             .and_then(parse_hex_color)
-            .unwrap_or_else(|| parse_hex_color_alpha(&t.element.text_color).unwrap_or(0xffffffff));
+            .unwrap_or_else(|| parse_hex_color_alpha(&t.element.text_color).unwrap_or(0x000000FF));
         btn = btn.text_color(rgb(col));
 
         let hbg_opt = hover_background.and_then(parse_hex_color);

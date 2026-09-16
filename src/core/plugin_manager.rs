@@ -89,6 +89,37 @@ impl LoadedPlugin {
         let c_id = CString::new(id).unwrap_or_else(|_| CString::new("").unwrap());
         unsafe { (self.plugin.activate)(c_id.as_ptr(), action_code) }
     }
+
+    /// Convert C ABI results to `Vec<Target>`, tagged with this plugin's name.
+    pub fn parse_results(&self, results: &PluginResults) -> Vec<crate::core::item::Target> {
+        use aerofi_plugin_api::PluginItem;
+        let items: &[PluginItem] = if results.count == 0 || results.items.is_null() {
+            &[]
+        } else {
+            unsafe { std::slice::from_raw_parts(results.items, results.count) }
+        };
+        items
+            .iter()
+            .map(|item| {
+                let cstr = |ptr: *const std::ffi::c_char| -> Option<String> {
+                    if ptr.is_null() {
+                        None
+                    } else {
+                        Some(unsafe { std::ffi::CStr::from_ptr(ptr) }
+                            .to_string_lossy()
+                            .into_owned())
+                    }
+                };
+                crate::core::item::Target::PluginItem {
+                    name: gpui::SharedString::from(cstr(item.title).unwrap_or_default()),
+                    subtitle: cstr(item.subtitle).map(gpui::SharedString::from),
+                    icon: cstr(item.icon).map(gpui::SharedString::from),
+                    plugin_id: gpui::SharedString::from(cstr(item.id).unwrap_or_default()),
+                    plugin_name: gpui::SharedString::from(self.name.clone()),
+                }
+            })
+            .collect()
+    }
 }
 
 impl Drop for LoadedPlugin {

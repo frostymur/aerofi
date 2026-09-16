@@ -90,7 +90,7 @@ impl Render for ToastWindow {
                             crate::core::theme::parse_hex_color_alpha(
                                 &self.theme.toast.running_dot,
                             )
-                            .unwrap_or(0xaaaaaaff),
+                            .unwrap_or(0x888888FF),
                         )),
                     )
                     .child(
@@ -120,10 +120,10 @@ impl Render for ToastWindow {
             } => {
                 let dot_color: u32 = if *is_error {
                     crate::core::theme::parse_hex_color_alpha(&self.theme.toast.error_dot)
-                        .unwrap_or(0xf7768eff)
+                        .unwrap_or(0xff6666FF)
                 } else {
                     crate::core::theme::parse_hex_color_alpha(&self.theme.toast.success_dot)
-                        .unwrap_or(0x9ece6aff)
+                        .unwrap_or(0x66ff66FF)
                 };
                 root = root
                     .child(

@@ -492,69 +492,8 @@ impl Launcher {
                                 .name("aerofi-plugin-search".into())
                                 .spawn(move || {
                                     let results = plugin_clone.query(&remainder_str);
-
-                                    let items = if results.count == 0 || results.items.is_null() {
-                                        &[]
-                                    } else {
-                                        unsafe {
-                                            std::slice::from_raw_parts(results.items, results.count)
-                                        }
-                                    };
-
-                                    let mut parsed = Vec::with_capacity(results.count);
-                                    for item in items {
-                                        let name = if item.title.is_null() {
-                                            gpui::SharedString::from("")
-                                        } else {
-                                            let c_str =
-                                                unsafe { std::ffi::CStr::from_ptr(item.title) };
-                                            gpui::SharedString::from(
-                                                c_str.to_string_lossy().into_owned(),
-                                            )
-                                        };
-
-                                        let subtitle = if item.subtitle.is_null() {
-                                            None
-                                        } else {
-                                            let c_str =
-                                                unsafe { std::ffi::CStr::from_ptr(item.subtitle) };
-                                            Some(gpui::SharedString::from(
-                                                c_str.to_string_lossy().into_owned(),
-                                            ))
-                                        };
-
-                                        let icon = if item.icon.is_null() {
-                                            None
-                                        } else {
-                                            let c_str =
-                                                unsafe { std::ffi::CStr::from_ptr(item.icon) };
-                                            Some(gpui::SharedString::from(
-                                                c_str.to_string_lossy().into_owned(),
-                                            ))
-                                        };
-
-                                        let plugin_id = if item.id.is_null() {
-                                            gpui::SharedString::from("")
-                                        } else {
-                                            let c_str =
-                                                unsafe { std::ffi::CStr::from_ptr(item.id) };
-                                            gpui::SharedString::from(
-                                                c_str.to_string_lossy().into_owned(),
-                                            )
-                                        };
-
-                                        parsed.push(Target::PluginItem {
-                                            name,
-                                            subtitle,
-                                            icon,
-                                            plugin_id,
-                                            plugin_name: gpui::SharedString::from(
-                                                plugin.name.clone(),
-                                            ),
-                                        });
-                                    }
-
-                                    plugin.free_results(results);
+                                    let parsed = plugin_clone.parse_results(&results);
+                                    plugin_clone.free_results(results);
                                     let _ = tx.send(parsed);
                                 })
                                 .unwrap();
@@ -576,57 +515,9 @@ impl Launcher {
                 ));
             } else {
                 let results = plugin.query(&remainder);
-
-                // Convert C ABI results to Rust Targets
-                let items = if results.count == 0 || results.items.is_null() {
-                    &[]
-                } else {
-                    unsafe { std::slice::from_raw_parts(results.items, results.count) }
-                };
-
-                for item in items {
-                    let name = if item.title.is_null() {
-                        gpui::SharedString::from("")
-                    } else {
-                        let c_str = unsafe { std::ffi::CStr::from_ptr(item.title) };
-                        gpui::SharedString::from(c_str.to_string_lossy().into_owned())
-                    };
-
-                    let subtitle = if item.subtitle.is_null() {
-                        None
-                    } else {
-                        let c_str = unsafe { std::ffi::CStr::from_ptr(item.subtitle) };
-                        Some(gpui::SharedString::from(
-                            c_str.to_string_lossy().into_owned(),
-                        ))
-                    };
-
-                    let icon = if item.icon.is_null() {
-                        None
-                    } else {
-                        let c_str = unsafe { std::ffi::CStr::from_ptr(item.icon) };
-                        Some(gpui::SharedString::from(
-                            c_str.to_string_lossy().into_owned(),
-                        ))
-                    };
-
-                    let plugin_id = if item.id.is_null() {
-                        gpui::SharedString::from("")
-                    } else {
-                        let c_str = unsafe { std::ffi::CStr::from_ptr(item.id) };
-                        gpui::SharedString::from(c_str.to_string_lossy().into_owned())
-                    };
-
-                    self.all.push(Target::PluginItem {
-                        name,
-                        subtitle,
-                        icon,
-                        plugin_id,
-                        plugin_name: gpui::SharedString::from(plugin.name.clone()),
-                    });
-                }
-
+                let parsed = plugin.parse_results(&results);
                 plugin.free_results(results);
+                self.all.extend(parsed);
 
                 // For plugins, we don't fuzzy sort. We show exactly what the plugin returned in order.
                 self.filtered = (self.base_count..self.all.len()).collect();

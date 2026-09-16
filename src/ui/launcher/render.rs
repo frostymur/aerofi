@@ -242,6 +242,17 @@ impl Launcher {
         parse_hex_color_alpha(hex).unwrap_or(0x000000FF)
     }
 
+    /// Mono font for code blocks: first fallback containing "Mono", else "SF Mono".
+    fn mono_font(t: &crate::core::theme::ThemeConfig) -> gpui::SharedString {
+        let fb = t.font.fallback.as_deref().unwrap_or_default();
+        let mono = fb
+            .iter()
+            .find(|f| f.to_ascii_lowercase().contains("mono"))
+            .map(|s| s.as_str())
+            .unwrap_or("SF Mono");
+        gpui::SharedString::from(mono.to_string())
+    }
+
     /// Render the input bar styled from `theme.inputbar`.
     pub(super) fn render_inputbar(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
         let t = &self.theme;
@@ -1156,7 +1167,7 @@ impl Launcher {
             .gap_4()
             .child(
                 div()
-                    .text_xl()
+                    .text_size(px(t.font.size * 1.2))
                     .text_color(text_color)
                     .child(format!("Run '{}'?", target.name())),
             )
@@ -1221,13 +1232,13 @@ impl Launcher {
                     .py_1()
                     .rounded(px(6.0))
                     .bg(sel_bg)
-                    .text_sm()
+                    .text_size(px(t.font.size * 0.8))
                     .text_color(sel_text)
                     .child("▶ Running"),
             )
             .child(
                 div()
-                    .text_base()
+                    .text_size(px(t.font.size))
                     .text_color(rgba(Self::color(&t.element.text_color)))
                     .child(title.to_string()),
             )
@@ -1252,8 +1263,8 @@ impl Launcher {
                     .gap_3()
                     .child(
                         div()
-                            .text_color(rgba(Self::color(&t.status_colors.accent))) // some accent color or back button style
-                            .text_sm()
+                            .text_color(rgba(Self::color(&t.status_colors.accent)))
+                            .text_size(px(t.font.size * 0.8))
                             .cursor(CursorStyle::PointingHand)
                             .id("full-output-back")
                             .on_click(cx.listener(move |this, event, _window, cx| {
@@ -1266,14 +1277,14 @@ impl Launcher {
                     )
                     .child(
                         div()
-                            .text_base()
+                            .text_size(px(t.font.size))
                             .text_color(rgba(Self::color(&t.element.text_color)))
                             .child(title.to_string()),
                     ),
             )
             .child(
                 div()
-                    .text_xs()
+                    .text_size(px(t.font.size * 0.7))
                     .text_color(rgba(Self::color(&t.status_colors.muted)))
                     .child("↵ Rerun"),
             );
@@ -1282,8 +1293,8 @@ impl Launcher {
         let body = if block_count == 0 {
             div()
                 .flex_1()
-                .text_sm()
-                .font_family("JetBrains Mono")
+                .text_size(px(t.font.size * 0.8))
+                .font_family(Self::mono_font(t))
                 .text_color(rgba(Self::color(&t.inputbar.placeholder_color)))
                 .child("(no output)")
                 .into_any()
@@ -1321,7 +1332,7 @@ impl Launcher {
         let t = &self.theme;
         let text_color = rgba(Self::color(&t.element.text_color));
         let dim_color = rgba(Self::color(&t.inputbar.placeholder_color));
-        let mono = gpui::SharedString::from("JetBrains Mono");
+        let mono = Self::mono_font(t);
 
         let base = gpui::TextStyle {
             font_size: px(t.font.size).into(),
@@ -1372,7 +1383,7 @@ impl Launcher {
                 if let Some(lang) = lang {
                     box_ = box_.child(
                         div()
-                            .text_xs()
+                            .text_size(px(t.font.size * 0.7))
                             .text_color(dim_color)
                             .mb_1()
                             .child(lang.clone()),
@@ -1381,7 +1392,7 @@ impl Launcher {
                 box_ = box_.child(
                     div()
                         .font_family(mono)
-                        .text_sm()
+                        .text_size(px(t.font.size * 0.85))
                         .text_color(text_color)
                         .child(text.clone()),
                 );
@@ -1403,7 +1414,7 @@ impl Launcher {
             MdBlock::Plain(text) => div()
                 .w_full()
                 .font_family(mono)
-                .text_sm()
+                .text_size(px(t.font.size * 0.85))
                 .text_color(dim_color)
                 .child(text.clone())
                 .into_any(),
@@ -1449,7 +1460,7 @@ impl Launcher {
             if mark.kind == InlineKind::Code {
                 code_ranges.push((
                     mark.range.clone(),
-                    gpui::SharedString::from("JetBrains Mono"),
+                    Self::mono_font(t),
                 ));
             }
             highlights.push((mark.range.clone(), style));
