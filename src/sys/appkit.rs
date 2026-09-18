@@ -278,13 +278,13 @@ pub fn hide_launcher_window() {
     }
 }
 
-/// Target icon size for downsampling (pixels). 128 covers Retina at 64pt
-/// (128px); grid themes at 72pt (144px Retina) are slightly upscaled but
-/// still crisp. Each cached TIFF is ~64 KB.
-const ICON_SIZE: u32 = 128;
+/// Target icon size for downsampling (pixels). 96 covers the list view at
+/// Retina (44px) with room to spare; grid themes at 72pt (144px Retina) are
+/// upscaled ~1.5x — mildly soft but acceptable. Each cached TIFF is ~36 KB.
+const ICON_SIZE: u32 = 96;
 
-/// Extract the icon for an `.app` bundle, downsampled to 128×128 via the
-/// `image` crate so each cached TIFF is ~64 KB. Returns `None` on failure.
+/// Extract the icon for an `.app` bundle, downsampled to 96×96 via the
+/// `image` crate so each cached TIFF is ~36 KB. Returns `None` on failure.
 pub fn icon_for_app_bundle(path: &Path) -> Option<Vec<u8>> {
     let _mtm = MainThreadMarker::new()?;
     let path_str = NSString::from_str(path.to_str()?);
@@ -298,11 +298,11 @@ pub fn icon_for_app_bundle(path: &Path) -> Option<Vec<u8>> {
     // Decode the full-res TIFF.
     let img = image::load_from_memory(&raw_bytes).ok()?;
 
-    // Resize to 128×128 using Lanczos3 for quality.
+    // Resize to 96×96 using Lanczos3 for quality.
     let resized = img.resize(ICON_SIZE, ICON_SIZE, image::imageops::FilterType::Lanczos3);
 
     // Re-encode as TIFF.
-    let mut buf = Cursor::new(Vec::with_capacity(64 * 1024));
+    let mut buf = Cursor::new(Vec::with_capacity(48 * 1024));
     let encoder = TiffEncoder::new(&mut buf);
     let rgba = resized.to_rgba8();
     encoder

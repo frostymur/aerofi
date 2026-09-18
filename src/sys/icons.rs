@@ -12,7 +12,7 @@ use std::sync::OnceLock;
 
 /// Cache format version — bump to invalidate stale icons after size or
 /// format changes.  Stored as `VERSION` inside the icon directory.
-const CACHE_VERSION: u32 = 3; // v1 = 128×128, v2 = 64×64, v3 = 128×128 (Lanczos3)
+const CACHE_VERSION: u32 = 4; // v1 = 128×128, v2 = 64×64, v3 = 128×128, v4 = 96×96 (Lanczos3)
 
 /// Lazily-created persistent cache directory: `~/.cache/aerofi/icons/`.
 fn icon_dir() -> &'static PathBuf {
