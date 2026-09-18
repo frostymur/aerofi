@@ -13,6 +13,12 @@ icon_size = 72.0
 padding = [10.0, 20.0]
 corner_radius = 12.0
 
+[presets.power.element]
+# Bigger tiles for the power menu (few items, 2 columns).
+icon_size = 84.0
+padding = [14.0, 20.0]
+corner_radius = 14.0
+
 [presets.list.element]
 icon_size = 22.0
 padding = [8.0, 12.0]
