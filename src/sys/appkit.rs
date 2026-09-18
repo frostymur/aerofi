@@ -131,6 +131,32 @@ thread_local! {
         const { std::cell::RefCell::new((0.0, 0.0)) };
 }
 
+/// Synchronously set the NSWindow's content size.
+///
+/// Used during state transitions (e.g. exiting a GUI script) to resize the
+/// window *before* the next render pass.  Without this, the async
+/// `window.resize()` in `render()` leaves a one-frame gap where the old
+/// content gets scaled by CoreAnimation to the new window size, producing
+/// a visible stretch artifact (most noticeable when a theme has a
+/// full-height artwork image on the left pane).
+///
+/// Must be called on the main thread, outside of a draw pass (i.e. from
+/// an event handler, not from `render()`).
+pub fn set_window_size(width: f64, height: f64) {
+    let ptr = NS_WINDOW.load(Ordering::SeqCst);
+    if ptr.is_null() {
+        return;
+    }
+    unsafe {
+        use objc2::msg_send;
+        let ns_window = &*(ptr as *const NSWindow);
+        let _: () = msg_send![ns_window, setContentSize: objc2_foundation::NSSize {
+            width,
+            height,
+        }];
+    }
+}
+
 /// Centre the window on the main screen, shifted by (`x_offset`,
 /// `y_offset`) points (positive = right/down), deferred via GCD so it
 /// fires after GPUI has finished processing the current frame (including

@@ -72,6 +72,11 @@ pub struct Launcher {
     /// Set to `true` after a config/theme reload so the next `render()` call
     /// re-centers the window *after* `window.resize()` has been applied.
     pub(super) needs_center: bool,
+    /// Last (width, height) in points passed to `window.resize()`. GPUI's
+    /// macOS `resize` unconditionally calls `setContentSize_`, so we only
+    /// forward a resize (and the re-center it triggers) when the size
+    /// actually changed — otherwise every frame moves the native window.
+    pub(super) last_window_size: Option<(f32, f32)>,
 }
 
 impl Launcher {
@@ -107,6 +112,7 @@ impl Launcher {
             plugin_search_task: None,
             base_count,
             needs_center: false,
+            last_window_size: None,
         }
     }
 
@@ -1650,5 +1656,26 @@ impl Launcher {
             self.reload();
         }
         self.state = LauncherState::Search;
+
+        // Pre-size the window synchronously to the Search layout dimensions.
+        //
+        // `render()` resizes the window via an async `window.resize()` call.
+        // Between the state switch and the async resize landing, GPUI draws
+        // the new Search content at the old (small) GUI-mode window size.
+        // CoreAnimation then stretches that frame to the new (larger) window
+        // size until the next draw — producing a visible "stretched image"
+        // artifact most noticeable when a theme has a full-height artwork
+        // image on the left pane (e.g. graphite-mono).
+        //
+        // Calling `setContentSize:` here (in the keystroke/event handler,
+        // outside any draw pass) applies the resize synchronously so the
+        // very first Search frame is drawn at the correct size.  The later
+        // async `window.resize()` from `render()` becomes a harmless no-op
+        // (same size → early return in `set_frame_size`).
+        let t = &self.theme;
+        crate::sys::appkit::set_window_size(
+            t.window.width as f64,
+            t.window.height as f64,
+        );
     }
 }

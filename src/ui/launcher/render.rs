@@ -70,8 +70,23 @@ impl Render for Launcher {
         } else {
             t.window.width
         };
-        window.resize(size(px(win_width), px(target_height)));
-        crate::sys::appkit::center_window(t.window.x_offset as f64, t.window.y_offset as f64);
+        // Only forward a resize (and the re-center it triggers) when the
+        // size actually changed: GPUI's macOS `resize` unconditionally calls
+        // `setContentSize_`, and re-centering moves the window via
+        // `setFrameOrigin` — doing either on every frame makes the native
+        // window stutter during render bursts (e.g. while a script launches).
+        let size_changed = match self.last_window_size {
+            Some((w, h)) => (w - win_width).abs() > 0.5 || (h - target_height).abs() > 0.5,
+            None => true,
+        };
+        if size_changed {
+            window.resize(size(px(win_width), px(target_height)));
+            self.last_window_size = Some((win_width, target_height));
+        }
+        if self.needs_center || size_changed {
+            self.needs_center = false;
+            crate::sys::appkit::center_window(t.window.x_offset as f64, t.window.y_offset as f64);
+        }
 
         // Inner content: the actual launcher widgets or full page views.
         let inner = if let LauncherState::FullOutput { title } = &self.state {
