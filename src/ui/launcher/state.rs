@@ -971,8 +971,11 @@ impl Launcher {
         let title = name.to_string();
         let layout = target.metatags().and_then(|m| m.layout.clone());
 
-        // Commit metatags (same as other modes).
-        self.sticky_metatags = target.metatags().cloned();
+        // Metatags are committed only when we actually enter GUI mode (see
+        // `show_gui_loading` / the burst task below) — not here — so the
+        // search list doesn't render with the GUI layout (columns, hidden
+        // input bar) during the brief wait for the first burst.
+        let metatags = target.metatags().cloned();
 
         // Record in history.
         let identifier = target.identifier();
@@ -1002,10 +1005,15 @@ impl Launcher {
                         };
                         let _ = tx.send(burst);
                     });
+                let metatags_burst = metatags.clone();
                 cx.spawn(move |_, _: &mut gpui::AsyncApp| async move {
                     if let Ok(burst) = rx.await {
                         cx_async.update(|cx| {
                             view.update(cx, |launcher, cx| {
+                                // Commit the layout metatags as we enter GUI
+                                // mode. If the script exited without output,
+                                // `gui_leave()` below clears them again.
+                                launcher.sticky_metatags = metatags_burst;
                                 launcher.gui_handle_read_result(burst, &title2);
                                 cx.notify();
                             });
@@ -1014,32 +1022,83 @@ impl Launcher {
                 })
                 .detach();
 
-                // Set a temporary "loading" GUI mode while waiting for the burst.
-                self.state = LauncherState::GuiMode {
-                    title,
-                    rows: Vec::new(),
-                    filtered_rows: Vec::new(),
-                    prompt: None,
-                    message: Some("Loading…".to_string()),
-                    no_custom: false,
-                    selected: 0,
-                    columns: None,
-                    query: String::new(),
-                    loading: true,
-                    live_search: false,
-                    active_indices: Vec::new(),
-                    data: None,
-                    preview_blocks: None,
-                    multi_select: false,
-                    toggled_indices: std::collections::HashSet::new(),
-                    markup_rows: false,
-                    layout,
-                };
+                // Show a "loading" frame only if the script is slow to emit
+                // its first burst. Fast scripts go straight from the search
+                // list to the populated GUI, so the user never sees an empty
+                // flash. The task no-ops if a burst (or an exit/hide) already
+                // landed before the delay elapsed.
+                let title_loading = title.clone();
+                let layout_loading = layout.clone();
+                let metatags_loading = metatags;
+                cx.spawn(move |view: gpui::WeakEntity<Self>, app: &mut gpui::AsyncApp| {
+                    let mut app = app.clone();
+                    async move {
+                        app.background_executor()
+                            .timer(std::time::Duration::from_millis(120))
+                            .await;
+                        let _ = view
+                            .update(&mut app, |launcher, cx| {
+                                launcher.show_gui_loading(
+                                    &title_loading,
+                                    layout_loading,
+                                    metatags_loading,
+                                    cx,
+                                );
+                            })
+                            .ok();
+                    }
+                })
+                .detach();
             }
             Err(e) => {
                 eprintln!("aerofi: failed to start GUI session for {title}: {e}");
             }
         }
+    }
+
+    /// Show the temporary "loading" GUI frame, but only if a burst hasn't
+    /// landed yet (we're still not in `GuiMode`) and the session is still
+    /// alive. Invoked by a delayed task from [`start_gui_session`], so fast
+    /// scripts never trigger it — the user goes straight from the search list
+    /// to the populated GUI with no empty flash.
+    fn show_gui_loading(
+        &mut self,
+        title: &str,
+        layout: Option<String>,
+        metatags: Option<ScriptMetatags>,
+        cx: &mut Context<Self>,
+    ) {
+        if matches!(self.state, LauncherState::GuiMode { .. }) || self.gui_session.is_none() {
+            return;
+        }
+        // Commit the layout metatags as we enter GUI mode (loading frame).
+        self.sticky_metatags = metatags;
+        self.state = LauncherState::GuiMode {
+            title: title.to_string(),
+            rows: Arc::new(Vec::new()),
+            filtered_rows: Vec::new(),
+            prompt: None,
+            message: Some("Loading…".to_string()),
+            no_custom: false,
+            selected: 0,
+            // Match the committed layout so the window is already at its final
+            // size when the burst lands (avoids a resize right after loading).
+            columns: self
+                .sticky_metatags
+                .as_ref()
+                .and_then(|m| m.columns),
+            query: String::new(),
+            loading: true,
+            live_search: false,
+            active_indices: Vec::new(),
+            data: None,
+            preview_blocks: None,
+            multi_select: false,
+            toggled_indices: std::collections::HashSet::new(),
+            markup_rows: false,
+            layout,
+        };
+        cx.notify();
     }
 
     /// Handle the read result from a GUI session burst.
@@ -1162,7 +1221,7 @@ impl Launcher {
 
         self.state = LauncherState::GuiMode {
             title: title.to_string(),
-            rows: burst.rows,
+            rows: Arc::new(burst.rows),
             filtered_rows,
             prompt,
             message,

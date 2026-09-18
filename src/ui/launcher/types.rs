@@ -1,5 +1,7 @@
 //! Data types for the launcher's state machine.
 
+use std::sync::Arc;
+
 use crate::core::gui_protocol::GuiRow;
 use crate::core::item::Target;
 
@@ -59,8 +61,10 @@ pub enum LauncherState {
     GuiMode {
         /// Title of the script (from `@raycast.title`).
         title: String,
-        /// All rows in the current step.
-        rows: Vec<GuiRow>,
+        /// All rows in the current step. Shared via `Arc` so the per-frame
+        /// list closures can clone it cheaply (atomic bump) instead of
+        /// deep-cloning every row's string fields.
+        rows: Arc<Vec<GuiRow>>,
         /// Indices into `rows` after fuzzy filtering.
         filtered_rows: Vec<usize>,
         /// Override for the input bar placeholder (from `\0prompt`).

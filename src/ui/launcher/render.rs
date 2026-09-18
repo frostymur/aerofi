@@ -41,9 +41,10 @@ impl Render for Launcher {
         let margin_bottom = t.inputbar.margin.get(2).copied().unwrap_or(8.0);
 
         let target_height = match &self.state {
-            LauncherState::RunningFull { .. }
-            | LauncherState::FullOutput { .. }
-            | LauncherState::GuiMode { .. } => t.window.height,
+            LauncherState::RunningFull { .. } | LauncherState::FullOutput { .. } => {
+                t.window.height
+            }
+            LauncherState::GuiMode { .. } => self.gui_fit_height(),
             LauncherState::Search
             | LauncherState::ArgumentInput { .. }
             | LauncherState::Confirming { .. } => {
@@ -276,6 +277,84 @@ impl Launcher {
             LauncherState::GuiMode { layout, .. } => layout.as_deref(),
             _ => None,
         }
+    }
+
+    /// Effective column count for GUI mode: the script's runtime `\0columns`
+    /// (which inherits the `@aerofi.columns` metatag) wins, otherwise the
+    /// preset's `columns`, otherwise 1.
+    fn gui_effective_columns(&self) -> usize {
+        if self.gui_columns() > 1 {
+            self.gui_columns()
+        } else {
+            self.gui_layout()
+                .and_then(|name| self.theme.presets.get(name))
+                .and_then(|m| m.element.columns)
+                .unwrap_or(1)
+                .max(1)
+        }
+    }
+
+    /// Ideal window height for GUI mode: fit the actual content (input bar,
+    /// message banner, and the list/grid) instead of always using the full
+    /// theme window height, so short menus (e.g. a power menu) don't leave a
+    /// large empty area below the content. Capped at the theme window height
+    /// so long lists stay scrollable.
+    fn gui_fit_height(&self) -> f32 {
+        let t = &self.theme;
+        let pad_v = t.window.padding;
+        let gui_padding = t.gui.padding.unwrap_or(0.0);
+        let spacing = t.listview.spacing;
+
+        let show_search = self
+            .sticky_metatags
+            .as_ref()
+            .and_then(|m| m.show_search)
+            .unwrap_or(true);
+
+        let LauncherState::GuiMode {
+            filtered_rows, message, ..
+        } = &self.state
+        else {
+            return t.window.height;
+        };
+
+        // Icon / padding metrics shared by list and grid rows.
+        let el = &t.element;
+        let mode_el = self
+            .gui_layout()
+            .and_then(|name| t.presets.get(name))
+            .map(|m| &m.element);
+        let icon_size = mode_el.and_then(|m| m.icon_size).unwrap_or(el.icon_size);
+        let pad_v_el = mode_el
+            .and_then(|m| m.padding.as_deref().and_then(|p| p.first().copied()))
+            .unwrap_or_else(|| el.padding.first().copied().unwrap_or(8.0));
+        let border = el.border_width;
+        let text_h = ((t.font.size - 1.5).max(11.0)) * 1.2;
+
+        // Stack the container's children, each separated by `spacing`.
+        let mut blocks: Vec<f32> = Vec::new();
+        if show_search {
+            let ib_mb = t.inputbar.margin.get(2).copied().unwrap_or(8.0);
+            blocks.push(t.inputbar.height + ib_mb);
+        }
+        if message.is_some() {
+            blocks.push(t.font.size * 0.85 + 8.0);
+        }
+
+        let n = filtered_rows.len().max(1);
+        let cols = self.gui_effective_columns();
+        let list_h = if cols > 1 {
+            let rows = n.div_ceil(cols);
+            let cell_h = pad_v_el * 2.0 + icon_size + el.icon_gap + text_h + border * 2.0;
+            rows as f32 * cell_h + (rows.saturating_sub(1)) as f32 * spacing
+        } else {
+            let row_h = pad_v_el * 2.0 + icon_size.max(text_h) + border * 2.0;
+            n as f32 * row_h + (n.saturating_sub(1)) as f32 * spacing
+        };
+        blocks.push(list_h);
+
+        let content: f32 = blocks.iter().sum::<f32>() + spacing * (blocks.len() - 1) as f32;
+        (content + pad_v * 2.0 + gui_padding * 2.0 + 6.0).min(t.window.height)
     }
 
     /// Render the input bar styled from `theme.inputbar`.
@@ -531,7 +610,9 @@ impl Launcher {
         // ── Layout (List + Optional Preview) ───────────────────────────
         let mut list_container = div().flex_1().flex().flex_col();
 
-        if filtered_rows.is_empty() {
+        // While the script is still loading, don't show the "no results"
+        // placeholder — the "Loading…" message banner is the only feedback.
+        if filtered_rows.is_empty() && !*loading {
             list_container = list_container.child(
                 div()
                     .flex_1()
@@ -540,7 +621,7 @@ impl Launcher {
                     .text_color(rgba(Self::color(&t.listview.empty_text_color)))
                     .child(t.listview.empty_text.clone()),
             );
-        } else {
+        } else if !filtered_rows.is_empty() {
             let mode_el = self
                 .gui_layout()
                 .and_then(|name| t.presets.get(name))
@@ -557,15 +638,7 @@ impl Launcher {
                 el.description_color.as_deref().unwrap_or(&el.text_color),
             ));
 
-            let cols = if self.gui_columns() > 1 {
-                self.gui_columns()
-            } else {
-                self.gui_layout()
-                    .and_then(|name| t.presets.get(name))
-                    .and_then(|m| m.element.columns)
-                    .unwrap_or(1)
-                    .max(1)
-            };
+            let cols = self.gui_effective_columns();
             if cols > 1 {
                 // Grid mode: virtualized rows of `cols` cells each.
                 let total_rows = filtered_rows.len().div_ceil(cols);

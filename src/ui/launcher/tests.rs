@@ -350,9 +350,11 @@ fn gui_arrow_key_defers_scroll_to_selected_row() {
     );
     l.state = LauncherState::GuiMode {
         title: "Clipboard".to_string(),
-        rows: (0..5)
-            .map(|i| crate::core::gui_protocol::GuiRow::new(format!("item {i}")))
-            .collect(),
+        rows: std::sync::Arc::new(
+            (0..5)
+                .map(|i| crate::core::gui_protocol::GuiRow::new(format!("item {i}")))
+                .collect(),
+        ),
         filtered_rows: (0..5).collect(),
         prompt: None,
         message: None,
