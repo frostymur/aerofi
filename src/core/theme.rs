@@ -1153,10 +1153,10 @@ accent = "#7aa2f7"
         assert_eq!(t.window.width, 750.0);
         assert_eq!(t.window.height, 440.0);
         assert_eq!(t.listview.columns, 4);
-        // Rofi-ported grid: borderless tiles, 10px radius, 72px icons, 15px gap.
+        // Rofi-ported grid: borderless tiles, 12px radius, 72px icons, 15px gap.
         assert_eq!(t.font.size, 15.0);
         assert_eq!(t.element.background, "transparent");
-        assert_eq!(t.element.corner_radius, 10.0);
+        assert_eq!(t.element.corner_radius, 12.0);
         assert_eq!(t.element.icon_size, 72.0);
         assert_eq!(t.element.icon_gap, 15.0);
         assert_eq!(t.element.border_width, 0.0);
