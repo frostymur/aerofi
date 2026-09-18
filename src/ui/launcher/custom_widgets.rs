@@ -9,7 +9,9 @@ use gpui::{Context, CursorStyle, div, img, prelude::*, px, rgb, rgba};
 use crate::core::item::Target;
 use crate::core::theme::{FontWeightSpec, WidgetDef, parse_hex_color, parse_hex_color_alpha};
 
-use super::helpers::{expand_tilde_path, format_combo, is_image_path, is_primary_click, resolve_font_weight};
+use super::helpers::{
+    expand_tilde_path, format_combo, is_image_path, is_primary_click, resolve_font_weight,
+};
 use super::state::Launcher;
 
 impl Launcher {

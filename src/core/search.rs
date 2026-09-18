@@ -81,7 +81,8 @@ impl SearchIndex {
         // "should have been caught by prefilter". Lowercasing the query
         // keeps the needle consistent with the normalized haystack.
         self.lower_query_buf.clear();
-        self.lower_query_buf.extend(query.chars().flat_map(|c| c.to_lowercase()));
+        self.lower_query_buf
+            .extend(query.chars().flat_map(|c| c.to_lowercase()));
         let query = self.lower_query_buf.as_str();
 
         let needle = Utf32Str::new(query, &mut self.needle_buf);
@@ -118,7 +119,6 @@ impl SearchIndex {
         out_filtered.clear();
         out_filtered.extend(self.scored_buf.iter().map(|&(_, i)| i));
     }
-
 }
 
 // ---------------------------------------------------------------------------

@@ -79,8 +79,8 @@ pub fn set_borderless_style(window: &Window, corner_radius: f32) {
     // Clip the underlying blur/vibrancy layer to the same rounded rect
     // as the GPUI div, so no square-corner artefacts are visible.
     unsafe {
-        use objc2::runtime::AnyObject;
         use objc2::msg_send;
+        use objc2::runtime::AnyObject;
 
         let _: () = msg_send![&*ns_window, setHasShadow: false];
 

@@ -110,7 +110,8 @@ impl Launcher {
         let button_hotkeys = widget_registry.button_hotkeys();
         let base_count = all.len();
         let font_fallbacks = super::helpers::font_fallback_families(&theme.font.fallback);
-        let (root_font, inputbar_font, element_font_val) = Self::build_fonts(&theme, &font_fallbacks);
+        let (root_font, inputbar_font, element_font_val) =
+            Self::build_fonts(&theme, &font_fallbacks);
         Self {
             all,
             filtered,
@@ -145,7 +146,10 @@ impl Launcher {
     /// Build the cached GPUI fonts (root, input bar, list element) from the
     /// theme. Called once per theme load so per-frame rendering only clones
     /// the (cheap) `Font` values instead of rebuilding fallback cascades.
-    fn build_fonts(theme: &ThemeConfig, font_fallbacks: &[String]) -> (Font, (Font, f32), (Font, f32)) {
+    fn build_fonts(
+        theme: &ThemeConfig,
+        font_fallbacks: &[String],
+    ) -> (Font, (Font, f32), (Font, f32)) {
         let base_weight = super::helpers::base_weight(&theme.font.weight);
         let root_font = Font {
             family: theme.font.family.clone().into(),
@@ -518,8 +522,7 @@ impl Launcher {
                     &self.history,
                     &mut self.filtered,
                 );
-                self.filtered
-                    .truncate(self.app_config.general.max_results);
+                self.filtered.truncate(self.app_config.general.max_results);
 
                 // Every keystroke re-enters this branch and drops the
                 // previous task, so the plugin is queried at most once per
@@ -591,8 +594,7 @@ impl Launcher {
                 &self.history,
                 &mut self.filtered,
             );
-            self.filtered
-                .truncate(self.app_config.general.max_results);
+            self.filtered.truncate(self.app_config.general.max_results);
         }
 
         if self.selected >= self.filtered.len() {
@@ -1092,24 +1094,26 @@ impl Launcher {
                 let title_loading = title.clone();
                 let layout_loading = layout.clone();
                 let metatags_loading = metatags;
-                cx.spawn(move |view: gpui::WeakEntity<Self>, app: &mut gpui::AsyncApp| {
-                    let mut app = app.clone();
-                    async move {
-                        app.background_executor()
-                            .timer(std::time::Duration::from_millis(120))
-                            .await;
-                        let _ = view
-                            .update(&mut app, |launcher, cx| {
-                                launcher.show_gui_loading(
-                                    &title_loading,
-                                    layout_loading,
-                                    metatags_loading,
-                                    cx,
-                                );
-                            })
-                            .ok();
-                    }
-                })
+                cx.spawn(
+                    move |view: gpui::WeakEntity<Self>, app: &mut gpui::AsyncApp| {
+                        let mut app = app.clone();
+                        async move {
+                            app.background_executor()
+                                .timer(std::time::Duration::from_millis(120))
+                                .await;
+                            let _ = view
+                                .update(&mut app, |launcher, cx| {
+                                    launcher.show_gui_loading(
+                                        &title_loading,
+                                        layout_loading,
+                                        metatags_loading,
+                                        cx,
+                                    );
+                                })
+                                .ok();
+                        }
+                    },
+                )
                 .detach();
             }
             Err(e) => {
@@ -1145,10 +1149,7 @@ impl Launcher {
             selected: 0,
             // Match the committed layout so the window is already at its final
             // size when the burst lands (avoids a resize right after loading).
-            columns: self
-                .sticky_metatags
-                .as_ref()
-                .and_then(|m| m.columns),
+            columns: self.sticky_metatags.as_ref().and_then(|m| m.columns),
             query: String::new(),
             loading: true,
             live_search: false,
@@ -1197,10 +1198,7 @@ impl Launcher {
         let mut message = None;
         let mut no_custom = false;
         let mut keep_selection: Option<String> = None;
-        let mut columns = self
-            .sticky_metatags
-            .as_ref()
-            .and_then(|m| m.columns);
+        let mut columns = self.sticky_metatags.as_ref().and_then(|m| m.columns);
         let mut loading = false;
         let mut live_search = false;
         let mut active_indices = Vec::new();
@@ -1798,9 +1796,6 @@ impl Launcher {
         // async `window.resize()` from `render()` becomes a harmless no-op
         // (same size → early return in `set_frame_size`).
         let t = &self.theme;
-        crate::sys::appkit::set_window_size(
-            t.window.width as f64,
-            t.window.height as f64,
-        );
+        crate::sys::appkit::set_window_size(t.window.width as f64, t.window.height as f64);
     }
 }

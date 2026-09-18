@@ -105,9 +105,11 @@ impl LoadedPlugin {
                     if ptr.is_null() {
                         None
                     } else {
-                        Some(unsafe { std::ffi::CStr::from_ptr(ptr) }
-                            .to_string_lossy()
-                            .into_owned())
+                        Some(
+                            unsafe { std::ffi::CStr::from_ptr(ptr) }
+                                .to_string_lossy()
+                                .into_owned(),
+                        )
                     }
                 };
                 crate::core::item::Target::PluginItem {

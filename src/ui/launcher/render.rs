@@ -10,8 +10,7 @@ use crate::core::item::Target;
 use crate::core::theme::{BuiltinWidget, Widget, parse_hex_color_alpha};
 
 use super::helpers::{
-    apply_md_style, expand_tilde_path, format_combo,
-    is_image_path, is_primary_click,
+    apply_md_style, expand_tilde_path, format_combo, is_image_path, is_primary_click,
 };
 use super::state::Launcher;
 use super::types::LauncherState;
@@ -42,9 +41,7 @@ impl Render for Launcher {
         let margin_bottom = t.inputbar.margin.get(2).copied().unwrap_or(8.0);
 
         let target_height = match &self.state {
-            LauncherState::RunningFull { .. } | LauncherState::FullOutput { .. } => {
-                t.window.height
-            }
+            LauncherState::RunningFull { .. } | LauncherState::FullOutput { .. } => t.window.height,
             LauncherState::GuiMode { .. } => self.gui_fit_height(),
             LauncherState::Search
             | LauncherState::ArgumentInput { .. }
@@ -314,7 +311,9 @@ impl Launcher {
             .unwrap_or(true);
 
         let LauncherState::GuiMode {
-            filtered_rows, message, ..
+            filtered_rows,
+            message,
+            ..
         } = &self.state
         else {
             return t.window.height;
@@ -634,7 +633,9 @@ impl Launcher {
                 .and_then(|m| m.padding.as_deref().and_then(|p| p.first().copied()))
                 .unwrap_or_else(|| el.padding.first().copied().unwrap_or(8.0));
             let icon_size = px(mode_el.and_then(|m| m.icon_size).unwrap_or(el.icon_size));
-            let gui_radius = mode_el.and_then(|m| m.corner_radius).unwrap_or(el.corner_radius);
+            let gui_radius = mode_el
+                .and_then(|m| m.corner_radius)
+                .unwrap_or(el.corner_radius);
             let desc_color = rgba(Self::color(
                 el.description_color.as_deref().unwrap_or(&el.text_color),
             ));
@@ -772,7 +773,8 @@ impl Launcher {
                                             st = st.with_highlights(highlights);
                                         }
                                         text_div.child(st)
-                                    } else if let Some(st) = _this.query_highlighted_text(&row.text, None)
+                                    } else if let Some(st) =
+                                        _this.query_highlighted_text(&row.text, None)
                                     {
                                         text_div.child(st)
                                     } else {
@@ -897,7 +899,8 @@ impl Launcher {
                                             st = st.with_highlights(highlights);
                                         }
                                         text_div.child(st)
-                                    } else if let Some(st) = _this.query_highlighted_text(&row.text, None)
+                                    } else if let Some(st) =
+                                        _this.query_highlighted_text(&row.text, None)
                                     {
                                         text_div.child(st)
                                     } else {
@@ -1123,7 +1126,9 @@ impl Launcher {
         let pad_v = mode_el
             .and_then(|m| m.padding.as_deref().and_then(|p| p.first().copied()))
             .unwrap_or_else(|| el.padding.first().copied().unwrap_or(8.0));
-        let gui_radius = mode_el.and_then(|m| m.corner_radius).unwrap_or(el.corner_radius);
+        let gui_radius = mode_el
+            .and_then(|m| m.corner_radius)
+            .unwrap_or(el.corner_radius);
 
         let (row, is_selected, is_active, is_urgent, is_disabled, is_toggled, markup_rows) =
             if let LauncherState::GuiMode {
@@ -1579,10 +1584,7 @@ impl Launcher {
                 },
             };
             if mark.kind == InlineKind::Code {
-                code_ranges.push((
-                    mark.range.clone(),
-                    Self::mono_font(t),
-                ));
+                code_ranges.push((mark.range.clone(), Self::mono_font(t)));
             }
             highlights.push((mark.range.clone(), style));
         }
@@ -1917,7 +1919,12 @@ impl Launcher {
                         row = row.child(self.render_row_icon(item, icon_color));
                     }
                     "name" => {
-                        row = row.child(self.render_row_name(item, name_color, desc_color, is_selected));
+                        row = row.child(self.render_row_name(
+                            item,
+                            name_color,
+                            desc_color,
+                            is_selected,
+                        ));
                     }
                     "spacer" | "flex" => {
                         row = row.child(div().flex_1());
@@ -2075,7 +2082,11 @@ impl Launcher {
 
     /// A `StyledText` with the query match highlighted, or `None` when there
     /// is nothing to highlight.
-    fn query_highlighted_text(&self, text: &str, selected_color: Option<gpui::Hsla>) -> Option<gpui::StyledText> {
+    fn query_highlighted_text(
+        &self,
+        text: &str,
+        selected_color: Option<gpui::Hsla>,
+    ) -> Option<gpui::StyledText> {
         let hl = self.name_highlights(text, selected_color)?;
         Some(gpui::StyledText::new(text.to_string()).with_highlights(hl))
     }

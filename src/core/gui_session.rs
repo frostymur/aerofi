@@ -176,7 +176,6 @@ impl GuiSession {
         let _ = self.child.kill();
         let _ = self.child.wait();
     }
-
 }
 
 impl Drop for GuiSession {

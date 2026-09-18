@@ -766,7 +766,10 @@ fn gui_mode_burst_and_selection_loop_does_not_leak() {
         else {
             return 0;
         };
-        String::from_utf8_lossy(&out.stdout).trim().parse().unwrap_or(0)
+        String::from_utf8_lossy(&out.stdout)
+            .trim()
+            .parse()
+            .unwrap_or(0)
     }
 
     let mut l = Launcher::new(
@@ -787,8 +790,10 @@ fn gui_mode_burst_and_selection_loop_does_not_leak() {
 
     for i in 0..8000usize {
         let row_count = 20 + (i % 40) as u32;
-        let mut lines: Vec<String> =
-            vec!["\0prompt\x1fPick a theme".to_string(), "\0message\x1fApply".to_string()];
+        let mut lines: Vec<String> = vec![
+            "\0prompt\x1fPick a theme".to_string(),
+            "\0message\x1fApply".to_string(),
+        ];
         for j in 0..row_count {
             lines.push(format!(
                 "theme {i} row {j}\x00id\x1fid_{i}_{j}\x00info\x1fswatches\x00meta\x1fmeta-{i}"
