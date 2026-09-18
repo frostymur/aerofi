@@ -21,7 +21,7 @@
 
 use gpui::SharedString;
 use serde::{Deserialize, Serialize};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 /// Output mode of a script (from `@raycast.mode`).
@@ -190,6 +190,10 @@ pub enum Target {
         mode: ScriptMode,
         /// Icon (emoji or identifier) from `@raycast.icon`, if present.
         icon: Option<SharedString>,
+        /// Pre-resolved path to the icon image (only when `icon` is an image
+        /// path). Computed once at parse time so per-frame rendering never
+        /// re-runs tilde/dir resolution. `None` for emoji/text icons.
+        icon_image_path: Option<Arc<Path>>,
         /// Parsed Raycast metadata tags.
         metadata: Arc<RaycastMetadata>,
         /// aerofi metatags (`@aerofi.*`), if present.
@@ -269,6 +273,17 @@ impl Target {
         match self {
             Self::App { icon_path, .. } => icon_path.as_deref(),
             Self::Script { .. } | Self::Builtin { .. } | Self::PluginItem { .. } => None,
+        }
+    }
+
+    /// Pre-resolved path to a script's image icon (from `@raycast.icon`),
+    /// or `None` when the icon is an emoji/text glyph (or not a script).
+    pub fn icon_image_path(&self) -> Option<&Path> {
+        match self {
+            Self::Script {
+                icon_image_path, ..
+            } => icon_image_path.as_deref(),
+            _ => None,
         }
     }
 
@@ -476,16 +491,60 @@ impl Target {
             .unwrap_or_else(|| SharedString::from(file_stem));
         let mode = metadata.mode.unwrap_or(ScriptMode::FullOutput);
         let icon = metadata.icon.clone();
+        let icon_image_path = Self::resolve_icon_image(icon.as_deref(), path);
 
         Some(Self::Script {
             name,
             mode,
             icon,
+            icon_image_path,
             path: Arc::from(path),
             metadata: Arc::new(metadata),
             metatags,
             inline_output: None,
         })
+    }
+
+    /// If `icon` is a local image path, resolve it to an absolute path once
+    /// (expanding a leading `~` and joining bare relative paths onto the
+    /// script's directory). Returns `None` for emoji/glyph icons so callers
+    /// fall back to text rendering.
+    fn resolve_icon_image(icon: Option<&str>, script_path: &Path) -> Option<Arc<Path>> {
+        let icon = icon?;
+        if !Self::looks_like_image(icon) {
+            return None;
+        }
+        let resolved = if icon.starts_with('~') || icon.starts_with('/') {
+            Self::expand_home(icon)
+        } else {
+            script_path
+                .parent()
+                .map(|d| d.join(icon))
+                .unwrap_or_else(|| Path::new(icon).to_path_buf())
+        };
+        Some(Arc::from(resolved))
+    }
+
+    /// Whether a string looks like a local image file path (same rules the
+    /// UI uses to decide between an icon image and a text glyph).
+    fn looks_like_image(s: &str) -> bool {
+        s.starts_with('/')
+            || s.starts_with("./")
+            || s.ends_with(".png")
+            || s.ends_with(".jpg")
+            || s.ends_with(".jpeg")
+            || s.ends_with(".webp")
+            || s.ends_with(".tiff")
+    }
+
+    /// Expand a leading `~` to the user's home directory.
+    fn expand_home(p: &str) -> PathBuf {
+        if let Some(rest) = p.strip_prefix('~')
+            && let Some(home) = dirs::home_dir()
+        {
+            return home.join(rest);
+        }
+        Path::new(p).to_path_buf()
     }
 }
 
@@ -768,6 +827,7 @@ echo "Theme switcher..."
             path: Arc::from(PathBuf::from("/tmp/hello.sh")),
             mode: ScriptMode::FullOutput,
             icon: None,
+            icon_image_path: None,
             metadata: Arc::new(RaycastMetadata::default()),
             metatags: ScriptMetatags::default(),
             inline_output: None,

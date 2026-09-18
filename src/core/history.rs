@@ -5,6 +5,8 @@
 //! decay with raw frequency: each launch of a target contributes points
 //! depending on how long ago it happened, and the points are summed.
 
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -26,6 +28,8 @@ pub struct ExecutionRecord {
 pub struct History {
     records: Vec<ExecutionRecord>,
     path: PathBuf,
+    /// Lazily computed frecency map, invalidated on `record_launch`.
+    frecency_cache: RefCell<Option<HashMap<String, u32>>>,
 }
 
 impl History {
@@ -44,6 +48,7 @@ impl History {
             let history = Self {
                 records: Vec::new(),
                 path,
+                frecency_cache: RefCell::new(None),
             };
             history.save();
             return history;
@@ -67,14 +72,18 @@ impl History {
                 Vec::new()
             }
         };
-        Self { records, path }
+        Self {
+            records,
+            path,
+            frecency_cache: RefCell::new(None),
+        }
     }
 
     /// Append a launch of `target_identifier` with the current timestamp
     /// and persist the history to disk. Keep at most 2000 records.
     pub fn record_launch(&mut self, target_identifier: &str) {
         self.records.push(ExecutionRecord {
-            target_identifier: SharedString::from(target_identifier.to_string()),
+            target_identifier: SharedString::from(target_identifier),
             timestamp: now_secs(),
         });
         if self.records.len() > 2000 {
@@ -82,6 +91,7 @@ impl History {
             let drop_count = self.records.len() - 2000;
             self.records.drain(0..drop_count);
         }
+        *self.frecency_cache.borrow_mut() = None;
         self.save();
     }
 
@@ -99,14 +109,19 @@ impl History {
     }
 
     /// Calculate the frecency points for all recorded targets in a single pass.
-    /// Returns a map of target identifier to its total frecency score.
-    pub fn calculate_frecency_map(&self) -> std::collections::HashMap<&str, u32> {
+    /// Returns a cached map of target identifier to its total frecency score.
+    /// The cache is invalidated when `record_launch` is called.
+    pub fn calculate_frecency_map(&self) -> std::collections::HashMap<String, u32> {
+        if let Some(cached) = self.frecency_cache.borrow().as_ref() {
+            return cached.clone();
+        }
         let now = now_secs();
         let mut map = std::collections::HashMap::new();
         for r in &self.records {
             let pts = recency_points(now.saturating_sub(r.timestamp));
-            *map.entry(r.target_identifier.as_ref()).or_insert(0) += pts;
+            *map.entry(r.target_identifier.to_string()).or_insert(0) += pts;
         }
+        *self.frecency_cache.borrow_mut() = Some(map.clone());
         map
     }
 
@@ -170,7 +185,11 @@ fn history_path() -> PathBuf {
 impl History {
     /// Test-only constructor: no disk access.
     pub fn test_new(path: PathBuf, records: Vec<ExecutionRecord>) -> Self {
-        Self { records, path }
+        Self {
+            records,
+            path,
+            frecency_cache: RefCell::new(None),
+        }
     }
 }
 

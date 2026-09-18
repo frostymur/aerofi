@@ -22,6 +22,8 @@ pub struct SearchIndex {
     hay_buf: Vec<char>,
     /// Reused scratch buffer for (score, index) pairs — avoids a per-keystroke heap allocation.
     scored_buf: Vec<(u32, usize)>,
+    /// Reused buffer for the lowercased query string.
+    lower_query_buf: String,
 }
 
 impl SearchIndex {
@@ -43,6 +45,7 @@ impl SearchIndex {
             needle_buf: Vec::new(),
             hay_buf: Vec::new(),
             scored_buf: Vec::new(),
+            lower_query_buf: String::new(),
         }
     }
 
@@ -77,9 +80,9 @@ impl SearchIndex {
         // still fail inside the optimal matcher, which panics with
         // "should have been caught by prefilter". Lowercasing the query
         // keeps the needle consistent with the normalized haystack.
-        let mut lower_query = String::new();
-        lower_query.extend(query.chars().flat_map(|c| c.to_lowercase()));
-        let query = lower_query.as_str();
+        self.lower_query_buf.clear();
+        self.lower_query_buf.extend(query.chars().flat_map(|c| c.to_lowercase()));
+        let query = self.lower_query_buf.as_str();
 
         let needle = Utf32Str::new(query, &mut self.needle_buf);
         let frecency_map = history.calculate_frecency_map();
@@ -130,6 +133,8 @@ struct RangeMatcher {
     needle_buf: Vec<char>,
     indices: Vec<u32>,
     lower_query: String,
+    runs: Vec<(usize, usize)>,
+    output: Vec<std::ops::Range<usize>>,
 }
 
 impl RangeMatcher {
@@ -140,13 +145,16 @@ impl RangeMatcher {
             needle_buf: Vec::new(),
             indices: Vec::new(),
             lower_query: String::new(),
+            runs: Vec::new(),
+            output: Vec::new(),
         }
     }
 
-    fn ranges(&mut self, name: &str, query: &str) -> Vec<std::ops::Range<usize>> {
+    fn ranges(&mut self, name: &str, query: &str) -> &[std::ops::Range<usize>] {
         self.hay_buf.clear();
         self.needle_buf.clear();
         self.indices.clear();
+        self.output.clear();
         self.lower_query.clear();
         self.lower_query
             .extend(query.chars().flat_map(|c| c.to_lowercase()));
@@ -158,27 +166,28 @@ impl RangeMatcher {
             .fuzzy_indices(hay, needle, &mut self.indices)
             .is_none()
         {
-            return Vec::new();
+            return &[];
         }
 
         // Merge consecutive char indices into runs, then map to byte offsets
         // (char-aligned, as required by GPUI highlight ranges).
-        let mut runs: Vec<(usize, usize)> = Vec::new();
+        self.runs.clear();
         for &ix in &self.indices {
             let ix = ix as usize;
-            match runs.last_mut() {
+            match self.runs.last_mut() {
                 Some((_, end)) if *end == ix => *end = ix + 1,
-                _ => runs.push((ix, ix + 1)),
+                _ => self.runs.push((ix, ix + 1)),
             }
         }
-        runs.into_iter()
-            .map(|(s, e)| {
-                let sb = byte_at(name, s).unwrap_or(name.len());
-                let eb = byte_at(name, e).unwrap_or(name.len());
-                sb..eb
-            })
-            .filter(|r| !r.is_empty())
-            .collect()
+        for &(s, e) in &self.runs {
+            let sb = byte_at(name, s).unwrap_or(name.len());
+            let eb = byte_at(name, e).unwrap_or(name.len());
+            let range = sb..eb;
+            if !range.is_empty() {
+                self.output.push(range);
+            }
+        }
+        &self.output
     }
 }
 
@@ -201,7 +210,7 @@ pub fn highlight_ranges(name: &str, query: &str) -> Vec<std::ops::Range<usize>> 
     if query.is_empty() || name.is_empty() {
         return Vec::new();
     }
-    RANGE_MATCHER.with(|m| m.borrow_mut().ranges(name, query))
+    RANGE_MATCHER.with(|m| m.borrow_mut().ranges(name, query).to_vec())
 }
 
 #[cfg(test)]
@@ -284,6 +293,7 @@ mod tests {
             name: name.into(),
             mode: crate::core::item::ScriptMode::FullOutput,
             icon: None,
+            icon_image_path: None,
             path: std::sync::Arc::from(PathBuf::from(name)),
             metadata: std::sync::Arc::default(),
             metatags: crate::core::item::ScriptMetatags::default(),

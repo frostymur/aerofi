@@ -9,8 +9,8 @@ use crate::core::item::Target;
 use crate::core::theme::{BuiltinWidget, Widget, parse_hex_color_alpha};
 
 use super::helpers::{
-    apply_md_style, element_font, expand_tilde_path, font_fallback_families, format_combo,
-    is_image_path, is_primary_click, resolve_font_weight,
+    apply_md_style, expand_tilde_path, format_combo,
+    is_image_path, is_primary_click,
 };
 use super::state::Launcher;
 use super::types::LauncherState;
@@ -154,25 +154,13 @@ impl Render for Launcher {
 
         // Wrap with background colour, padding, and optional background image.
         let opacity = t.window.background_opacity.unwrap_or(1.0);
-        let font_weight = match t.font.weight.as_ref() {
-            Some(w) => resolve_font_weight(&w.as_str()),
-            None => gpui::FontWeight::NORMAL,
-        };
         let mut root = div()
             .size_full()
             .flex()
             .flex_col()
             .bg(rgba(Self::color(&t.window.background)))
             .text_color(rgba(Self::color(&t.element.text_color)))
-            .font(gpui::Font {
-                family: t.font.family.clone().into(),
-                features: gpui::FontFeatures::default(),
-                fallbacks: Some(gpui::FontFallbacks::from_fonts(font_fallback_families(
-                    &t.font.fallback,
-                ))),
-                weight: font_weight,
-                style: gpui::FontStyle::Normal,
-            })
+            .font(self.root_font.clone())
             .text_size(px(t.font.size))
             .rounded(px(t.window.corner_radius))
             .overflow_hidden();
@@ -420,21 +408,20 @@ impl Launcher {
             }
             row.into_any()
         } else {
-            let (ib_font, ib_size) =
-                element_font(&t.font, ib.font.as_ref(), self.base_font_weight());
+            let (ib_font, ib_size) = &self.inputbar_font;
             if self.query.is_empty() {
                 div()
                     .flex_1()
-                    .font(ib_font)
-                    .text_size(px(ib_size))
+                    .font(ib_font.clone())
+                    .text_size(px(*ib_size))
                     .text_color(rgba(Self::color(&ib.placeholder_color)))
                     .child(ib.placeholder.clone())
                     .into_any()
             } else {
                 div()
                     .flex_1()
-                    .font(ib_font)
-                    .text_size(px(ib_size))
+                    .font(ib_font.clone())
+                    .text_size(px(*ib_size))
                     .text_color(rgba(Self::color(&ib.text_color)))
                     .child(self.query.clone())
                     .into_any()
@@ -1741,7 +1728,7 @@ impl Launcher {
 
         let icon_size = px(el.icon_size);
         let icon_element = if el.show_icons {
-            let inner = if let Some(path) = item.icon_path() {
+            let inner = if let Some(path) = item.icon_path().or(item.icon_image_path()) {
                 img(path)
                     .w(icon_size)
                     .h(icon_size)
@@ -1823,17 +1810,16 @@ impl Launcher {
             Some(st) => st.into_any(),
             None => cell_name.into_any_element(),
         };
-        let (cell_font, cell_size) =
-            element_font(&t.font, t.element.font.as_ref(), self.base_font_weight());
+        let (cell_font, cell_size) = &self.element_font_val;
         Self::with_item_mouse_handlers(
             cell_div.child(icon_element).child(
                 div()
                     .w_full()
                     .flex()
                     .justify_center()
-                    .font(cell_font)
+                    .font(cell_font.clone())
                     .text_color(name_color)
-                    .text_size(px((cell_size - 1.5).max(11.0)))
+                    .text_size(px((*cell_size - 1.5).max(11.0)))
                     .line_clamp(1)
                     .overflow_hidden()
                     .child(cell_name_el),
@@ -1979,22 +1965,31 @@ impl Launcher {
                 let is_image = is_image_path(icon_str);
 
                 if is_image {
-                    let resolved = if icon_str.starts_with('~') || icon_str.starts_with('/') {
-                        std::path::PathBuf::from(expand_tilde_path(icon_str))
+                    // Scripts carry a pre-resolved icon path (computed at
+                    // parse time); other targets fall back to resolving here.
+                    let resolved_el = if let Some(pre) = item.icon_image_path() {
+                        img(pre)
+                            .w(icon_size)
+                            .h(icon_size)
+                            .rounded(px(el.icon_radius))
                     } else {
-                        match item {
-                            Target::Script { path, .. } => path
-                                .parent()
-                                .map(|d| d.join(icon_str))
-                                .unwrap_or_else(|| std::path::PathBuf::from(icon_str)),
-                            _ => std::path::PathBuf::from(icon_str),
-                        }
+                        let resolved = if icon_str.starts_with('~') || icon_str.starts_with('/') {
+                            std::path::PathBuf::from(expand_tilde_path(icon_str))
+                        } else {
+                            match item {
+                                Target::Script { path, .. } => path
+                                    .parent()
+                                    .map(|d| d.join(icon_str))
+                                    .unwrap_or_else(|| std::path::PathBuf::from(icon_str)),
+                                _ => std::path::PathBuf::from(icon_str),
+                            }
+                        };
+                        img(resolved)
+                            .w(icon_size)
+                            .h(icon_size)
+                            .rounded(px(el.icon_radius))
                     };
-                    img(resolved)
-                        .w(icon_size)
-                        .h(icon_size)
-                        .rounded(px(el.icon_radius))
-                        .into_any()
+                    resolved_el.into_any()
                 } else {
                     div()
                         .w(icon_size)
@@ -2064,15 +2059,6 @@ impl Launcher {
         )
     }
 
-    /// The global `[font]` weight, for use as the base of per-element
-    /// font overrides.
-    fn base_font_weight(&self) -> gpui::FontWeight {
-        match self.theme.font.weight.as_ref() {
-            Some(w) => resolve_font_weight(&w.as_str()),
-            None => gpui::FontWeight::NORMAL,
-        }
-    }
-
     /// A `StyledText` with the query match highlighted, or `None` when there
     /// is nothing to highlight.
     fn query_highlighted_text(&self, text: &str, selected_color: Option<gpui::Hsla>) -> Option<gpui::StyledText> {
@@ -2100,8 +2086,7 @@ impl Launcher {
             Some(st) => st.into_any(),
             None => name.into_any_element(),
         };
-        let (name_font, name_size) =
-            element_font(&t.font, t.element.font.as_ref(), self.base_font_weight());
+        let (name_font, name_size) = &self.element_font_val;
 
         if let Some(subtitle) = subtitle_opt {
             div()
@@ -2112,8 +2097,8 @@ impl Launcher {
                 .gap_2()
                 .child(
                     div()
-                        .font(name_font)
-                        .text_size(px(name_size))
+                        .font(name_font.clone())
+                        .text_size(px(*name_size))
                         .text_color(name_color)
                         .child(name_el),
                 )
@@ -2127,8 +2112,8 @@ impl Launcher {
         } else {
             div()
                 .flex_1()
-                .font(name_font)
-                .text_size(px(name_size))
+                .font(name_font.clone())
+                .text_size(px(*name_size))
                 .text_color(name_color)
                 .child(name_el)
                 .into_any()

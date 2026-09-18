@@ -2,6 +2,7 @@ use gpui::{
     App, Bounds, Context, Entity, Render, WindowBounds, WindowKind, WindowOptions, div, prelude::*,
     px, rgba,
 };
+use std::sync::Arc;
 
 use crate::core::theme::{ThemeConfig, parse_hex_color_alpha};
 
@@ -18,12 +19,12 @@ pub enum ToastState {
 }
 
 pub struct ToastWindow {
-    theme: ThemeConfig,
+    theme: Arc<ThemeConfig>,
     state: ToastState,
 }
 
 impl ToastWindow {
-    pub fn new(theme: ThemeConfig, title: String) -> Self {
+    pub fn new(theme: Arc<ThemeConfig>, title: String) -> Self {
         Self {
             theme,
             state: ToastState::Running { title },
@@ -160,7 +161,7 @@ impl Render for ToastWindow {
 
 pub fn open_toast_window(
     cx: &mut App,
-    theme: ThemeConfig,
+    theme: Arc<ThemeConfig>,
     title: String,
 ) -> (gpui::AnyWindowHandle, Entity<ToastWindow>) {
     let display = cx.displays().into_iter().next();

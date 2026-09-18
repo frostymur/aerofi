@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use gpui::{Context, ScrollStrategy, UniformListScrollHandle};
+use gpui::{Context, Font, ScrollStrategy, UniformListScrollHandle};
 
 use crate::core::config::AppConfig;
 use crate::core::gui_protocol::GuiCommand;
@@ -38,8 +38,10 @@ pub struct Launcher {
     /// The app configuration this launcher was built from (re-read by
     /// "Reload Configuration").
     pub(super) app_config: AppConfig,
-    /// Active theme controlling every visual aspect of the launcher.
-    pub(super) theme: ThemeConfig,
+    /// Active theme controlling every visual aspect of the launcher. Shared
+    /// via `Arc` so spawning a script execution only bumps a refcount
+    /// instead of deep-cloning the whole config tree.
+    pub(super) theme: Arc<ThemeConfig>,
     /// Current state of the launcher (e.g. normal search or showing script output).
     pub(super) state: LauncherState,
     /// Scroll state for fullOutput mode.
@@ -77,6 +79,18 @@ pub struct Launcher {
     /// forward a resize (and the re-center it triggers) when the size
     /// actually changed — otherwise every frame moves the native window.
     pub(super) last_window_size: Option<(f32, f32)>,
+    /// Pre-computed font fallback families for the theme. Avoids rebuilding
+    /// the Vec on every element per frame.
+    pub(super) font_fallbacks: Vec<String>,
+    /// Pre-computed GPUI font (family + fallbacks + weight) for the root
+    /// div. Cloning it per frame is cheap (Arc bumps) and avoids rebuilding
+    /// the fallback cascade + family strings on every frame.
+    pub(super) root_font: gpui::Font,
+    /// Pre-computed (font, size) for the input bar.
+    pub(super) inputbar_font: (gpui::Font, f32),
+    /// Pre-computed (font, size) for list rows/cells (the `[element].font`
+    /// override). Reused by every visible row/cell each frame.
+    pub(super) element_font_val: (gpui::Font, f32),
 }
 
 impl Launcher {
@@ -90,6 +104,8 @@ impl Launcher {
         let widget_registry = WidgetRegistry::from_theme(&theme.widgets);
         let button_hotkeys = widget_registry.button_hotkeys();
         let base_count = all.len();
+        let font_fallbacks = super::helpers::font_fallback_families(&theme.font.fallback);
+        let (root_font, inputbar_font, element_font_val) = Self::build_fonts(&theme, &font_fallbacks);
         Self {
             all,
             filtered,
@@ -99,7 +115,7 @@ impl Launcher {
             search: SearchIndex::new(&app_config.aliases),
             history,
             app_config,
-            theme,
+            theme: Arc::new(theme),
             state: LauncherState::Search,
             full_output_scroll: UniformListScrollHandle::new(),
             gui_rows_scroll: UniformListScrollHandle::new(),
@@ -113,7 +129,38 @@ impl Launcher {
             base_count,
             needs_center: false,
             last_window_size: None,
+            font_fallbacks,
+            root_font,
+            inputbar_font,
+            element_font_val,
         }
+    }
+
+    /// Build the cached GPUI fonts (root, input bar, list element) from the
+    /// theme. Called once per theme load so per-frame rendering only clones
+    /// the (cheap) `Font` values instead of rebuilding fallback cascades.
+    fn build_fonts(theme: &ThemeConfig, font_fallbacks: &[String]) -> (Font, (Font, f32), (Font, f32)) {
+        let base_weight = super::helpers::base_weight(&theme.font.weight);
+        let root_font = Font {
+            family: theme.font.family.clone().into(),
+            features: gpui::FontFeatures::default(),
+            fallbacks: Some(gpui::FontFallbacks::from_fonts(font_fallbacks.to_vec())),
+            weight: base_weight,
+            style: gpui::FontStyle::Normal,
+        };
+        let inputbar_font = super::helpers::element_font(
+            &theme.font,
+            theme.inputbar.font.as_ref(),
+            base_weight,
+            font_fallbacks,
+        );
+        let element_font_val = super::helpers::element_font(
+            &theme.font,
+            theme.element.font.as_ref(),
+            base_weight,
+            font_fallbacks,
+        );
+        (root_font, inputbar_font, element_font_val)
     }
 
     /// Effective list columns: the sticky metatag override from the last
@@ -446,8 +493,11 @@ impl Launcher {
 
     /// Re-run the fuzzy match for the current query and rebuild `filtered`.
     fn refilter(&mut self, cx: Option<&mut Context<Self>>) {
-        // Clear any previous plugin items
+        // Clear any previous plugin items and release excess capacity.
         self.all.truncate(self.base_count);
+        if self.all.capacity() > self.base_count * 2 {
+            self.all.shrink_to(self.base_count);
+        }
 
         if let Some((plugin, remainder)) = self.plugin_manager.match_prefix(&self.query) {
             let remainder = remainder.to_string();
@@ -859,7 +909,13 @@ impl Launcher {
         self.plugin_manager = crate::core::plugin_manager::PluginManager::load_all();
         self.widget_registry = WidgetRegistry::from_theme(&theme.widgets);
         self.button_hotkeys = self.widget_registry.button_hotkeys();
-        self.theme = theme;
+        self.theme = Arc::new(theme);
+        self.font_fallbacks = super::helpers::font_fallback_families(&self.theme.font.fallback);
+        let (root_font, inputbar_font, element_font_val) =
+            Self::build_fonts(self.theme.as_ref(), &self.font_fallbacks);
+        self.root_font = root_font;
+        self.inputbar_font = inputbar_font;
+        self.element_font_val = element_font_val;
         crate::sys::appkit::set_corner_radius(self.theme.window.corner_radius);
         // Defer centering to the next render() call so it fires *after*
         // window.resize() applies the new theme dimensions.

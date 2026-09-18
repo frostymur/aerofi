@@ -5,6 +5,7 @@
 //! window for `silent` scripts themselves (they hold the view).
 
 use gpui::{App, AppContext, AsyncApp, Entity};
+use std::sync::Arc;
 
 use crate::core::item::{ScriptMode, Target};
 use crate::core::theme::ThemeConfig;
@@ -16,7 +17,7 @@ use crate::ui::launcher::Launcher;
 pub fn execute_script(
     cx: &mut App,
     view: Entity<Launcher>,
-    theme: ThemeConfig,
+    theme: Arc<ThemeConfig>,
     target: Target,
     args: Vec<String>,
 ) {

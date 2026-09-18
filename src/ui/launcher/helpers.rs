@@ -46,6 +46,15 @@ pub(super) fn resolve_font_weight(spec: &str) -> gpui::FontWeight {
     }
 }
 
+/// Resolve the global `[font].weight` spec to a GPUI weight (normal when
+/// unset). Used to seed per-element font overrides.
+pub(super) fn base_weight(weight: &Option<crate::core::theme::FontWeightSpec>) -> gpui::FontWeight {
+    match weight.as_ref() {
+        Some(w) => resolve_font_weight(&w.as_str()),
+        None => gpui::FontWeight::NORMAL,
+    }
+}
+
 /// Common Nerd Font families, tried (in order) when the theme font is
 /// missing a glyph. Icon glyphs in script rows and headers live in the
 /// private-use area, so they only render if one of these is installed.
@@ -84,9 +93,14 @@ pub(super) fn element_font(
     base: &crate::core::theme::FontConfig,
     override_: Option<&crate::core::theme::FontOverride>,
     base_weight: gpui::FontWeight,
+    base_fallbacks: &[String],
 ) -> (gpui::Font, f32) {
     let default_override = crate::core::theme::FontOverride::default();
     let o = override_.unwrap_or(&default_override);
+    let fallback_list = match o.fallback.as_ref() {
+        Some(custom) => font_fallback_families(&Some(custom.clone())),
+        None => base_fallbacks.to_vec(),
+    };
     (
         gpui::Font {
             family: o
@@ -96,9 +110,7 @@ pub(super) fn element_font(
                 .to_string()
                 .into(),
             features: gpui::FontFeatures::default(),
-            fallbacks: Some(gpui::FontFallbacks::from_fonts(font_fallback_families(
-                &o.fallback.clone().or_else(|| base.fallback.clone()),
-            ))),
+            fallbacks: Some(gpui::FontFallbacks::from_fonts(fallback_list)),
             weight: o
                 .weight
                 .as_ref()
