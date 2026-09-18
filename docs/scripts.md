@@ -120,6 +120,7 @@ Executes the command, captures its stdout, and immediately copies the result to 
 Enables aerofi's **two-way interactive GUI mode**. Maintains a persistent, bidirectional process pipeline (`stdin`/`stdout`) between aerofi and your script, turning aerofi into a custom interactive UI (like Rofi or dmenu, but with rich styling).
 - **Example Script**: [examples/scripts/gui.sh](../examples/scripts/gui.sh)
 - **Comprehensive Examples**: [theme_switcher.py](../examples/scripts/theme_switcher.py), [clipboard.py](../examples/scripts/clipboard.py)
+- **Multi-Step Guide**: [multi-step-scripts.md](./multi-step-scripts.md) — building interactive chains, the event loop pattern, and how this compares to Rofi
 
 ---
 

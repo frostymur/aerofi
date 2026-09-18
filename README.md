@@ -107,7 +107,7 @@ cargo build --release
 - 6 execution modes: `silent`, `compact`, `inline`, `fullOutput`, `pipe`, and interactive `gui`
 - 🧩 Declarative widget engine (custom headers, footers, action buttons, status pills)
 - 🎨 Deep TOML theming (frosted glass blur, fonts, `$palette` tokens, custom layouts)
-- 🔌 Native C ABI plugins (Rust, C, C++, Swift)
+- 🔌 [Native C ABI plugins](docs/plugins.md) (Rust, C, C++, Swift)
 
 **Developer-Friendly**
 - 💻 Open source (MIT license)
@@ -193,7 +193,7 @@ Real-world scripts available in [`examples/scripts/`](examples/scripts/):
 
 Copy any script to `~/.config/aerofi/scripts/` to use it immediately.
 
-> 📖 Read the [Scripting & GUI Protocol Guide](docs/scripts.md) and check out [`examples/scripts/`](examples/scripts/) for working implementations.
+> 📖 Read the [Scripting & GUI Protocol Guide](docs/scripts.md) and the [Multi-Step Guide](docs/multi-step-scripts.md), and check out [`examples/scripts/`](examples/scripts/) for working implementations.
 
 ---
 
@@ -225,7 +225,7 @@ You can port rofi scripts to aerofi with minimal changes.
 
 ## Getting Help
 
-- **Documentation**: [docs/](./docs/) for full config schema and scripting guide
+- **Documentation**: [docs/](./docs/README.md) — config schema, scripting & GUI protocol, multi-step guides, and plugin development
 - **Examples**: [examples/scripts/](./examples/scripts/) for working scripts
 - **Issues**: [GitHub Issues](https://github.com/frostymur/aerofi/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/frostymur/aerofi/discussions)

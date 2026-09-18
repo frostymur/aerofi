@@ -208,6 +208,14 @@ the system UI font. That's how the monochrome icon glyphs in script rows
 render: install any [Nerd Font](https://www.nerdfonts.com/) and they work in
 every theme, including the default one. Real emoji always render in color.
 
+> **Memory note:** every font face aerofi loads into the text system — the
+> `family`, each entry in `fallback`, and any Nerd Font face pulled in to
+> render a PUA icon glyph — is kept resident for the app's lifetime. A Nerd
+> Font face is large and typically adds roughly **8–10 MB** to RSS. The cost
+> is paid the first time a glyph from that face renders (e.g. the first
+> script row with an icon), not at startup. Keeping the `fallback` list short
+> and using a single Nerd Font keeps this overhead down.
+
 ### Window & Frosted Glassmorphism
 ```toml
 [window]
