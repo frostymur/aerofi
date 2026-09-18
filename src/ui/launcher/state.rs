@@ -79,6 +79,11 @@ pub struct Launcher {
     /// forward a resize (and the re-center it triggers) when the size
     /// actually changed — otherwise every frame moves the native window.
     pub(super) last_window_size: Option<(f32, f32)>,
+    /// Last `[window] blur` value applied via `window.set_background_appearance`.
+    /// GPUI sets the background once at window creation and its blur view
+    /// (NSVisualEffectView) persists across hide/unhide and theme changes, so
+    /// `render()` re-syncs it whenever the active theme's blur differs.
+    pub(super) last_blur: Option<bool>,
     /// Pre-computed font fallback families for the theme. Avoids rebuilding
     /// the Vec on every element per frame.
     pub(super) font_fallbacks: Vec<String>,
@@ -129,6 +134,7 @@ impl Launcher {
             base_count,
             needs_center: false,
             last_window_size: None,
+            last_blur: None,
             font_fallbacks,
             root_font,
             inputbar_font,
@@ -1182,7 +1188,11 @@ impl Launcher {
     }
 
     /// Apply a GUI burst (commands + rows) to the current GuiMode state.
-    fn gui_apply_burst(&mut self, burst: crate::core::gui_protocol::GuiBurst, title: &str) {
+    pub(super) fn gui_apply_burst(
+        &mut self,
+        burst: crate::core::gui_protocol::GuiBurst,
+        title: &str,
+    ) {
         let mut prompt = None;
         let mut message = None;
         let mut no_custom = false;

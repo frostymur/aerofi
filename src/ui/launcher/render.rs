@@ -2,7 +2,8 @@
 //! view-building helpers (inputbar, listview, grid, full-output, markdown).
 
 use gpui::{
-    Context, CursorStyle, Render, Window, div, img, prelude::*, px, rgba, size, uniform_list,
+    Context, CursorStyle, Render, Window, WindowBackgroundAppearance, div, img, prelude::*, px,
+    rgba, size, uniform_list,
 };
 
 use crate::core::item::Target;
@@ -87,6 +88,19 @@ impl Render for Launcher {
         if self.needs_center || size_changed {
             self.needs_center = false;
             crate::sys::appkit::center_window(t.window.x_offset as f64, t.window.y_offset as f64);
+        }
+
+        // Keep the native blur layer in sync with the active theme: GPUI only
+        // sets the background appearance at window creation, so it otherwise
+        // lingers after the theme switcher / Cmd+R changes `[window] blur`.
+        let desired_blur = t.window.blur;
+        if self.last_blur != Some(desired_blur) {
+            window.set_background_appearance(if desired_blur {
+                WindowBackgroundAppearance::Blurred
+            } else {
+                WindowBackgroundAppearance::Transparent
+            });
+            self.last_blur = Some(desired_blur);
         }
 
         // Inner content: the actual launcher widgets or full page views.
