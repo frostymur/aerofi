@@ -41,15 +41,27 @@ so only the left side reads as blurred.
 
 ---
 
-### 5. 🧩 Modular Themes, Mixins & Widgets
+### 5. ⬛ Graphite Mono (`graphite-mono.toml`)
+A minimal, strictly **monochrome** graphite palette — no hue, just grayscale
+steps — in the same split two-pane layout as Catppuccin.
+
+- **Background**: Near-black graphite (`#18181b`)
+- **Surfaces**: `#27272a` / `#3f3f46`
+- **Text / Accent**: Off-white `#f4f4f5`, monochrome accent `#e4e4e7`
+
+---
+
+### 6. 🧩 Modular Themes, Mixins & Widgets
 **Every bundled theme is modular** — a thin file that composes reusable mixins via the top-level `imports = [...]` array. The building blocks:
 
 - **`colors/tokyo-night.toml`**: Standalone Tokyo Night palette and status color definitions.
 - **`colors/gruvbox.toml`**: Standalone Gruvbox Dark palette and status color definitions.
 - **`colors/catppuccin-mocha.toml`**: Standalone Catppuccin Mocha palette, including an opaque `panel` colour for the split layout's right pane.
+- **`colors/graphite-mono.toml`**: Standalone monochrome graphite palette and status color definitions.
 - **`layouts/compact.toml`**: Reusable single-column list layout geometry and styling.
 - **`layouts/grid.toml`**: Reusable 4-column tile grid layout geometry.
 - **`layouts/split.toml`**: Reusable two-pane layout — a transparent search pane on the left and a translucent results pane on the right.
+- **`layouts/` variants**: Per-theme tweaks — `catppuccin-split.toml`, `graphite-split.toml`, and `gruvbox-compact.toml`.
 - **`widgets/header-bar.toml`**: A header bar (logo + brand) as reusable custom widgets.
 - **`widgets/footer-bar.toml`**: A footer bar (hint + quick-action buttons) as reusable custom widgets.
 

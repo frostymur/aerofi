@@ -153,8 +153,9 @@ themes ship in [`examples/themes/`](examples/themes/) — copy any of them to
 |---|---|
 | **Tokyo Night** | Deep indigo surfaces with neon cyan & sky blue accents and frosted glass blur. |
 | **Tokyo Night Grid** | Compact 4-column grid layout with larger application icons. |
-| **Tokyo Night Modular** | Splits palette and layout into importable modules. |
+| **Catppuccin Mocha** | The Catppuccin Mocha palette in a transparent split two-pane layout. |
 | **Gruvbox Dark** | Warm vintage retro-groove palette with high contrast and earthy tones. |
+| **Graphite Mono** | Minimal strictly-monochrome graphite palette in a split layout. |
 
 Themes support modular splitting via `imports = ["colors/...", "layouts/..."]` to effortlessly mix-and-match color palettes and window layouts.
 
@@ -178,8 +179,8 @@ Turn any Bash, Python, Node.js, or Swift script into a dynamic macOS mini-app wi
 # @aerofi.icon 🎨
 
 echo -e "\0prompt\x1fSelect a theme:\n\0markup-rows\x1ftrue\n\0flush"
-echo -e "<b>Tokyo Night</b>\0icon\x1femoji:🌃\x1finfo\x1fActive"
-echo -e "<b>Gruvbox Dark</b>\0icon\x1femoji:🌲\x1finfo\x1fCommunity"
+echo -e "<b>Tokyo Night</b>\0icon\x1femoji:🌃\0info\x1fActive"
+echo -e "<b>Gruvbox Dark</b>\0icon\x1femoji:🌲\0info\x1fCommunity"
 ```
 
 ### 📦 Ready-to-Use Scripts

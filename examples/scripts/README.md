@@ -19,6 +19,19 @@ Clean, minimal examples demonstrating all 6 aerofi script execution modes:
 
 ---
 
+## 🖥️ Interactive GUI Examples
+
+Richer multi-purpose `gui`-mode apps, beyond the minimal [`gui.sh`](gui.sh) mode demo:
+
+| Script | Description |
+|---|---|
+| **[`emoji-picker.sh`](emoji-picker.sh)** | Pick an emoji from a tile grid and copy it to the clipboard (reads `emoji_data.tsv`). |
+| **[`power-menu.sh`](power-menu.sh)** | Sleep, lock, log out, restart, or shut down — a Nerd-Font power menu. |
+| **[`two-step.sh`](two-step.sh)** | Pick a category, then an item — a minimal multi-step sub-menu demo (see the [multi-step guide](../../docs/multi-step-scripts.md)). |
+| **[`quicklinks.py`](quicklinks.py)** | A personal quick-links list in `~/.config/aerofi/quicklinks.json`; type a URL to add one. |
+
+---
+
 ## 🎨 Theme Switcher (`theme_switcher.py`)
 
 An interactive theme previewer and switcher for aerofi using the bidirectional `gui` protocol and native `@aerofi.*` metadata tags.

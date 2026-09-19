@@ -33,6 +33,7 @@ src/
 └── sys/                 # System calls (macOS-only)
     ├── carbon.rs        # Carbon RegisterEventHotKey global hotkey bindings
     ├── appkit.rs        # NSWindow/NSApplication FFI (chrome, transparency, show/hide)
+    ├── fonts.rs         # Register user-bundled fonts (~/.config/aerofi/fonts/) with the text system
     └── icons.rs         # Native macOS .app icon extraction
 ```
 
