@@ -232,7 +232,7 @@ impl Target {
         Self::Builtin {
             name: SharedString::from("Reload Configuration"),
             action: BuiltinAction::ReloadConfig,
-            icon: Some(SharedString::from("🔄")),
+            icon: None,
         }
     }
 
@@ -836,6 +836,6 @@ echo "Theme switcher..."
         assert_eq!(app.category_label(), "Application");
         assert_eq!(script.category_label(), "Script");
         assert_eq!(builtin.category_label(), "Aerofi");
-        assert_eq!(builtin.icon(), Some("🔄"));
+        assert_eq!(builtin.icon(), None);
     }
 }
