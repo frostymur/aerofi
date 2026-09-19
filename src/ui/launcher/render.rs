@@ -1604,7 +1604,7 @@ impl Launcher {
                 let marker = number.map_or_else(|| "•".to_string(), |n| format!("{n}."));
                 apply_md_style(div().w_full().flex().flex_row().gap_2(), &base)
                     .child(div().text_color(text_color).child(marker))
-                    .child(div().flex_1().child(self.styled_md_text(text)))
+                    .child(div().flex_1().min_w(px(0.0)).child(self.styled_md_text(text)))
                     .into_any()
             }
             MdBlock::Rule => div()
