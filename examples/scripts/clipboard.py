@@ -8,7 +8,7 @@
 # @aerofi.description Search and manage your clipboard history
 # @aerofi.show_search true
 # @aerofi.columns 1
-# @aerofi.preset list
+# @aerofi.layout list
 
 Clipboard history manager for aerofi's interactive gui mode.
 Powered by the clipy daemon (https://crates.io/crates/clipy) with a
@@ -269,24 +269,30 @@ def prune_images(manifest: dict) -> None:
             pass
 
 
-def capture_image() -> None:
-    """Save the current pasteboard image (if any) into the image history."""
+def capture_image(last_seen: str | None) -> str | None:
+    """Save the current pasteboard image (if any) into the image history.
+
+    Returns the current pasteboard image's digest (or None if there is no
+    image). The caller stores it so the next frame skips re-capturing the same
+    image — otherwise a just-deleted image (still on the pasteboard) would be
+    re-added and appear undeletable.
+    """
     pbin = pasty_bin()
     if not pbin or not clipboard_has_image():
-        return
+        return None
     os.makedirs(img_dir(), exist_ok=True)
     path = os.path.join(img_dir(), f"{int(time.time() * 1000)}.png")
     try:
         subprocess.run([pbin, path], capture_output=True, timeout=10)
     except Exception:
-        return
+        return None
     kind = sniff_image(path)
     if kind is None:
         try:
             os.unlink(path)
         except Exception:
             pass
-        return
+        return None
     if kind == "jpg":
         final = path[: -len(".png")] + ".jpg"
         os.replace(path, final)
@@ -294,12 +300,12 @@ def capture_image() -> None:
     with open(path, "rb") as fh:
         digest = hashlib.sha256(fh.read()).hexdigest()
     manifest = load_manifest()
-    if digest in manifest:
+    if digest in manifest or digest == last_seen:
         try:
             os.unlink(path)
         except Exception:
             pass
-        return
+        return digest
     size = png_dimensions(path)
     manifest[digest] = {
         "path": path,
@@ -309,6 +315,7 @@ def capture_image() -> None:
     }
     prune_images(manifest)
     save_manifest(manifest)
+    return digest
 
 
 def render_image_entry(digest: str, entry: dict) -> str:
@@ -428,6 +435,7 @@ def main() -> None:
     if binary:
         ensure_daemon(binary)
     last_capture = 0.0
+    last_seen_img: str | None = None
 
     def fetch() -> list[dict]:
         if binary:
@@ -454,24 +462,25 @@ def main() -> None:
         )[:IMG_LIST_CAP]
 
     def frame(message: str | None = None) -> None:
-        nonlocal last_capture
+        nonlocal last_capture, last_seen_img
         now = time.time()
         if now - last_capture >= CAPTURE_INTERVAL:
             last_capture = now
-            capture_image()
-        img_rows = [render_image_entry(d, e) for d, e in image_entries()]
+            last_seen_img = capture_image(last_seen_img)
 
-        text_rows: list[str] | None = None
+        # One recency-ordered list: images and text interleaved, newest first.
+        combined: list[tuple[float, str]] = []
+        for digest, entry in image_entries():
+            combined.append((entry.get("ts", 0), render_image_entry(digest, entry)))
         if entries:
-            text_rows = [render_entry(e) for e in entries]
-        elif binary:
-            if pbpaste().strip():
-                text_rows = [render_current()]
-        if text_rows is not None:
-            emit(img_rows + text_rows, message)
-            return
-        if img_rows:
-            emit(img_rows, message or "No text history — images only")
+            for entry in entries:
+                combined.append((entry.get("updated_at", 0), render_entry(entry)))
+        elif binary and pbpaste().strip():
+            combined.append((time.time(), render_current()))
+
+        if combined:
+            combined.sort(key=lambda pair: pair[0], reverse=True)
+            emit([row for _, row in combined], message)
             return
         if binary:
             emit(
