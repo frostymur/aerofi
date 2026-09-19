@@ -4,7 +4,7 @@ aerofi features an extensible script execution engine. You can write scripts in 
 
 ---
 
-## 🚀 Quick Start: Where Scripts Live
+## Quick Start: Where Scripts Live
 
 Scripts are indexed from directories specified in `~/.config/aerofi/config.toml`. By default, aerofi scans:
 
@@ -16,7 +16,7 @@ Any file with executable permissions (`chmod +x`) or a valid shebang line (e.g. 
 
 ---
 
-## 🏷️ Script Metadata Annotations (`@aerofi.*` & `@raycast.*`)
+## Script Metadata Annotations (`@aerofi.*` & `@raycast.*`)
 
 aerofi supports both native `@aerofi.*` annotations and `@raycast.*` metadata headers interchangeably. You can write `@aerofi.*` for your native aerofi scripts, or drop existing Raycast scripts into `~/.config/aerofi/scripts/` without modifying their headers!
 
@@ -90,7 +90,7 @@ before rendering.
 
 ---
 
-## ⚡ Execution Modes
+## Execution Modes
 
 aerofi provides six dedicated execution modes tailored for different workflows. Each mode has a minimalist reference script in `examples/scripts/`:
 
@@ -129,7 +129,7 @@ Enables aerofi's **two-way interactive GUI mode**. Maintains a persistent, bidir
 
 ---
 
-## 🖥️ Interactive GUI Mode Protocol
+## Interactive GUI Mode Protocol
 
 When `@raycast.mode gui` is specified, aerofi treats your script as an interactive UI session.
 
@@ -250,9 +250,9 @@ Fields in the event line (separated by `\x1f`, prefixed with the field name and 
 
 ---
 
-## 🌟 Reference Implementations
+## Reference Implementations
 
-### 1. 🎨 Theme Switcher (`theme_switcher.py`)
+### 1. Theme Switcher (`theme_switcher.py`)
 - [examples/scripts/theme_switcher.py](../examples/scripts/theme_switcher.py)
 
 Uses native `@aerofi.*` metadata tags to build an interactive theme previewer:
@@ -261,7 +261,7 @@ Uses native `@aerofi.*` metadata tags to build an interactive theme previewer:
 - Marks the current theme with the launcher's native `ACTIVE` badge (`active\x1ftrue` row field).
 - Pressing `Enter` updates `~/.config/aerofi/config.toml` and triggers `\0reload` for an instant live re-theme.
 
-### 2. 📋 Clipboard Manager (`clipboard.py`)
+### 2. Clipboard Manager (`clipboard.py`)
 - [examples/scripts/clipboard.py](../examples/scripts/clipboard.py)
 
 This script demonstrates:

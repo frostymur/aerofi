@@ -4,7 +4,7 @@ This directory contains ready-to-use and reference scripts for aerofi.
 
 ---
 
-## 🚀 Execution Mode Examples
+## Execution Mode Examples
 
 Clean, minimal examples demonstrating all 6 aerofi script execution modes:
 
@@ -19,7 +19,7 @@ Clean, minimal examples demonstrating all 6 aerofi script execution modes:
 
 ---
 
-## 🖥️ Interactive GUI Examples
+## Interactive GUI Examples
 
 Richer multi-purpose `gui`-mode apps, beyond the minimal [`gui.sh`](gui.sh) mode demo:
 
@@ -32,11 +32,11 @@ Richer multi-purpose `gui`-mode apps, beyond the minimal [`gui.sh`](gui.sh) mode
 
 ---
 
-## 🎨 Theme Switcher (`theme_switcher.py`)
+## Theme Switcher (`theme_switcher.py`)
 
 An interactive theme previewer and switcher for aerofi using the bidirectional `gui` protocol and native `@aerofi.*` metadata tags.
 
-### ✨ Highlights
+### Highlights
 - **Live Color Swatches**: Renders each palette (bg / surface / text / accent) as colour swatches via Pango markup, with `$alias` references resolved from the theme's `[colors]` table.
 - **Active Theme First**: The currently active theme is sorted to the top of the list.
 - **Automatic Theme Discovery**: Scans `~/.config/aerofi/themes/*.toml` plus the built-in default.
@@ -49,11 +49,11 @@ chmod +x ~/.config/aerofi/scripts/theme_switcher.py
 
 ---
 
-## 📋 Clipboard History Manager (`clipboard.py`)
+## Clipboard History Manager (`clipboard.py`)
 
 A glamorous, fully functional clipboard history manager for aerofi powered by the [`clipy`](https://crates.io/crates/clipy) minimal clipboard history CLI, the [clippy suite](https://github.com/neilberkman/clippy) for image support (`brew install clippy`), and aerofi's interactive `gui` mode.
 
-### ✨ Highlights & Aesthetics
+### Highlights & Aesthetics
 
 - **Rich Pango Styling**: Auto-detects data types and renders tailored syntax highlights:
   - 🌐 **URLs**: Distinct protocol, highlighted hostname, and dimmed path.
@@ -70,7 +70,7 @@ A glamorous, fully functional clipboard history manager for aerofi powered by th
 
 ---
 
-### 🚀 Quick Start & Installation
+### Quick Start & Installation
 
 #### 1. Install `clipy` (if not already installed)
 
@@ -98,7 +98,7 @@ chmod +x ~/.config/aerofi/scripts/clipboard.py
 
 ---
 
-### ⌨️ Shortcuts & Controls
+### Shortcuts & Controls
 
 | Key | Action |
 |---|---|
@@ -110,7 +110,7 @@ chmod +x ~/.config/aerofi/scripts/clipboard.py
 
 ---
 
-### 🛠️ aerofi GUI Protocol Details
+### aerofi GUI Protocol Details
 
 The clipboard manager demonstrates several powerful features of the aerofi GUI protocol:
 

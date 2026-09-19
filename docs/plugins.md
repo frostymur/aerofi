@@ -4,7 +4,7 @@ aerofi supports dynamic plugins via a native **C ABI shared library (`.dylib`)**
 
 ---
 
-## ⚡ Architecture & Performance Philosophy
+## Architecture & Performance Philosophy
 
 Most modern launchers rely on heavy JavaScript / TypeScript engines (Node.js, Electron, or quickjs) or RPC socket bridges. While accessible, they incur heavy RSS memory footprints (100MB–400MB) and perceptible typing latencies.
 
@@ -15,7 +15,7 @@ aerofi takes a different approach:
 
 ---
 
-## 📁 Plugin Discovery
+## Plugin Discovery
 
 aerofi automatically scans and loads all `.dylib` files on startup from:
 
@@ -28,7 +28,7 @@ Whenever aerofi starts, it dynamically loads each shared library, checks the API
 
 ---
 
-## 🛠️ The Plugin API (`aerofi-plugin-api`)
+## The Plugin API (`aerofi-plugin-api`)
 
 The `aerofi-plugin-api` crate defines the stable C ABI contracts.
 
@@ -91,7 +91,7 @@ pub struct AerofiPlugin {
 
 ---
 
-## 🚀 Creating a Plugin in Rust
+## Creating a Plugin in Rust
 
 ### 1. Configure `Cargo.toml`
 
@@ -224,7 +224,7 @@ Restart aerofi or press `Cmd+R` to reload configuration.
 
 ---
 
-## 🌟 Reference Examples in Repository
+## Reference Examples in Repository
 
 Explore the ready-to-build examples included in the aerofi repository. Each example also ships a **prebuilt universal (arm64 + x86_64) `.dylib`** right next to its sources — no compilation needed:
 

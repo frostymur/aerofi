@@ -2,9 +2,9 @@
 
 This directory contains curated example themes for aerofi.
 
-## 🎨 Available Themes
+## Available Themes
 
-### 1. 🌃 Tokyo Night (`tokyo-night.toml`)
+### 1. Tokyo Night (`tokyo-night.toml`)
 A clean, modern dark theme inspired by the popular Tokyo Night color palette. Features deep indigo surfaces, neon blue/purple accents, and smooth translucent frosted glass.
 
 - **Background**: `#1a1b26` with frosted glass blur
@@ -13,14 +13,14 @@ A clean, modern dark theme inspired by the popular Tokyo Night color palette. Fe
 
 ---
 
-### 2. 🍂 Gruvbox Dark (`gruvbox.toml`)
+### 2. Gruvbox Dark (`gruvbox.toml`)
 A warm, vintage retro-groove theme designed for optimal contrast and eye comfort during long coding and typing sessions.
 
 - **Background**: Deep warm charcoal (`#282828`)
 - **Accents**: Warm Gold (`#fabd2f`), Terracotta Orange (`#fe8019`), Forest Green (`#b8bb26`)
 - **Text**: Warm off-white (`#ebdbb2`)
 
-### 3. 🏁 Tokyo Night Grid (`tokyo-night-grid.toml`)
+### 3. Tokyo Night Grid (`tokyo-night-grid.toml`)
 A compact 4-column icon tile grid layout styled with the Tokyo Night palette.
 
 - **Layout**: 4-column compact grid with large 36px application icons
@@ -41,7 +41,7 @@ so only the left side reads as blurred.
 
 ---
 
-### 5. ⬛ Graphite Mono (`graphite-mono.toml`)
+### 5. Graphite Mono (`graphite-mono.toml`)
 A minimal, strictly **monochrome** graphite palette — no hue, just grayscale
 steps — in the same split two-pane layout as Catppuccin.
 
@@ -51,7 +51,7 @@ steps — in the same split two-pane layout as Catppuccin.
 
 ---
 
-### 6. 🧩 Modular Themes, Mixins & Widgets
+### 6. Modular Themes, Mixins & Widgets
 **Every bundled theme is modular** — a thin file that composes reusable mixins via the top-level `imports = [...]` array. The building blocks:
 
 - **`colors/tokyo-night.toml`**: Standalone Tokyo Night palette and status color definitions.
@@ -67,7 +67,7 @@ steps — in the same split two-pane layout as Catppuccin.
 
 ---
 
-## 🚀 Installation & Usage
+## Installation & Usage
 
 ### 1. Copy Themes to your aerofi configuration
 
@@ -110,7 +110,7 @@ Restart aerofi or trigger **Reload Configuration** (`Cmd+R` or search in launche
 
 ---
 
-## 🧩 Modular Themes & File Splitting (`imports = [...]`)
+## Modular Themes & File Splitting (`imports = [...]`)
 
 You can cleanly separate colors, window dimensions, and widget hierarchies into separate files.
 
@@ -163,7 +163,7 @@ children = ["header_bar", "InputBar", "ListView"]
 
 ---
 
-## 🛠️ Theme Anatomy & Customization
+## Theme Anatomy & Customization
 
 aerofi themes are written in standard TOML. Every section is customizable:
 
@@ -229,9 +229,9 @@ muted = "$subtle"
 
 ---
 
-## 📖 Complete Theme Reference & Custom Widgets
+## Complete Theme Reference & Custom Widgets
 
 For a complete reference showcasing **all layout options (`[mainbox]`), element slots (`[element.layout]`), and custom UI widgets (`[widgets.<id>]`)**:
-👉 **See [examples/theme.toml](../theme.toml)**
-👉 **Read the complete [Customization Guide](../../docs/customization.md)**
+**See [examples/theme.toml](../theme.toml)**
 
+**Read the complete [Customization Guide](../../docs/customization.md)**

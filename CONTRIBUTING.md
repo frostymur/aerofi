@@ -52,18 +52,18 @@ perf(search): drop idle RSS by lazily loading nucleo index
 
 ## Versioning & releases
 
-We adhere to [Semantic Versioning (SemVer)](https://semver.org/) via git tags `vX.Y.Z` on the single crate:
+We use git tags `vX.Y.Z` on the single crate, following [Semantic Versioning (SemVer)](https://semver.org/) with a pre-1.0 simplification:
 
-- **PATCH (`z` in `X.Y.Z`, e.g., `0.0.7` -> `0.0.8`)**:
-  - Incremented for backward-compatible bug fixes and internal improvements.
-  - Triggers: `fix:`, `perf:`, internal refactorings, dependency updates, and maintenance without user-facing breaking changes.
-- **MINOR (`y` in `X.Y.Z`, e.g., `0.0.8` -> `0.1.0`)**:
+- **PATCH (`z` in `X.Y.Z`, e.g., `0.2.2` -> `0.2.3`) — pre-1.0 rule**:
+  - While the version is `0.Y.Z`, *every* change ships as a patch release: `fix:`, `feat:`, `perf:`, internal refactorings, dependency updates, and even breaking protocol changes.
+  - Rationale: the config schema, theme format, and script protocol are still stabilizing, so a minor bump would imply a stability commitment we don't have. `feat:` does **not** bump the minor digit before `1.0.0`.
+  - A genuinely breaking change before 1.0 must explain the migration in the commit body so it stands out in the release notes.
+- **MINOR (`y` in `X.Y.Z`, e.g., `1.0.0` -> `1.1.0`) — from 1.0 on**:
   - Incremented when new backward-compatible functionality is added.
   - Triggers: `feat:` (e.g., new script modes, new theme widgets, new configuration options, new UI capabilities).
-- **MAJOR (`x` in `X.Y.Z`, e.g., `0.1.0` -> `1.0.0`)**:
+- **MAJOR (`x` in `X.Y.Z`, e.g., `1.0.0` -> `2.0.0`) — from 1.0 on**:
   - Incremented for incompatible breaking changes that require users to alter their `config.toml`, themes, or script protocol usage.
   - Triggers: commits with `BREAKING CHANGE:` in footer or `!` after type (e.g., `feat!:`, `fix!:`).
-  - *Pre-1.0 note*: In the `0.Y.Z` phase, breaking changes may bump `Y` while the public API stabilizes toward `1.0.0`.
 
 Release notes are generated from Conventional Commits since the last tag. Releases are cut from `main` only.
 

@@ -4,18 +4,18 @@ aerofi is configured via transparent, human-readable TOML files located in `~/.c
 
 ---
 
-## 📑 Table of Contents
+## Table of Contents
 
-- [📁 Directory Structure](#-directory-structure)
-- [📄 Complete Reference Files](#-complete-reference-files)
-- [⚙️ Application Configuration (`config.toml`)](#️-application-configuration-configtoml)
+- [Directory Structure](#directory-structure)
+- [Complete Reference Files](#complete-reference-files)
+- [Application Configuration (`config.toml`)](#application-configuration-configtoml)
   - [General Options](#general-options)
   - [Search Sources](#search-sources)
   - [Script Directories](#script-directories)
   - [App Filtering & Custom Discovery](#app-filtering--custom-discovery)
   - [Aliases & Shortcuts](#aliases--shortcuts)
   - [Custom Keys (GUI Mode)](#custom-keys-gui-mode)
-- [🎨 Theming Engine (`theme.toml`)](#-theming-engine-themetoml)
+- [Theming Engine (`theme.toml`)](#theming-engine-themetoml)
   - [Modular Themes & Imports (`imports`)](#modular-themes--imports-imports--)
   - [Font & Typography](#font--typography)
   - [Window & Frosted Glassmorphism](#window--frosted-glassmorphism)
@@ -27,14 +27,14 @@ aerofi is configured via transparent, human-readable TOML files located in `~/.c
   - [Semantic Status Colors](#semantic-status-colors)
   - [Floating Toast](#floating-toast)
   - [Palette Variable Aliases (`[colors]`)](#palette-variable-aliases-colors)
-- [🧩 Custom Widgets System](#-custom-widgets-system)
+- [Custom Widgets System](#custom-widgets-system)
   - [Widget Types & Properties](#widget-types--properties)
   - [Composing a Custom Header and Footer](#composing-a-custom-header-and-footer)
-- [⚡ Performance Optimization](#-performance-optimization)
+- [Performance Optimization](#performance-optimization)
 
 ---
 
-## 📁 Directory Structure
+## Directory Structure
 
 On first launch, aerofi automatically creates the following layout under `~/.config/aerofi/`:
 
@@ -48,7 +48,7 @@ On first launch, aerofi automatically creates the following layout under `~/.con
 
 ---
 
-## 📄 Complete Reference Files
+## Complete Reference Files
 
 For copy-pasteable reference files documenting **every single parameter and type**, see:
 - ⚙️ **[examples/config.toml](../examples/config.toml)** — Complete configuration reference.
@@ -56,7 +56,7 @@ For copy-pasteable reference files documenting **every single parameter and type
 
 ---
 
-## ⚙️ Application Configuration (`config.toml`)
+## Application Configuration (`config.toml`)
 
 Path: `~/.config/aerofi/config.toml`
 
@@ -159,7 +159,7 @@ toggle = "opt+space"
 
 ---
 
-## 🎨 Theming Engine (`theme.toml`)
+## Theming Engine (`theme.toml`)
 
 aerofi themes are defined in standard TOML under `~/.config/aerofi/themes/{theme}.toml`.
 
@@ -436,7 +436,7 @@ urgent = "#f7768e"
 
 ---
 
-## 🧩 Custom Widgets System
+## Custom Widgets System
 
 aerofi includes a declarative widget system. You can build custom headers, sidebars, status bars, or action button strips directly in your theme without touching Rust code.
 
@@ -541,7 +541,7 @@ gap = 4.0
 
 ---
 
-## ⚡ Performance Optimization
+## Performance Optimization
 
 1. **Keep `max_results` around 20–30**: Ensures near-zero memory allocation during fuzzy filtering.
 2. **Use Frosted Glass Blur Judiciously**: Real-time macOS blur is highly optimized on Apple Silicon Metal, but setting `window.blur = false` is available for pure minimum-power setups.

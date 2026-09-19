@@ -14,11 +14,11 @@
 <br />
 
 [Why aerofi?](#why-aerofi) •
-[Installation](#-installation) •
-[Key Features](#-key-features) •
-[Widgets & Theming](#-declarative-widgets--theming) •
-[Interactive Scripts](#️-interactive-gui-scripts--ipc) •
-[Shortcuts](#️-default-shortcuts)
+[Installation](#installation) •
+[Key Features](#key-features) •
+[Widgets & Theming](#declarative-widgets--theming) •
+[Interactive Scripts](#interactive-gui-scripts--ipc) •
+[Shortcuts](#default-shortcuts)
 
 </div>
 
@@ -40,17 +40,17 @@ Compare to alternatives:
 | Feature | aerofi | Raycast | Alfred |
 |---------|--------|---------|--------|
 | Memory | ~40 MB | 250 MB | ~75 MB |
-| Open Source | ✅ | ❌ | ❌ |
-| Config as Code | ✅ Plain TOML (dotfiles) | ❌ GUI only | ❌ GUI only |
-| Declarative Widgets & Theme | ✅ TOML | ❌ | ❌ |
-| Raycast Scripts | ✅ | ✅ | ❌ |
-| Interactive Script IPC (stdin/stdout) | ✅ | ❌ | ❌ |
-| C ABI Plugins | ✅ | ❌ | ❌ |
+| Open Source | Yes | No | No |
+| Config as Code | Plain TOML (dotfiles) | GUI only | GUI only |
+| Declarative Widgets & Theme | TOML | — | — |
+| Raycast Scripts | Yes | Yes | No |
+| Interactive Script IPC (stdin/stdout) | Yes | No | No |
+| C ABI Plugins | Yes | No | No |
 | Cost | Free | Free / $12/mo | Free / $42 |
 
 ---
 
-## 🚀 Installation
+## Installation
 
 ### Homebrew (Recommended)
 Install aerofi and start it as a native macOS background service:
@@ -95,7 +95,7 @@ cargo build --release
 
 ---
 
-## ✨ Key Features
+## Key Features
 
 **Performance**
 - 🪶 ~40 MB memory footprint (vs 250 MB Raycast)
@@ -117,7 +117,7 @@ cargo build --release
 
 ---
 
-## 🧩 Declarative Widgets & Theming
+## Declarative Widgets & Theming
 
 aerofi is completely customizable via transparent, human-readable TOML files in `~/.config/aerofi/`:
 
@@ -143,7 +143,7 @@ color = "$accent"
 font_weight = "bold"
 ```
 
-### 🎨 Bundled Themes & Modular Architecture
+### Bundled Themes & Modular Architecture
 
 The built-in **Dark Transparent** theme is always available. Additional curated
 themes ship in [`examples/themes/`](examples/themes/) — copy any of them to
@@ -159,11 +159,11 @@ themes ship in [`examples/themes/`](examples/themes/) — copy any of them to
 
 Themes support modular splitting via `imports = ["colors/...", "layouts/..."]` to effortlessly mix-and-match color palettes and window layouts.
 
-> 📖 Read the [Customization Guide](docs/customization.md) and explore [`examples/themes/`](examples/themes/) for complete references.
+> Read the [Customization Guide](docs/customization.md) and explore [`examples/themes/`](examples/themes/) for complete references.
 
 ---
 
-## 🖥️ Interactive GUI Scripts & IPC
+## Interactive GUI Scripts & IPC
 
 Turn any Bash, Python, Node.js, or Swift script into a dynamic macOS mini-app with `@aerofi.mode gui`:
 
@@ -183,7 +183,7 @@ echo -e "<b>Tokyo Night</b>\0icon\x1femoji:🌃\0info\x1fActive"
 echo -e "<b>Gruvbox Dark</b>\0icon\x1femoji:🌲\0info\x1fCommunity"
 ```
 
-### 📦 Ready-to-Use Scripts
+### Ready-to-Use Scripts
 
 Real-world scripts available in [`examples/scripts/`](examples/scripts/):
 
@@ -195,11 +195,11 @@ Real-world scripts available in [`examples/scripts/`](examples/scripts/):
 
 Copy any script to `~/.config/aerofi/scripts/` to use it immediately.
 
-> 📖 Read the [Scripting & GUI Protocol Guide](docs/scripts.md) and the [Multi-Step Guide](docs/multi-step-scripts.md), and check out [`examples/scripts/`](examples/scripts/) for working implementations.
+> Read the [Scripting & GUI Protocol Guide](docs/scripts.md) and the [Multi-Step Guide](docs/multi-step-scripts.md), and check out [`examples/scripts/`](examples/scripts/) for working implementations.
 
 ---
 
-## 🐧 For rofi Users
+## For rofi Users
 
 aerofi is inspired by rofi's Unix philosophy but built specifically for macOS:
 - Same stdin/stdout piping model (`gui` mode = rofi-compatible)
@@ -211,7 +211,7 @@ You can port rofi scripts to aerofi with minimal changes.
 
 ---
 
-## ⌨️ Default Shortcuts
+## Default Shortcuts
 
 | Shortcut | Context | Action |
 |---|---|---|
