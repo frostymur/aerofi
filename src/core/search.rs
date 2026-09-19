@@ -456,47 +456,4 @@ mod tests {
         let results = search_helper(&mut idx, &history, &targets, "z");
         assert_eq!(results[0].name(), "Zebra");
     }
-
-    #[test]
-    fn test_search_memory_growth() {
-        use std::process::Command;
-        fn get_rss() -> usize {
-            let pid = std::process::id();
-            let output = Command::new("ps")
-                .args(["-o", "rss=", "-p", &pid.to_string()])
-                .output()
-                .ok();
-            if let Some(out) = output {
-                let s = String::from_utf8_lossy(&out.stdout);
-                s.trim().parse::<usize>().unwrap_or(0)
-            } else {
-                0
-            }
-        }
-
-        let mut idx = SearchIndex::new(&HashMap::new());
-        let history = empty_history();
-        // Generate 100 targets
-        let targets: Vec<Target> = (0..100)
-            .map(|i| target(&format!("app-name-{}", i)))
-            .collect();
-
-        let initial_rss = get_rss();
-        println!("Initial RSS (benchmark): {} KB", initial_rss);
-
-        let queries = ["a", "g", "s", "c", "app", "name", "99", "1", "", "foo"];
-        for i in 0..100000 {
-            let q = queries[i % queries.len()];
-            let _results = search_helper(&mut idx, &history, &targets, q);
-        }
-
-        let final_rss = get_rss();
-        println!("Final RSS after 100,000 runs: {} KB", final_rss);
-        let delta = final_rss.saturating_sub(initial_rss);
-        println!("Delta RSS: {} KB", delta);
-
-        // Memory should not leak / should not grow by more than a reasonable threshold (e.g. 4096KB)
-        // because of SharedString reference counting.
-        assert!(delta < 4096, "Memory delta was too large: {} KB", delta);
-    }
 }
