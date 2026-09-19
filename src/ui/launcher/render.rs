@@ -189,11 +189,23 @@ impl Render for Launcher {
             root = root.bg(rgba((hex & 0xFFFFFF00) | alpha));
         }
 
+        // Full-page views (full output, running) need breathing room even in
+        // zero-padding split layouts, so pad them up to the default window
+        // padding plus the theme's `[gui]` padding.
+        let is_full_page = matches!(
+            &self.state,
+            LauncherState::FullOutput { .. } | LauncherState::RunningFull { .. }
+        );
+        let content_padding = if is_full_page {
+            (t.window.padding + t.gui.padding.unwrap_or(0.0)).max(16.0)
+        } else {
+            t.window.padding
+        };
         let content = div()
             .flex_1()
             .flex()
             .flex_col()
-            .p(px(t.window.padding))
+            .p(px(content_padding))
             .child(inner);
 
         match t.window.background_image.as_deref() {
