@@ -2248,7 +2248,7 @@ impl Launcher {
             .on_click(cx.listener(move |this, event, _window, cx| {
                 if is_primary_click(event) && matches!(this.state, LauncherState::Search) {
                     this.selected = filtered_ix;
-                    let action = this.execute_selected();
+                    let action = this.execute_selected(false);
                     this.perform_action(action, cx);
                 }
             }))

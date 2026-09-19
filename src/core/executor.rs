@@ -77,6 +77,20 @@ fn augmented_path(current: &str) -> Option<String> {
     Some(combined.join(":"))
 }
 
+/// Open an application bundle via macOS `open`. When `new_instance` is true,
+/// `-n` is passed so a fresh instance is launched even if one is already
+/// running; otherwise `open` activates the existing instance.
+pub fn open_app(path: &Path, name: &str, new_instance: bool) {
+    let mut cmd = Command::new("open");
+    if new_instance {
+        cmd.arg("-n");
+    }
+    cmd.arg(path);
+    if let Err(e) = cmd.status() {
+        eprintln!("aerofi: failed to run {name}: {e}");
+    }
+}
+
 /// Run the given target asynchronously or detached.
 ///
 /// Applications open via `open <path>`; scripts run through their shebang
@@ -85,11 +99,7 @@ fn augmented_path(current: &str) -> Option<String> {
 /// stderr, never panics.
 pub fn execute(target: &Target) {
     match target {
-        Target::App { path, .. } => {
-            if let Err(e) = Command::new("open").arg(&**path).status() {
-                eprintln!("aerofi: failed to run {}: {e}", target.name());
-            }
-        }
+        Target::App { path, .. } => open_app(path, target.name(), false),
         Target::Script {
             mode: ScriptMode::Pipe,
             path,

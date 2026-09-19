@@ -221,7 +221,7 @@ impl Launcher {
             && let Some(item) = self.all.iter().find(|t| t.name() == name)
         {
             let item = item.clone();
-            let action = self.execute_item(&item);
+            let action = self.execute_item(&item, false);
             if matches!(
                 action,
                 LauncherAction::Hide | LauncherAction::ExecuteScript(..)
@@ -424,7 +424,9 @@ impl Launcher {
                 LauncherAction::None
             }
             ("enter" | "return", false) => {
-                let action = self.execute_selected();
+                // Plain Enter activates a running app; Shift+Enter opens a new
+                // instance (`open -n`).
+                let action = self.execute_selected(ks.modifiers.shift);
                 if matches!(
                     action,
                     LauncherAction::Hide
@@ -456,7 +458,7 @@ impl Launcher {
                     // immediately (no Enter needed).
                     if let Some(item) = self.alias_target() {
                         let item = item.clone();
-                        let action = self.execute_item(&item);
+                        let action = self.execute_item(&item, false);
                         if matches!(
                             action,
                             LauncherAction::Hide | LauncherAction::ExecuteScript(..)
@@ -647,18 +649,19 @@ impl Launcher {
         self.all.iter().find(|t| t.name() == name)
     }
 
-    /// Run the highlighted target.
-    pub(super) fn execute_selected(&mut self) -> LauncherAction {
+    /// Run the highlighted target. `new_instance` (Shift+Enter on an app)
+    /// launches a fresh instance; plain Enter activates the running one.
+    pub(super) fn execute_selected(&mut self, new_instance: bool) -> LauncherAction {
         let Some(item) = self.selected_item() else {
             return LauncherAction::None;
         };
         let item = item.clone();
-        self.execute_item(&item)
+        self.execute_item(&item, new_instance)
     }
 
     /// Run a target: built-in actions act in place, apps open and scripts
     /// run asynchronously via `LauncherAction::ExecuteScript`.
-    pub(super) fn execute_item(&mut self, item: &Target) -> LauncherAction {
+    pub(super) fn execute_item(&mut self, item: &Target, new_instance: bool) -> LauncherAction {
         match item {
             Target::Builtin {
                 action: BuiltinAction::ReloadConfig,
@@ -689,9 +692,9 @@ impl Launcher {
 
                 self.execute_target_with_args(item, Vec::new())
             }
-            Target::App { .. } => {
+            Target::App { path, .. } => {
                 let identifier = item.identifier();
-                crate::core::executor::execute(item);
+                crate::core::executor::open_app(path, item.name(), new_instance);
                 self.history.record_launch(identifier);
                 LauncherAction::Hide
             }
@@ -969,7 +972,7 @@ impl Launcher {
         // Row-context actions
         if trimmed.eq_ignore_ascii_case("run") || trimmed.eq_ignore_ascii_case("execute") {
             if let Some(item) = row_item.cloned() {
-                let action = self.execute_item(&item);
+                let action = self.execute_item(&item, false);
                 self.perform_action(action, cx);
                 cx.notify();
             }
@@ -1016,7 +1019,7 @@ impl Launcher {
             .or_else(|| trimmed.strip_prefix("script:"))
             .unwrap_or(trimmed);
         if let Some(target) = self.all.iter().find(|t| t.name() == target_name).cloned() {
-            let action = self.execute_item(&target);
+            let action = self.execute_item(&target, false);
             self.perform_action(action, cx);
             cx.notify();
         } else {
