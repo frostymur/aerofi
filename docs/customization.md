@@ -61,9 +61,13 @@ For copy-pasteable reference files documenting **every single parameter and type
 Path: `~/.config/aerofi/config.toml`
 
 ### Quick Reload
-To apply changes without restarting aerofi:
+To apply most changes without restarting aerofi:
 - Press `Cmd+R` while aerofi is open, or
 - Search for `Reload Configuration` and press `Enter`.
+
+> **Exceptions — require a full restart:** `[bindings.global]` system-wide hotkeys
+> and bundled fonts (`~/.config/aerofi/fonts/`) are registered at startup, so a
+> reload will not pick up changes to them.
 
 ### General Options
 ```toml
@@ -136,8 +140,10 @@ toggle = "opt+space"
 "cmd+," = "Open Configuration"
 
 [bindings.global]
-# System-wide hotkeys registered at startup via Carbon.
-# Directly launches the target without opening the search UI.
+# System-wide hotkeys registered at startup via Carbon. Adding, changing, or
+# removing these requires a full aerofi restart — a `Cmd+R` reload does not
+# re-register them. Each entry directly launches its target without opening
+# the search UI.
 "opt+c" = "Clipboard History"
 ```
 
