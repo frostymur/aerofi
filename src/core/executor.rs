@@ -94,6 +94,49 @@ fn augmented_path(current: &str) -> Option<String> {
     Some(combined.join(":"))
 }
 
+/// Process groups of every script currently running (pgid == child pid).
+/// Background scripts are meant to outlive the launcher *window*, but they
+/// must not outlive the process: [`kill_all_scripts`] takes them all down
+/// on quit.
+static RUNNING_SCRIPTS: std::sync::LazyLock<std::sync::Mutex<std::collections::HashSet<u32>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashSet::new()));
+
+fn lock_scripts() -> std::sync::MutexGuard<'static, std::collections::HashSet<u32>> {
+    RUNNING_SCRIPTS
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// Track a spawned script's process group for quit-time cleanup.
+pub fn register_script(pid: u32) {
+    lock_scripts().insert(pid);
+}
+
+/// Forget a script once it has been reaped.
+pub fn unregister_script(pid: u32) {
+    lock_scripts().remove(&pid);
+}
+
+/// SIGKILL a single script's process group.
+fn kill_script_group(pid: u32) {
+    unsafe { libc::kill(-(pid as libc::c_int), libc::SIGKILL) };
+}
+
+/// Kill the process group of every still-running script (call on quit).
+pub fn kill_all_scripts() {
+    let mut guard = lock_scripts();
+    let pids = std::mem::take(&mut *guard);
+    for pid in pids {
+        kill_script_group(pid);
+    }
+}
+
+/// True if `pid` is currently in the running-scripts registry.
+#[cfg(test)]
+pub fn script_is_registered(pid: u32) -> bool {
+    lock_scripts().contains(&pid)
+}
+
 /// Output of a script run by [`run_bounded`].
 pub struct ScriptOutput {
     /// Standard output. When the output exceeded the cap, the head is kept
@@ -156,6 +199,8 @@ pub fn run_bounded(
         .stderr(Stdio::piped())
         .spawn()?;
 
+    let script_pid = child.id();
+    register_script(script_pid);
     let stdout = child.stdout.take().expect("stdout is piped");
     let stderr = child.stderr.take().expect("stderr is piped");
 
@@ -172,6 +217,7 @@ pub fn run_bounded(
     let status = child
         .wait()
         .unwrap_or_else(|_| std::process::ExitStatus::from_raw(1));
+    unregister_script(script_pid);
     let (head, tail, total, truncated) = read_result?;
 
     let mut stdout = String::from_utf8_lossy(&head).into_owned();
@@ -313,6 +359,8 @@ pub fn execute(target: &Target) {
                             return;
                         }
                     };
+                    let script_pid = child.id();
+                    register_script(script_pid);
                     let Ok(mut pbcopy) = Command::new("pbcopy").stdin(Stdio::piped()).spawn()
                     else {
                         eprintln!("aerofi: failed to spawn pbcopy for {thread_name}");
@@ -323,6 +371,7 @@ pub fn execute(target: &Target) {
                             let _ = std::io::copy(&mut stdout, &mut sink);
                         }
                         let _ = child.wait();
+                        unregister_script(script_pid);
                         return;
                     };
                     // Stream stdout straight into pbcopy so an arbitrarily
@@ -333,6 +382,7 @@ pub fn execute(target: &Target) {
                         let _ = std::io::copy(&mut stdout, &mut stdin);
                     }
                     let _ = child.wait();
+                    unregister_script(script_pid);
                     let _ = pbcopy.wait();
                 });
             if let Err(e) = spawn_result {
@@ -342,11 +392,14 @@ pub fn execute(target: &Target) {
         Target::Script { path, .. } => match script_command(path).spawn() {
             Ok(mut child) => {
                 let name = target.name().to_string();
+                let script_pid = child.id();
+                register_script(script_pid);
                 let _ = std::thread::Builder::new()
                     .name(format!("aerofi-reap:{name}"))
                     .stack_size(128 * 1024)
                     .spawn(move || {
                         let _ = child.wait();
+                        unregister_script(script_pid);
                     });
             }
             Err(e) => eprintln!("aerofi: failed to run {}: {e}", target.name()),
@@ -506,5 +559,51 @@ mod tests {
         assert_eq!(out.stdout, "oops\n");
         assert_eq!(out.last_line.as_deref(), Some("oops"));
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn run_bounded_registers_and_unregisters_script() {
+        // A script that blocks: while it runs, its pid must be in the
+        // registry; after run_bounded returns, it must be gone.
+        let path = temp_script("registry", "#!/usr/bin/env bash\nsleep 2\necho done");
+        std::thread::scope(|s| {
+            let handle = s.spawn(|| {
+                let out = run_bounded(&path, &[], MAX_DISPLAY_OUTPUT).unwrap();
+                assert!(out.success);
+            });
+            // Wait for the script to actually be running (generous window:
+            // the script sleeps 2 s, so the registry stays populated long
+            // enough even under heavy CI load).
+            for _ in 0..500 {
+                if !lock_scripts().is_empty() {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            assert!(
+                !lock_scripts().is_empty(),
+                "script not registered while running"
+            );
+            handle.join().unwrap();
+        });
+        assert!(
+            lock_scripts().is_empty(),
+            "script not unregistered after run"
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn kill_all_scripts_drains_registry_without_hitting_other_groups() {
+        // A plain child shares THIS process's group, so its pid is not a
+        // group id: kill(-pid) is a guaranteed ESRCH no-op. Registering it
+        // simulates a stale registry entry and proves kill_all_scripts
+        // drains the registry without signalling an unrelated group.
+        let mut child = std::process::Command::new("true").spawn().unwrap();
+        let pid = child.id();
+        register_script(pid);
+        kill_all_scripts();
+        assert!(lock_scripts().is_empty(), "registry not drained");
+        let _ = child.wait();
     }
 }

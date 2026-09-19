@@ -68,11 +68,15 @@ impl GuiSession {
             })
             .expect("failed to spawn stdout reader thread");
 
-        Ok(Self {
+        let session = Self {
             child,
             stdin,
             line_rx: rx,
-        })
+        };
+        // GUI sessions are killed on hide, but a quit that skips the
+        // window still needs the script tree cleaned up.
+        crate::core::executor::register_script(session.child.id());
+        Ok(session)
     }
 
     /// The background thread that reads stdout lines and sends them
@@ -171,6 +175,12 @@ impl GuiSession {
         self.stdin.flush()
     }
 
+    /// The child's pid (== its process group id, see
+    /// `executor::script_command`).
+    pub fn child_pid(&self) -> u32 {
+        self.child.id()
+    }
+
     /// Kill the script's entire process group (SIGKILL).
     ///
     /// Scripts run in their own process group (see
@@ -178,9 +188,10 @@ impl GuiSession {
     /// script and every process it spawned — a plain `child.kill()` would
     /// orphan grandchildren.
     pub fn kill(&mut self) {
-        let pid = self.child.id() as libc::c_int;
-        unsafe { libc::kill(-pid, libc::SIGKILL) };
+        let pid = self.child.id();
+        unsafe { libc::kill(-(pid as libc::c_int), libc::SIGKILL) };
         let _ = self.child.wait();
+        crate::core::executor::unregister_script(pid);
     }
 }
 
@@ -334,8 +345,17 @@ mod tests {
             other => panic!("Expected Burst, got {:?}", other),
         };
         let pid: i32 = burst.rows[0].text.trim().parse().unwrap();
+        let session_pid = session.child_pid();
+        assert!(
+            crate::core::executor::script_is_registered(session_pid),
+            "session not in the running-scripts registry"
+        );
         session.kill();
         std::thread::sleep(Duration::from_millis(200));
+        assert!(
+            !crate::core::executor::script_is_registered(session_pid),
+            "session still in the running-scripts registry after kill"
+        );
 
         let pid_str = pid.to_string();
         let alive = std::process::Command::new("kill")

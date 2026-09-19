@@ -77,6 +77,14 @@ fn main() {
         }
     }
 
+    // Safety net for exits that never return from `application().run`
+    // (e.g. a `process::exit` deeper in the stack): libc's `exit()` runs
+    // atexit handlers. Idempotent with the explicit call after `run`.
+    extern "C" fn quit_cleanup() {
+        core::executor::kill_all_scripts();
+    }
+    unsafe { libc::atexit(quit_cleanup) };
+
     application().run(move |cx: &mut App| {
         // Run as a background accessory (no Dock icon). GPUI's
         // applicationDidFinishLaunching just forced the Regular policy, and
@@ -137,4 +145,7 @@ fn main() {
         });
         ui::window::hide();
     });
+    // The app has terminated: take down every background script's process
+    // group so nothing aerofi spawned survives the process as an orphan.
+    core::executor::kill_all_scripts();
 }
