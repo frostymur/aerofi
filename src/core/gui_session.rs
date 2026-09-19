@@ -188,7 +188,7 @@ impl GuiSession {
     /// script and every process it spawned — a plain `child.kill()` would
     /// orphan grandchildren.
     pub fn kill(&mut self) {
-        let pid = self.child.id();
+        let pid = self.child_pid();
         unsafe { libc::kill(-(pid as libc::c_int), libc::SIGKILL) };
         let _ = self.child.wait();
         crate::core::executor::unregister_script(pid);

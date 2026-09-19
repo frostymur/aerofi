@@ -21,12 +21,12 @@ pub fn script_command(path: &Path) -> Command {
         use std::os::unix::process::CommandExt;
         unsafe {
             cmd.pre_exec(move || {
-                if unsafe { libc::setpgid(0, 0) } == 0 {
+                if libc::setpgid(0, 0) == 0 {
                     Ok(())
                 } else {
                     // Never run in the inherited group: a group kill would
                     // then hit aerofi's own processes. Abort the child.
-                    unsafe { libc::_exit(127) };
+                    libc::_exit(127);
                 }
             });
         }
