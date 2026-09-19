@@ -241,24 +241,28 @@ pub struct GuiBurst {
 ///
 /// Lines starting with `\0` are control commands; all others are data rows.
 /// Empty/whitespace-only lines are `GuiLineResult::Empty`.
-pub fn parse_gui_line(line: &str) -> GuiLineResult {
+/// Parse one protocol line. A line may carry several `\0`-separated
+/// command fields (scripts sometimes forget the newline between two
+/// commands), so a command line yields one result per parseable field;
+/// a data row always yields exactly one `Row` result.
+pub fn parse_gui_line(line: &str) -> Vec<GuiLineResult> {
     let trimmed = line.trim_end_matches('\n').trim_end_matches('\r');
     if trimmed.is_empty() {
-        return GuiLineResult::Empty;
+        return vec![GuiLineResult::Empty];
     }
 
-    // Control command: the line starts with \0 and the first field is a
-    // known command key.
-    if let Some(rest) = trimmed.strip_prefix('\0')
-        && let Some(cmd) = try_parse_command(rest)
-    {
-        return GuiLineResult::Command(cmd);
+    // Control command line: the line starts with \0 and at least one
+    // \0-separated field is a known command key.
+    if let Some(rest) = trimmed.strip_prefix('\0') {
+        let commands: Vec<GuiCommand> = rest.split('\0').filter_map(try_parse_command).collect();
+        if !commands.is_empty() {
+            return commands.into_iter().map(GuiLineResult::Command).collect();
+        }
     }
     // If the \0-prefixed line doesn't match a known command, treat the
     // whole line (including the leading \0) as a row — the \0 might be
     // part of field separators for a row with an empty display text.
-
-    GuiLineResult::Row(parse_row(trimmed))
+    vec![GuiLineResult::Row(parse_row(trimmed))]
 }
 
 /// Try to parse a known control command from text after a leading `\0`.
@@ -352,10 +356,12 @@ impl GuiBurst {
     pub fn from_lines(lines: &[String]) -> Self {
         let mut burst = Self::default();
         for line in lines {
-            match parse_gui_line(line) {
-                GuiLineResult::Command(cmd) => burst.commands.push(cmd),
-                GuiLineResult::Row(row) => burst.rows.push(row),
-                GuiLineResult::Empty => {}
+            for result in parse_gui_line(line) {
+                match result {
+                    GuiLineResult::Command(cmd) => burst.commands.push(cmd),
+                    GuiLineResult::Row(row) => burst.rows.push(row),
+                    GuiLineResult::Empty => {}
+                }
             }
         }
         burst
@@ -366,9 +372,16 @@ impl GuiBurst {
 mod tests {
     use super::*;
 
+    /// Assert the line yields exactly one result and return it.
+    fn one(line: &str) -> GuiLineResult {
+        let mut v = super::parse_gui_line(line);
+        assert_eq!(v.len(), 1, "expected exactly one result, got: {v:?}");
+        v.pop().unwrap()
+    }
+
     #[test]
     fn parses_prompt_command() {
-        let result = parse_gui_line("\0prompt\x1fSelect WiFi Network");
+        let result = one("\0prompt\x1fSelect WiFi Network");
         assert_eq!(
             result,
             GuiLineResult::Command(GuiCommand::SetPrompt("Select WiFi Network".to_string()))
@@ -377,7 +390,7 @@ mod tests {
 
     #[test]
     fn parses_message_command() {
-        let result = parse_gui_line("\0message\x1fScanning...");
+        let result = one("\0message\x1fScanning...");
         assert_eq!(
             result,
             GuiLineResult::Command(GuiCommand::SetMessage("Scanning...".to_string()))
@@ -386,25 +399,25 @@ mod tests {
 
     #[test]
     fn parses_markup_rows_command() {
-        let result = parse_gui_line("\0markup-rows\x1ftrue");
+        let result = one("\0markup-rows\x1ftrue");
         assert_eq!(result, GuiLineResult::Command(GuiCommand::EnableMarkup));
     }
 
     #[test]
     fn parses_no_custom_command() {
         assert_eq!(
-            parse_gui_line("\0no-custom\x1ftrue"),
+            one("\0no-custom\x1ftrue"),
             GuiLineResult::Command(GuiCommand::NoCustom(true))
         );
         assert_eq!(
-            parse_gui_line("\0no-custom\x1ffalse"),
+            one("\0no-custom\x1ffalse"),
             GuiLineResult::Command(GuiCommand::NoCustom(false))
         );
     }
 
     #[test]
     fn parses_keep_selection_command() {
-        let result = parse_gui_line("\0keep-selection\x1fNetwork A");
+        let result = one("\0keep-selection\x1fNetwork A");
         assert_eq!(
             result,
             GuiLineResult::Command(GuiCommand::KeepSelection("Network A".to_string()))
@@ -413,14 +426,14 @@ mod tests {
 
     #[test]
     fn parses_columns_command() {
-        let result = parse_gui_line("\0columns\x1f3");
+        let result = one("\0columns\x1f3");
         assert_eq!(result, GuiLineResult::Command(GuiCommand::SetColumns(3)));
     }
 
     #[test]
     fn parses_columns_invalid_returns_none() {
         // Unknown command (invalid number) — falls through to row parsing.
-        let result = parse_gui_line("\0columns\x1fabc");
+        let result = one("\0columns\x1fabc");
         // \0columns is not a valid row prefix either — but our parser
         // treats it as a row with text = "" and a field "columns\x1fabc"
         // which is unknown. The row text will be empty.
@@ -429,14 +442,14 @@ mod tests {
 
     #[test]
     fn parses_unknown_command_as_row() {
-        let result = parse_gui_line("\0unknown-cmd\x1fvalue");
+        let result = one("\0unknown-cmd\x1fvalue");
         // Unknown \0-prefixed line becomes a row.
         assert!(matches!(result, GuiLineResult::Row(_)));
     }
 
     #[test]
     fn parses_plain_row() {
-        let result = parse_gui_line("Firefox");
+        let result = one("Firefox");
         assert_eq!(
             result,
             GuiLineResult::Row(GuiRow {
@@ -455,7 +468,7 @@ mod tests {
 
     #[test]
     fn parses_row_with_icon() {
-        let result = parse_gui_line("Home Network\0icon\x1f📶");
+        let result = one("Home Network\0icon\x1f📶");
         assert_eq!(
             result,
             GuiLineResult::Row(GuiRow {
@@ -474,7 +487,7 @@ mod tests {
 
     #[test]
     fn parses_row_with_all_fields() {
-        let result = parse_gui_line(
+        let result = one(
             "Network A\0id\x1fnet_a\0icon\x1f📶\0info\x1fWPA2\0meta\x1fsecure network\0nonselectable\x1ftrue\0urgent\x1ftrue\0active\x1ftrue\0disabled\x1ftrue",
         );
         assert_eq!(
@@ -495,7 +508,7 @@ mod tests {
 
     #[test]
     fn parses_row_with_info_only() {
-        let result = parse_gui_line("Item\0info\x1fActive");
+        let result = one("Item\0info\x1fActive");
         assert_eq!(
             result,
             GuiLineResult::Row(GuiRow {
@@ -514,7 +527,7 @@ mod tests {
 
     #[test]
     fn parses_row_nonselectable_false() {
-        let result = parse_gui_line("Item\0nonselectable\x1ffalse");
+        let result = one("Item\0nonselectable\x1ffalse");
         assert_eq!(
             result,
             GuiLineResult::Row(GuiRow {
@@ -533,9 +546,9 @@ mod tests {
 
     #[test]
     fn empty_line_returns_empty() {
-        assert_eq!(parse_gui_line(""), GuiLineResult::Empty);
-        assert_eq!(parse_gui_line("\n"), GuiLineResult::Empty);
-        assert_eq!(parse_gui_line("\r\n"), GuiLineResult::Empty);
+        assert_eq!(parse_gui_line(""), vec![GuiLineResult::Empty]);
+        assert_eq!(parse_gui_line("\n"), vec![GuiLineResult::Empty]);
+        assert_eq!(parse_gui_line("\r\n"), vec![GuiLineResult::Empty]);
     }
 
     #[test]
@@ -567,7 +580,7 @@ mod tests {
 
     #[test]
     fn row_with_unknown_fields_ignored() {
-        let result = parse_gui_line("Test\0custom_field\x1fvalue\0icon\x1f🔥");
+        let result = one("Test\0custom_field\x1fvalue\0icon\x1f🔥");
         assert_eq!(
             result,
             GuiLineResult::Row(GuiRow {
@@ -586,28 +599,25 @@ mod tests {
 
     #[test]
     fn parses_flush_loading_live_search_and_active() {
+        assert_eq!(one("\0flush"), GuiLineResult::Command(GuiCommand::Flush));
         assert_eq!(
-            parse_gui_line("\0flush"),
+            one("\0flush\x1ftrue"),
             GuiLineResult::Command(GuiCommand::Flush)
         );
         assert_eq!(
-            parse_gui_line("\0flush\x1ftrue"),
-            GuiLineResult::Command(GuiCommand::Flush)
-        );
-        assert_eq!(
-            parse_gui_line("\0loading\x1ftrue"),
+            one("\0loading\x1ftrue"),
             GuiLineResult::Command(GuiCommand::SetLoading(true))
         );
         assert_eq!(
-            parse_gui_line("\0loading\x1ffalse"),
+            one("\0loading\x1ffalse"),
             GuiLineResult::Command(GuiCommand::SetLoading(false))
         );
         assert_eq!(
-            parse_gui_line("\0live-search\x1ftrue"),
+            one("\0live-search\x1ftrue"),
             GuiLineResult::Command(GuiCommand::LiveSearch(true))
         );
         assert_eq!(
-            parse_gui_line("\0active\x1f0,2,5"),
+            one("\0active\x1f0,2,5"),
             GuiLineResult::Command(GuiCommand::SetActiveIndices(vec![0, 2, 5]))
         );
     }
@@ -663,12 +673,23 @@ mod tests {
         assert_eq!(change_ev.to_event_line(), "\0change\x1fquery text");
 
         assert_eq!(
-            parse_gui_line("\0reload\x1ftrue"),
+            one("\0reload\x1ftrue"),
             GuiLineResult::Command(GuiCommand::Reload)
         );
+        assert_eq!(one("\0reload"), GuiLineResult::Command(GuiCommand::Reload));
+    }
+
+    #[test]
+    fn multiple_commands_on_one_line() {
+        // A script that forgets the newline between two commands emits
+        // both on one line: both must be parsed, value must not leak.
+        let results = parse_gui_line("\0prompt\x1fSearch emojis\u{2026}\0columns\x1f8");
         assert_eq!(
-            parse_gui_line("\0reload"),
-            GuiLineResult::Command(GuiCommand::Reload)
+            results,
+            vec![
+                GuiLineResult::Command(GuiCommand::SetPrompt("Search emojis\u{2026}".to_string())),
+                GuiLineResult::Command(GuiCommand::SetColumns(8))
+            ]
         );
     }
 }
