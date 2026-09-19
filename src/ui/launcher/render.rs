@@ -1589,7 +1589,7 @@ impl Launcher {
                     .rounded_md()
                     .border_1()
                     .border_color(rgba(Self::color(&t.window.border_color)))
-                    .bg(rgba(Self::color(&t.inputbar.background)))
+                    .bg(rgba(Self::color(&t.window.background)))
                     .p_3()
                     .child(
                         div()

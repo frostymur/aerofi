@@ -615,8 +615,14 @@ impl Launcher {
     /// memory while the launcher is not on screen.
     pub fn on_hide(&mut self) {
         self.filtered.clear();
-        self.full_output_blocks.clear();
-        self.full_output_list.reset(0);
+        // A still-running script can't be resumed after hide, so revert
+        // to search.  A finished full-output view preserves its blocks so
+        // the user can come back to them.
+        if matches!(self.state, LauncherState::RunningFull { .. }) {
+            self.state = LauncherState::Search;
+            self.full_output_blocks.clear();
+            self.full_output_list.reset(0);
+        }
         // Kill any active GUI session.
         if let Some(session) = self.gui_session.take()
             && let Ok(mut s) = session.lock()
