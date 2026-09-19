@@ -48,17 +48,21 @@ impl WidgetRegistry {
     /// Collect all button hotkey bindings: maps hotkey combo string to
     /// the button's action string. Only buttons with both `hotkey` and
     /// `action` set are included.
-    pub fn button_hotkeys(&self) -> HashMap<String, String> {
+    pub fn button_hotkeys(&self) -> HashMap<String, (String, bool)> {
         self.defs
             .values()
             .filter_map(|def| {
                 if let WidgetDef::Button {
                     hotkey: Some(hotkey),
                     action: Some(action),
+                    close,
                     ..
                 } = def
                 {
-                    Some((hotkey.clone(), action.clone()))
+                    Some((
+                        hotkey.clone(),
+                        (action.clone(), matches!(close, Some(false))),
+                    ))
                 } else {
                     None
                 }
@@ -210,6 +214,7 @@ mod tests {
     fn button_widget(id: &str, action: &str) -> WidgetDef {
         WidgetDef::Button {
             id: id.to_string(),
+            close: None,
             text: Some("btn".to_string()),
             icon: None,
             action: Some(action.to_string()),

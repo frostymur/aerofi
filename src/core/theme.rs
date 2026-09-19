@@ -126,6 +126,7 @@ pub enum WidgetDef {
         font_size: Option<f32>,
         font_weight: Option<FontWeightSpec>,
         gap: Option<f32>,
+        close: Option<bool>,
     },
 }
 
@@ -1575,6 +1576,7 @@ orientation = "horizontal"
         });
         t.widgets.push(WidgetDef::Button {
             id: "btn".to_string(),
+            close: None,
             text: Some("Click".to_string()),
             icon: None,
             action: Some("hide".to_string()),

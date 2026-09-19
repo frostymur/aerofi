@@ -119,7 +119,7 @@ fn main() {
             view_clone.update(cx, |launcher, cx| {
                 let action = launcher.handle_keystroke(&event.keystroke, Some(cx));
                 cx.notify();
-                launcher.perform_action(action, cx);
+                launcher.perform_action(action, false, cx);
             });
         })
         .detach();

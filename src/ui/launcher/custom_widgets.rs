@@ -128,6 +128,7 @@ impl Launcher {
                 font_size,
                 font_weight,
                 gap,
+                close,
             } => self.render_widget_button(
                 id,
                 text.as_deref(),
@@ -145,6 +146,7 @@ impl Launcher {
                 *font_size,
                 font_weight.as_ref(),
                 *gap,
+                *close,
                 row_context,
                 cx,
             ),
@@ -363,6 +365,7 @@ impl Launcher {
         font_size: Option<f32>,
         font_weight: Option<&FontWeightSpec>,
         gap: Option<f32>,
+        close: Option<bool>,
         row_context: Option<(usize, &Target)>,
         cx: &mut Context<Self>,
     ) -> gpui::AnyElement {
@@ -468,9 +471,15 @@ impl Launcher {
         if let Some(act) = action {
             let action_string = act.to_string();
             let row_item_clone = row_context.map(|(_, item)| item.clone());
+            let stay_open = matches!(close, Some(false));
             btn = btn.on_click(cx.listener(move |this, event, _window, cx| {
                 if is_primary_click(event) {
-                    this.handle_widget_button_action(&action_string, row_item_clone.as_ref(), cx);
+                    this.handle_widget_button_action(
+                        &action_string,
+                        row_item_clone.as_ref(),
+                        stay_open,
+                        cx,
+                    );
                 }
             }));
         }

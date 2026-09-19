@@ -1313,7 +1313,7 @@ impl Launcher {
                             .on_click(cx.listener(move |this, event, _window, cx| {
                                 if is_primary_click(event) {
                                     let action = this.confirm_and_run();
-                                    this.perform_action(action, cx);
+                                    this.perform_action(action, false, cx);
                                 }
                             }))
                             .child("Yes (Enter)"),
@@ -2249,7 +2249,7 @@ impl Launcher {
                 if is_primary_click(event) && matches!(this.state, LauncherState::Search) {
                     this.selected = filtered_ix;
                     let action = this.execute_selected(false);
-                    this.perform_action(action, cx);
+                    this.perform_action(action, false, cx);
                 }
             }))
     }

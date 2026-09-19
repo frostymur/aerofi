@@ -61,7 +61,7 @@ pub struct Launcher {
     pub(super) widget_registry: WidgetRegistry,
     /// Hotkey bindings from button widgets: maps combo string (e.g. "cmd+r")
     /// to the button's action string. Rebuilt on config reload.
-    pub(super) button_hotkeys: HashMap<String, String>,
+    pub(super) button_hotkeys: HashMap<String, (String, bool)>,
     /// Active GUI-mode script session (stdin/stdout pipe to child).
     /// Wrapped in Arc<Mutex<>> so it can be shared with async tasks.
     pub(super) gui_session: Option<Arc<Mutex<GuiSession>>>,
@@ -234,14 +234,14 @@ impl Launcher {
         // Button widget hotkeys (e.g. "cmd+r" mapped to a sidebar button's
         // action). Only honoured in plain search mode.
         if matches!(self.state, LauncherState::Search)
-            && let Some((_, action)) = self
+            && let Some((_, (action, stay_open))) = self
                 .button_hotkeys
                 .iter()
                 .find(|(combo, _)| combo_matches(combo, ks))
         {
-            let action = action.clone();
+            let (action, stay_open) = (action.clone(), *stay_open);
             if let Some(cx) = cx {
-                self.handle_widget_button_action(&action, None, cx);
+                self.handle_widget_button_action(&action, None, stay_open, cx);
             }
             return LauncherAction::None;
         }
@@ -769,19 +769,28 @@ impl Launcher {
     /// Both input paths funnel through here: the keystroke observer in
     /// `main.rs` and the mouse listeners on the launcher's elements. Async
     /// work is spawned, so this returns immediately.
-    pub fn perform_action(&mut self, action: LauncherAction, cx: &mut Context<Self>) {
+    pub fn perform_action(
+        &mut self,
+        action: LauncherAction,
+        stay_open: bool,
+        cx: &mut Context<Self>,
+    ) {
         match action {
             LauncherAction::None => {}
             LauncherAction::Hide => {
-                self.on_hide();
-                cx.notify();
-                crate::ui::window::hide();
+                if !stay_open {
+                    self.on_hide();
+                    cx.notify();
+                    crate::ui::window::hide();
+                }
             }
             LauncherAction::CopyToClipboardAndHide(text) => {
                 cx.write_to_clipboard(gpui::ClipboardItem::new_string(text));
-                self.on_hide();
-                cx.notify();
-                crate::ui::window::hide();
+                if !stay_open {
+                    self.on_hide();
+                    cx.notify();
+                    crate::ui::window::hide();
+                }
             }
             LauncherAction::SetFullOutput { title, text } => {
                 self.set_full_output(title, text);
@@ -799,7 +808,8 @@ impl Launcher {
                 // `silent` hides the launcher window immediately; the toast
                 // takes over. Done here (not in the spawn) because we hold
                 // the view and can't re-enter it from the async task.
-                if let Target::Script { mode, .. } = &target
+                if !stay_open
+                    && let Target::Script { mode, .. } = &target
                     && *mode == ScriptMode::Silent
                 {
                     self.on_hide();
@@ -821,6 +831,7 @@ impl Launcher {
                     .iter()
                     .find(|p| p.name == plugin_name)
                     && plugin.activate(&plugin_id, action_code)
+                    && !stay_open
                 {
                     self.on_hide();
                     cx.notify();
@@ -965,6 +976,7 @@ impl Launcher {
         &mut self,
         action: &str,
         row_item: Option<&Target>,
+        stay_open: bool,
         cx: &mut Context<Self>,
     ) {
         let trimmed = action.trim();
@@ -973,7 +985,7 @@ impl Launcher {
         if trimmed.eq_ignore_ascii_case("run") || trimmed.eq_ignore_ascii_case("execute") {
             if let Some(item) = row_item.cloned() {
                 let action = self.execute_item(&item, false);
-                self.perform_action(action, cx);
+                self.perform_action(action, stay_open, cx);
                 cx.notify();
             }
             return;
@@ -1020,7 +1032,7 @@ impl Launcher {
             .unwrap_or(trimmed);
         if let Some(target) = self.all.iter().find(|t| t.name() == target_name).cloned() {
             let action = self.execute_item(&target, false);
-            self.perform_action(action, cx);
+            self.perform_action(action, stay_open, cx);
             cx.notify();
         } else {
             eprintln!("aerofi: warning: button target not found: {target_name}");

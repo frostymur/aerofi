@@ -446,7 +446,7 @@ Widgets are defined either using table syntax `[widgets.<id>]` or array syntax `
 | **`image`** | Image asset | `path`, `width`, `height`, `radius` |
 | **`spacer`** | Flexible expanding space | Expands horizontally or vertically to push siblings apart |
 | **`divider`** | Separator rule | `color`, `thickness`, `margin` |
-| **`button`** | Clickable action button | `text`, `icon`, `action` (target name), `hotkey`, `background`, `hover_background`, `color`, `radius`, `padding`, `gap` |
+| **`button`** | Clickable action button | `text`, `icon`, `action` (target name), `hotkey`, `close` (default `true`; set `false` to keep the launcher open after the action), `background`, `hover_background`, `color`, `radius`, `padding`, `gap` |
 
 ---
 
@@ -526,9 +526,12 @@ background = "$surface"
 hover_background = "$surface2"
 radius = 6.0
 padding = [4.0, 8.0]
-font_size = 11.0
+ font_size = 11.0
 gap = 4.0
 ```
+
+> [!TIP]
+> By default a button **closes** the launcher after running its action (`close` defaults to `true`). Set `close = false` on a button to keep the launcher open — handy for actions like toggling a widget or copying, where you want to stay put. It applies to both clicks and the button's `hotkey`.
 
 ---
 

@@ -46,6 +46,7 @@ text = "Themes"
 icon = "🎨"
 action = "Theme Switcher"
 hotkey = "cmd+t"
+close = false   # keep the launcher open after the action (defaults to true)
 color = "$text"
 background = "$surface"
 hover_background = "$surface2"

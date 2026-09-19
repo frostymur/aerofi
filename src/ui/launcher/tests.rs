@@ -619,6 +619,7 @@ fn button_widget_in_registry() {
     let mut theme = ThemeConfig::default();
     theme.widgets.push(WidgetDef::Button {
         id: "btn_test".to_string(),
+        close: None,
         text: Some("Action".to_string()),
         icon: Some("⚡".to_string()),
         action: Some("reload".to_string()),
@@ -657,10 +658,30 @@ fn button_hotkey_triggers_action() {
     let mut theme = ThemeConfig::default();
     theme.widgets.push(WidgetDef::Button {
         id: "btn_reload".to_string(),
+        close: None,
         text: Some("Reload".to_string()),
         icon: None,
         action: Some("reload".to_string()),
         hotkey: Some("cmd+r".to_string()),
+        color: None,
+        background: None,
+        hover_background: None,
+        hover_color: None,
+        border_color: None,
+        border_width: None,
+        radius: None,
+        padding: None,
+        font_size: None,
+        font_weight: None,
+        gap: None,
+    });
+    theme.widgets.push(WidgetDef::Button {
+        id: "btn_stay".to_string(),
+        close: Some(false),
+        text: Some("Stay".to_string()),
+        icon: None,
+        action: Some("reload".to_string()),
+        hotkey: Some("cmd+shift+s".to_string()),
         color: None,
         background: None,
         hover_background: None,
@@ -679,11 +700,12 @@ fn button_hotkey_triggers_action() {
         AppConfig::default(),
         History::test_new(PathBuf::new(), Vec::new()),
     );
-    assert_eq!(l.button_hotkeys.len(), 1);
-    assert_eq!(
-        l.button_hotkeys.get("cmd+r").map(|s| s.as_str()),
-        Some("reload")
-    );
+    assert_eq!(l.button_hotkeys.len(), 2);
+    let (action, stay_open) = l.button_hotkeys.get("cmd+r").cloned().unwrap();
+    assert_eq!(action, "reload");
+    assert!(!stay_open, "default close=true means stay_open is false");
+    let (_, stay_open) = l.button_hotkeys.get("cmd+shift+s").cloned().unwrap();
+    assert!(stay_open, "close=false keeps the launcher open");
 }
 
 #[test]
@@ -713,6 +735,7 @@ fn element_layout_supports_custom_widgets_in_row() {
     let mut theme = ThemeConfig::default();
     theme.widgets.push(WidgetDef::Button {
         id: "btn_run".to_string(),
+        close: None,
         text: Some("Run".to_string()),
         icon: Some("▶".to_string()),
         action: Some("run".to_string()),
