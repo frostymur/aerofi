@@ -39,6 +39,15 @@ pub struct MdText {
     pub marks: Vec<InlineMark>,
 }
 
+/// Column alignment inside [`MdBlock::Table`].
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum TableAlignment {
+    #[default]
+    Left,
+    Center,
+    Right,
+}
+
 /// One rendered block of markdown.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MdBlock {
@@ -54,6 +63,13 @@ pub enum MdBlock {
     Blockquote(MdText),
     /// `---` horizontal rule.
     Rule,
+    /// A markdown table: header cells, one `rows` entry per body row, and a
+    /// per-column alignment.
+    Table {
+        header: Vec<MdText>,
+        rows: Vec<Vec<MdText>>,
+        alignments: Vec<TableAlignment>,
+    },
     /// Text outside any recognised block; shown as plain text.
     Plain(String),
 }
@@ -65,6 +81,17 @@ enum BlockKind {
     Heading(u8),
     Para,
     Item(Option<u64>),
+}
+
+/// Accumulator for one table. Cells are sliced out of the shared `buf` by
+/// offset, so this only holds indices and finished rows.
+struct TableAccum {
+    alignments: Vec<TableAlignment>,
+    header: Option<Vec<MdText>>,
+    rows: Vec<Vec<MdText>>,
+    current_row: Vec<MdText>,
+    /// `buf` text cursor where the open cell started.
+    cell_start: usize,
 }
 
 /// Accumulator state for a single parse pass.
@@ -81,6 +108,8 @@ struct State {
     quotes: u32,
     /// Open inline emphases: `(text cursor when opened, kind)`.
     inline: Vec<(usize, InlineKind)>,
+    /// The table currently being collected, if any.
+    table: Option<TableAccum>,
 }
 
 impl State {
@@ -98,6 +127,7 @@ impl State {
             lists: Vec::new(),
             quotes: 0,
             inline: Vec::new(),
+            table: None,
         }
     }
 
@@ -153,7 +183,7 @@ impl State {
 pub fn parse(input: &str) -> Vec<MdBlock> {
     use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
 
-    let options = Options::ENABLE_STRIKETHROUGH;
+    let options = Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TABLES;
     let mut st = State::new();
 
     for event in Parser::new_ext(input, options) {
@@ -202,7 +232,28 @@ pub fn parse(input: &str) -> Vec<MdBlock> {
                 Tag::Emphasis => st.open_inline(InlineKind::Italic),
                 Tag::Strikethrough => st.open_inline(InlineKind::Strikethrough),
                 Tag::Link { .. } => st.open_inline(InlineKind::Link),
-                // Tables, images, etc.: their text content flows through
+                Tag::Table(alignments) => {
+                    st.flush_block();
+                    st.table = Some(TableAccum {
+                        alignments: alignments.into_iter().map(map_alignment).collect(),
+                        header: None,
+                        rows: Vec::new(),
+                        current_row: Vec::new(),
+                        cell_start: 0,
+                    });
+                }
+                Tag::TableHead | Tag::TableRow => {
+                    if let Some(table) = st.table.as_mut() {
+                        table.current_row.clear();
+                    }
+                }
+                Tag::TableCell => {
+                    let cursor = st.cursor();
+                    if let Some(table) = st.table.as_mut() {
+                        table.cell_start = cursor;
+                    }
+                }
+                // Images, etc.: their text content flows through
                 // as plain text, no special rendering.
                 _ => {}
             },
@@ -226,6 +277,51 @@ pub fn parse(input: &str) -> Vec<MdBlock> {
                             lang: st.code_lang.take(),
                             text: std::mem::take(&mut st.code_text),
                         });
+                    }
+                }
+                TagEnd::TableCell => {
+                    let end = st.cursor();
+                    if let Some(table) = st.table.as_mut() {
+                        let start = table.cell_start;
+                        let text = st.buf.text[start..end].to_string();
+                        let marks = st
+                            .buf
+                            .marks
+                            .iter()
+                            .filter(|m| m.range.start >= start && m.range.end <= end)
+                            .map(|m| InlineMark {
+                                kind: m.kind,
+                                range: m.range.start - start..m.range.end - start,
+                            })
+                            .collect();
+                        table.current_row.push(MdText { text, marks });
+                    }
+                }
+                TagEnd::TableHead => {
+                    if let Some(table) = st.table.as_mut() {
+                        table.header = Some(std::mem::take(&mut table.current_row));
+                    }
+                }
+                TagEnd::TableRow => {
+                    if let Some(table) = st.table.as_mut() {
+                        table.rows.push(std::mem::take(&mut table.current_row));
+                    }
+                }
+                TagEnd::Table => {
+                    let table = st.table.take();
+                    if let Some(table) = table {
+                        if !table.rows.is_empty()
+                            || table.header.as_ref().is_some_and(|h| !h.is_empty())
+                        {
+                            st.blocks.push(MdBlock::Table {
+                                header: table.header.unwrap_or_default(),
+                                rows: table.rows,
+                                alignments: table.alignments,
+                            });
+                        }
+                        // `buf` only held this table's cells; nothing else
+                        // to flush.
+                        st.buf = MdText::default();
                     }
                 }
                 TagEnd::Strong
@@ -273,38 +369,56 @@ pub fn parse(input: &str) -> Vec<MdBlock> {
     st.blocks
 }
 
+fn map_alignment(a: pulldown_cmark::Alignment) -> TableAlignment {
+    match a {
+        pulldown_cmark::Alignment::Center => TableAlignment::Center,
+        pulldown_cmark::Alignment::Right => TableAlignment::Right,
+        pulldown_cmark::Alignment::None | pulldown_cmark::Alignment::Left => TableAlignment::Left,
+    }
+}
+
 /// Sort marks and clip overlaps so they satisfy the invariants of the
 /// GPUI text APIs (sorted, non-overlapping, char-boundary aligned).
 fn normalize_marks(blocks: &mut [MdBlock]) {
     for block in blocks.iter_mut() {
-        let text_opt = match block {
+        match block {
             MdBlock::Heading { text, .. }
             | MdBlock::Paragraph(text)
             | MdBlock::ListItem { text, .. }
-            | MdBlock::Blockquote(text) => Some(text),
-            _ => None,
-        };
-        let Some(text) = text_opt else {
-            continue;
-        };
-        text.marks.sort_by(|a, b| {
-            a.range
-                .start
-                .cmp(&b.range.start)
-                .then(b.range.end.cmp(&a.range.end))
-        });
-        let mut i = 1;
-        while i < text.marks.len() {
-            let prev_end = text.marks[i - 1].range.end;
-            if text.marks[i].range.start < prev_end {
-                if text.marks[i].range.end <= prev_end {
-                    text.marks.remove(i);
-                    continue;
+            | MdBlock::Blockquote(text) => normalize_text_marks(text),
+            MdBlock::Table { header, rows, .. } => {
+                for cell in header.iter_mut() {
+                    normalize_text_marks(cell);
                 }
-                text.marks[i].range.start = prev_end;
+                for row in rows.iter_mut() {
+                    for cell in row.iter_mut() {
+                        normalize_text_marks(cell);
+                    }
+                }
             }
-            i += 1;
+            _ => {}
         }
+    }
+}
+
+fn normalize_text_marks(text: &mut MdText) {
+    text.marks.sort_by(|a, b| {
+        a.range
+            .start
+            .cmp(&b.range.start)
+            .then(b.range.end.cmp(&a.range.end))
+    });
+    let mut i = 1;
+    while i < text.marks.len() {
+        let prev_end = text.marks[i - 1].range.end;
+        if text.marks[i].range.start < prev_end {
+            if text.marks[i].range.end <= prev_end {
+                text.marks.remove(i);
+                continue;
+            }
+            text.marks[i].range.start = prev_end;
+        }
+        i += 1;
     }
 }
 
@@ -496,6 +610,94 @@ mod tests {
                     assert!(text.text.is_char_boundary(mark.range.end));
                 }
             }
+        }
+    }
+
+    #[test]
+    fn tables_keep_header_rows_and_alignment() {
+        let out = blocks("| Name | Size |\n|:-----|-----:|\n| a    | 1    |\n| bb   | 22   |");
+        assert_eq!(
+            out,
+            vec![MdBlock::Table {
+                header: vec![
+                    MdText {
+                        text: "Name".into(),
+                        marks: vec![]
+                    },
+                    MdText {
+                        text: "Size".into(),
+                        marks: vec![]
+                    }
+                ],
+                rows: vec![
+                    vec![
+                        MdText {
+                            text: "a".into(),
+                            marks: vec![]
+                        },
+                        MdText {
+                            text: "1".into(),
+                            marks: vec![]
+                        }
+                    ],
+                    vec![
+                        MdText {
+                            text: "bb".into(),
+                            marks: vec![]
+                        },
+                        MdText {
+                            text: "22".into(),
+                            marks: vec![]
+                        }
+                    ]
+                ],
+                alignments: vec![TableAlignment::Left, TableAlignment::Right]
+            }]
+        );
+    }
+
+    #[test]
+    fn table_cells_keep_inline_marks() {
+        let out = blocks("| cmd |\n|-----|\n| `ls` **x** |");
+        let table = match &out[..] {
+            [MdBlock::Table { header, rows, .. }] => (header, rows),
+            other => panic!("expected one table, got: {other:?}"),
+        };
+        assert_eq!(table.0[0].text, "cmd");
+        assert_eq!(table.1[0][0].text, "ls x", "cell text keeps both inlines");
+        assert_eq!(
+            table.1[0][0].marks,
+            vec![
+                InlineMark {
+                    kind: InlineKind::Code,
+                    range: 0..2
+                },
+                InlineMark {
+                    kind: InlineKind::Bold,
+                    range: 3..4
+                }
+            ]
+        );
+    }
+
+    #[test]
+    fn table_between_paragraphs_flushes_both() {
+        let out = blocks("before\n\n| a |\n|---|\n| b |\n\nafter");
+        assert_eq!(out.len(), 3);
+        assert!(matches!(&out[1], MdBlock::Table { .. }));
+        match &out[2] {
+            MdBlock::Paragraph(t) => assert_eq!(t.text, "after"),
+            other => panic!("expected paragraph, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn pipes_without_delimiter_row_are_not_a_table() {
+        let out = blocks("| a |\n| b |");
+        assert_eq!(out.len(), 1);
+        match &out[0] {
+            MdBlock::Paragraph(t) => assert_eq!(t.text, "| a |\n| b |"),
+            other => panic!("expected paragraph, got: {other:?}"),
         }
     }
 

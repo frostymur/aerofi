@@ -1448,7 +1448,7 @@ impl Launcher {
 
     /// Render one markdown block of the full-output view.
     fn render_md_block(&self, block: &crate::core::markdown::MdBlock) -> gpui::AnyElement {
-        use crate::core::markdown::MdBlock;
+        use crate::core::markdown::{MdBlock, TableAlignment};
         let t = &self.theme;
         let text_color = rgba(Self::color(&t.element.text_color));
         let dim_color = rgba(Self::color(&t.inputbar.placeholder_color));
@@ -1517,6 +1517,76 @@ impl Launcher {
                         .child(text.clone()),
                 );
                 box_.into_any()
+            }
+            MdBlock::Table {
+                header,
+                rows,
+                alignments,
+            } => {
+                // Rendered as a bordered monospace table (like a terminal):
+                // column widths come from the widest cell, alignment from
+                // the markdown delimiter row.
+                let mut all_rows: Vec<&[crate::core::markdown::MdText]> =
+                    Vec::with_capacity(rows.len() + 1);
+                all_rows.push(header);
+                for row in rows.iter() {
+                    all_rows.push(row);
+                }
+                let col_count = all_rows.iter().map(|r| r.len()).max().unwrap_or(0);
+                let widths: Vec<usize> = (0..col_count)
+                    .map(|c| {
+                        all_rows
+                            .iter()
+                            .filter_map(|r| r.get(c))
+                            .map(|cell| cell.text.replace('\n', " ").chars().count())
+                            .max()
+                            .unwrap_or(0)
+                    })
+                    .collect();
+                let render_row = |cells: &[crate::core::markdown::MdText]| -> String {
+                    let mut line = String::from("|");
+                    for (c, &w) in widths.iter().enumerate() {
+                        let cell = cells
+                            .get(c)
+                            .map(|t| t.text.replace('\n', " "))
+                            .unwrap_or_default();
+                        let padded = match alignments.get(c).copied() {
+                            Some(TableAlignment::Center) => format!("{cell:^w$}"),
+                            Some(TableAlignment::Right) => format!("{cell:>w$}"),
+                            _ => format!("{cell:<w$}"),
+                        };
+                        line.push_str(&format!(" {padded} |"));
+                    }
+                    line
+                };
+                let mut text = String::new();
+                text.push_str(&render_row(header));
+                text.push('\n');
+                let mut separator = String::from("|");
+                for w in &widths {
+                    separator.push_str(&format!(" {} |", "-".repeat(*w)));
+                }
+                text.push_str(&separator);
+                text.push('\n');
+                for row in rows.iter() {
+                    text.push_str(&render_row(row));
+                    text.push('\n');
+                }
+                div()
+                    .w_full()
+                    .rounded_md()
+                    .border_1()
+                    .border_color(rgba(Self::color(&t.window.border_color)))
+                    .bg(rgba(Self::color(&t.inputbar.background)))
+                    .p_3()
+                    .child(
+                        div()
+                            .font_family(mono)
+                            .text_size(px(t.font.size * 0.8))
+                            .text_color(text_color)
+                            .child(text),
+                    )
+                    .into_any()
             }
             MdBlock::ListItem { number, text } => {
                 let marker = number.map_or_else(|| "•".to_string(), |n| format!("{n}."));

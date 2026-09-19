@@ -110,7 +110,7 @@ The script runs in the background and its output is displayed directly as a subt
 - **Ideal for**: Live status widgets (e.g. current Spotify track, active Git branch, weather, battery health). When combined with `@aerofi.refreshTime 10s`, aerofi automatically refreshes the output periodically.
 
 ### 4. `fullOutput`
-Executes the command and renders stdout in aerofi's built-in rich markdown viewer. Supports headings, code blocks, blockquotes, and lists.
+Executes the command and renders stdout in aerofi's built-in rich markdown viewer. Supports headings, tables, code blocks, blockquotes, and lists.
 - **Example Script**: [examples/scripts/full-output.sh](../examples/scripts/full-output.sh)
 - **Ideal for**: Viewing documentation, API responses, logs, or curl outputs.
 - **Output cap**: to keep memory bounded, the first 1 MiB of stdout is kept (plus 256 KiB of stderr). Anything beyond that is dropped and a `… [output truncated: showing first … of …]` note is appended, so huge script outputs can never spike aerofi's RAM.
