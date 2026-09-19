@@ -1535,9 +1535,10 @@ impl Launcher {
                 rows,
                 alignments,
             } => {
-                // Rendered as a bordered monospace table (like a terminal):
-                // column widths come from the widest cell, alignment from
-                // the markdown delimiter row.
+                // Real table: flex rows with theme borders. Column widths are
+                // proportional to each column's widest cell (flex-grow
+                // weights), so columns stay aligned across rows and shrink
+                // (wrapping cell text) in narrow windows.
                 let mut all_rows: Vec<&[crate::core::markdown::MdText]> =
                     Vec::with_capacity(rows.len() + 1);
                 all_rows.push(header);
@@ -1545,66 +1546,79 @@ impl Launcher {
                     all_rows.push(row);
                 }
                 let col_count = all_rows.iter().map(|r| r.len()).max().unwrap_or(0);
-                let widths: Vec<usize> = (0..col_count)
+                let weights: Vec<f32> = (0..col_count)
                     .map(|c| {
                         all_rows
                             .iter()
                             .filter_map(|r| r.get(c))
                             .map(|cell| cell.text.replace('\n', " ").chars().count())
                             .max()
-                            .unwrap_or(0)
+                            .unwrap_or(1) as f32
                     })
                     .collect();
-                let render_row = |cells: &[crate::core::markdown::MdText]| -> String {
-                    let mut line = String::from("|");
-                    for (c, &w) in widths.iter().enumerate() {
-                        let cell = cells
-                            .get(c)
-                            .map(|t| t.text.replace('\n', " "))
-                            .unwrap_or_default();
-                        let padded = match alignments.get(c).copied() {
-                            Some(TableAlignment::Center) => format!("{cell:^w$}"),
-                            Some(TableAlignment::Right) => format!("{cell:>w$}"),
-                            _ => format!("{cell:<w$}"),
-                        };
-                        line.push_str(&format!(" {padded} |"));
+                let border_color = rgba(Self::color(&t.window.border_color));
+                let align_div = |cell: gpui::Div, c: usize| -> gpui::Div {
+                    match alignments.get(c).copied() {
+                        Some(TableAlignment::Center) => cell.text_center(),
+                        Some(TableAlignment::Right) => cell.text_right(),
+                        _ => cell.text_left(),
                     }
-                    line
                 };
-                let mut text = String::new();
-                text.push_str(&render_row(header));
-                text.push('\n');
-                let mut separator = String::from("|");
-                for w in &widths {
-                    separator.push_str(&format!(" {} |", "-".repeat(*w)));
-                }
-                text.push_str(&separator);
-                text.push('\n');
-                for row in rows.iter() {
-                    text.push_str(&render_row(row));
-                    text.push('\n');
-                }
-                div()
+                let render_cells =
+                    |cells: &[crate::core::markdown::MdText], bold: bool| -> gpui::Div {
+                        let mut row = div().w_full().flex().flex_row();
+                        for (c, w) in weights.iter().enumerate() {
+                            let cell = cells
+                                .get(c)
+                                .map(|t| t.text.replace('\n', " "))
+                                .unwrap_or_default();
+                            let mut cell_div = div()
+                                .flex_1()
+                                .flex_grow(*w)
+                                .min_w(px(0.0))
+                                .px_2()
+                                .py_1()
+                            .font_family(&mono)
+                            .text_size(px(t.font.size * 0.8))
+                            .text_color(text_color)
+                            .child(cell);
+                            if bold {
+                                cell_div = cell_div.font_weight(gpui::FontWeight::BOLD);
+                            }
+                            row = row.child(align_div(cell_div, c));
+                        }
+                        row
+                    };
+                let mut table = div()
                     .w_full()
                     .rounded_md()
                     .border_1()
-                    .border_color(rgba(Self::color(&t.window.border_color)))
-                    .bg(rgba(Self::color(&t.window.background)))
-                    .p_3()
-                    .child(
-                        div()
-                            .font_family(mono)
-                            .text_size(px(t.font.size * 0.8))
-                            .text_color(text_color)
-                            .child(text),
-                    )
-                    .into_any()
+                    .border_color(border_color)
+                    .bg(rgba(Self::color(&t.window.background)));
+                table = table.child(
+                    render_cells(header, true)
+                        .border_b_1()
+                        .border_color(border_color),
+                );
+                for (i, row) in rows.iter().enumerate() {
+                    let mut r = render_cells(row, false);
+                    if i + 1 < rows.len() {
+                        r = r.border_b_1().border_color(border_color);
+                    }
+                    table = table.child(r);
+                }
+                table.into_any()
             }
             MdBlock::ListItem { number, text } => {
                 let marker = number.map_or_else(|| "•".to_string(), |n| format!("{n}."));
                 apply_md_style(div().w_full().flex().flex_row().gap_2(), &base)
                     .child(div().text_color(text_color).child(marker))
-                    .child(div().flex_1().min_w(px(0.0)).child(self.styled_md_text(text)))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w(px(0.0))
+                            .child(self.styled_md_text(text)),
+                    )
                     .into_any()
             }
             MdBlock::Rule => div()
