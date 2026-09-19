@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use gpui::{Context, Font, ScrollStrategy, UniformListScrollHandle};
+use gpui::{Context, Font, ListAlignment, ListState, ScrollStrategy, UniformListScrollHandle, px};
 
 use crate::core::config::AppConfig;
 use crate::core::gui_protocol::GuiCommand;
@@ -44,8 +44,11 @@ pub struct Launcher {
     pub(super) theme: Arc<ThemeConfig>,
     /// Current state of the launcher (e.g. normal search or showing script output).
     pub(super) state: LauncherState,
-    /// Scroll state for fullOutput mode.
-    pub(super) full_output_scroll: UniformListScrollHandle,
+    /// List state for fullOutput mode (variable-height markdown blocks).
+    pub(super) full_output_list: ListState,
+    /// List state for the GUI-mode markdown preview panel (variable-height
+    /// blocks, kept separate so its scroll position is independent).
+    pub(super) preview_list: ListState,
     /// Scroll state for the GUI-mode rows list (kept separate from the
     /// search list so each mode's scroll position is independent).
     pub(super) gui_rows_scroll: UniformListScrollHandle,
@@ -123,7 +126,8 @@ impl Launcher {
             app_config,
             theme: Arc::new(theme),
             state: LauncherState::Search,
-            full_output_scroll: UniformListScrollHandle::new(),
+            full_output_list: ListState::new(0, ListAlignment::Top, px(16.0)),
+            preview_list: ListState::new(0, ListAlignment::Top, px(16.0)),
             gui_rows_scroll: UniformListScrollHandle::new(),
             full_output_blocks: Vec::new(),
             sticky_metatags: None,
@@ -612,6 +616,7 @@ impl Launcher {
     pub fn on_hide(&mut self) {
         self.filtered.clear();
         self.full_output_blocks.clear();
+        self.full_output_list.reset(0);
         // Kill any active GUI session.
         if let Some(session) = self.gui_session.take()
             && let Ok(mut s) = session.lock()
@@ -759,9 +764,9 @@ impl Launcher {
         // Parse once here, not per render: the view re-renders on every
         // keystroke while visible, and output can be large.
         self.full_output_blocks = crate::core::markdown::parse(&text);
+        // Reset to the top with the new item count.
+        self.full_output_list.reset(self.full_output_blocks.len());
         self.state = LauncherState::FullOutput { title };
-        // We can't scroll here easily because we don't have cx, but GPUI UniformListScrollHandle
-        // might not need it until render.
     }
 
     /// Run the side effects of a `LauncherAction` produced inside the view.
@@ -889,6 +894,7 @@ impl Launcher {
         ) {
             self.state = LauncherState::Search;
             self.full_output_blocks.clear();
+            self.full_output_list.reset(0);
         }
     }
 
@@ -1219,6 +1225,7 @@ impl Launcher {
         let mut active_indices = Vec::new();
         let mut data = None;
         let mut preview_blocks = None;
+        let mut preview_changed = false;
         let mut multi_select = false;
         let mut toggled_indices = std::collections::HashSet::new();
         let mut markup_rows = false;
@@ -1268,11 +1275,13 @@ impl Launcher {
                 GuiCommand::SetData(d) => data = Some(d.clone()),
                 GuiCommand::PreviewText(text) => {
                     preview_blocks = Some(crate::core::markdown::parse(text));
+                    preview_changed = true;
                 }
                 GuiCommand::PreviewFile(file_path) => {
                     let resolved = super::helpers::expand_tilde_path(file_path);
                     if let Ok(text) = std::fs::read_to_string(&resolved) {
                         preview_blocks = Some(crate::core::markdown::parse(&text));
+                        preview_changed = true;
                     }
                 }
                 GuiCommand::MultiSelect(b) => multi_select = *b,
@@ -1288,6 +1297,11 @@ impl Launcher {
                     return;
                 }
             }
+        }
+
+        if preview_changed {
+            self.preview_list
+                .reset(preview_blocks.as_ref().map_or(0, |b| b.len()));
         }
 
         let row_count = burst.rows.len();

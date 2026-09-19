@@ -980,29 +980,26 @@ impl Launcher {
             }
         }
 
-        if let Some(blocks) = preview_blocks {
-            let block_count = blocks.len();
-            let preview_panel = uniform_list(
-                "gui_preview_blocks",
-                block_count,
-                cx.processor(
-                    move |this: &mut Launcher, range: std::ops::Range<usize>, _window, _cx| {
-                        if let LauncherState::GuiMode {
-                            preview_blocks: Some(b),
-                            ..
-                        } = &this.state
-                        {
-                            range.map(|i| this.render_md_block(&b[i])).collect()
-                        } else {
-                            vec![]
-                        }
-                    },
-                ),
+        if preview_blocks.is_some() {
+            let preview_panel = gpui::list(
+                self.preview_list.clone(),
+                cx.processor(move |this: &mut Launcher, ix: usize, _window, _cx| {
+                    if let LauncherState::GuiMode {
+                        preview_blocks: Some(b),
+                        ..
+                    } = &this.state
+                    {
+                        b.get(ix)
+                            .map(|blk| this.render_md_block(blk))
+                            .unwrap_or_else(|| div().into_any())
+                    } else {
+                        div().into_any()
+                    }
+                }),
             )
             .flex_1()
             .w_full()
-            .pl_3()
-            .track_scroll(&self.full_output_scroll);
+            .pl_3();
 
             container = container.child(
                 div()
@@ -1425,20 +1422,17 @@ impl Launcher {
                 .child("(no output)")
                 .into_any()
         } else {
-            gpui::uniform_list(
-                "full_output_blocks",
-                block_count,
-                cx.processor(
-                    move |this: &mut Launcher, range: std::ops::Range<usize>, _window, _cx| {
-                        range
-                            .map(|i| this.render_md_block(&this.full_output_blocks[i]))
-                            .collect()
-                    },
-                ),
+            gpui::list(
+                self.full_output_list.clone(),
+                cx.processor(move |this: &mut Launcher, ix: usize, _window, _cx| {
+                    this.full_output_blocks
+                        .get(ix)
+                        .map(|b| this.render_md_block(b))
+                        .unwrap_or_else(|| div().into_any())
+                }),
             )
             .flex_1()
             .w_full()
-            .track_scroll(&self.full_output_scroll)
             .into_any()
         };
 
