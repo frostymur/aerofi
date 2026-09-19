@@ -1483,11 +1483,11 @@ impl Launcher {
                 let mut style = base.clone();
                 style.font_size = px(t.font.size * scale).into();
                 style.font_weight = gpui::FontWeight::BOLD;
-                apply_md_style(div().w_full().mt_2().whitespace_normal(), &style)
+                apply_md_style(div().w_full().mt_2(), &style)
                     .child(self.styled_md_text(text))
                     .into_any()
             }
-            MdBlock::Paragraph(text) => apply_md_style(div().w_full().whitespace_normal(), &base)
+            MdBlock::Paragraph(text) => apply_md_style(div().w_full(), &base)
                 .child(self.styled_md_text(text))
                 .into_any(),
             MdBlock::Blockquote(text) => {
@@ -1496,7 +1496,6 @@ impl Launcher {
                 apply_md_style(
                     div()
                         .w_full()
-                        .whitespace_normal()
                         .border_l_2()
                         .border_color(rgba(Self::color(&t.window.border_color)))
                         .pl_3(),
@@ -1605,12 +1604,7 @@ impl Launcher {
                 let marker = number.map_or_else(|| "•".to_string(), |n| format!("{n}."));
                 apply_md_style(div().w_full().flex().flex_row().gap_2(), &base)
                     .child(div().text_color(text_color).child(marker))
-                    .child(
-                        div()
-                            .flex_1()
-                            .whitespace_normal()
-                            .child(self.styled_md_text(text)),
-                    )
+                    .child(div().flex_1().child(self.styled_md_text(text)))
                     .into_any()
             }
             MdBlock::Rule => div()
@@ -1621,7 +1615,6 @@ impl Launcher {
                 .into_any(),
             MdBlock::Plain(text) => div()
                 .w_full()
-                .whitespace_normal()
                 .font_family(mono)
                 .text_size(px(t.font.size * 0.85))
                 .text_color(dim_color)
