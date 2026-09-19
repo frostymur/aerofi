@@ -429,7 +429,7 @@ impl Target {
                             metatags.columns = Some(n);
                         }
                     }
-                    "layout" if is_aerofi || metatags.layout.is_none() => {
+                    "preset" if is_aerofi || metatags.layout.is_none() => {
                         metatags.layout = Some(value.to_string());
                     }
                     "width" if is_aerofi || metatags.width.is_none() => {
@@ -585,6 +585,7 @@ mod tests {
 
 # @aerofi.show_search false
 # @aerofi.columns 3
+# @aerofi.preset list
 
 echo "Running script..."
 "#
@@ -658,6 +659,7 @@ echo "Running script..."
         // Metatags
         assert_eq!(metatags.show_search, Some(false));
         assert_eq!(metatags.columns, Some(3));
+        assert_eq!(metatags.layout.as_deref(), Some("list"));
 
         let _ = std::fs::remove_file(&file_path);
     }

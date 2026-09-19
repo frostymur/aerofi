@@ -8,7 +8,7 @@
 # @aerofi.description Search and manage your clipboard history
 # @aerofi.show_search true
 # @aerofi.columns 1
-# @aerofi.layout list
+# @aerofi.preset list
 
 Clipboard history manager for aerofi's interactive gui mode.
 Powered by the clipy daemon (https://crates.io/crates/clipy) with a
