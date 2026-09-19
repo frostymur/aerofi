@@ -48,6 +48,7 @@ Annotations are placed inside comments (`#`) at the top of your script:
 | Annotation (`@aerofi.*` or `@raycast.*`) | Description | Example |
 |---|---|---|
 | `title` | The display title in the search results | `@aerofi.title Quick Note` |
+| `schemaVersion` | Metadata schema version (parsed for Raycast compatibility) | `@aerofi.schemaVersion 1` |
 | `mode` | Execution mode (see below) | `@aerofi.mode silent` |
 | `icon` | Emoji, Nerd Font glyph, or image path (see [Icons](#icons)) | `@aerofi.icon 🚀` |
 | `iconDark` | Optional dark mode icon identifier | `@aerofi.iconDark 🌟` |
@@ -60,6 +61,8 @@ Annotations are placed inside comments (`#`) at the top of your script:
 | `authorURL` | Author website URL | `@aerofi.authorURL https://github.com/...` |
 | `show_search` | Toggle search bar in GUI mode (default `true`) | `@aerofi.show_search false` |
 | `columns` | Override list column count (default `1`) | `@aerofi.columns 2` |
+| `layout` | Preset layout name applied to the script's list (e.g. `list`), overriding the theme default | `@aerofi.layout list` |
+| `width` | Override the launcher window width in points (esp. useful for GUI grids) | `@aerofi.width 520` |
 
 ### Icons
 
@@ -169,6 +172,7 @@ Control commands start with `\0` (null byte) and use `\x1f` (unit separator) to 
 | `\0preview` | `<text>` | Updates preview pane with custom text or markdown |
 | `\0preview-file`| `<path>` | Displays a file preview in the preview pane |
 | `\0no-custom` | `true` \| `false` | Restricts selection to existing items only |
+| `\0keep-selection` | `<row text>` | Pre-select (highlight) the row whose text matches on the next frame, instead of resetting to row 0 |
 
 #### 2. Row Items & Metadata
 Rows are printed one per line. Metadata fields can be attached using `\0` delimiters:
