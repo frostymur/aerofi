@@ -113,11 +113,13 @@ The script runs in the background and its output is displayed directly as a subt
 Executes the command and renders stdout in aerofi's built-in rich markdown viewer. Supports headings, code blocks, blockquotes, and lists.
 - **Example Script**: [examples/scripts/full-output.sh](../examples/scripts/full-output.sh)
 - **Ideal for**: Viewing documentation, API responses, logs, or curl outputs.
+- **Output cap**: to keep memory bounded, the first 1 MiB of stdout is kept (plus 256 KiB of stderr). Anything beyond that is dropped and a `… [output truncated: showing first … of …]` note is appended, so huge script outputs can never spike aerofi's RAM.
 
 ### 5. `pipe`
 Executes the command, captures its stdout, and immediately copies the result to your macOS system clipboard (`pbcopy`).
 - **Example Script**: [examples/scripts/pipe.sh](../examples/scripts/pipe.sh)
 - **Ideal for**: UUID generators, password generators, timestamp formatters, base64 encoders.
+- **Output cap**: up to 8 MiB of stdout is copied; beyond that the copy is truncated with a visible note (an 8 MiB clipboard payload is already far past any sane use).
 
 ### 6. `gui`
 Enables aerofi's **two-way interactive GUI mode**. Maintains a persistent, bidirectional process pipeline (`stdin`/`stdout`) between aerofi and your script, turning aerofi into a custom interactive UI (like Rofi or dmenu, but with rich styling).

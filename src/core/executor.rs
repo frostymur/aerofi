@@ -1,6 +1,6 @@
 //! Execution of [`Target`]s.
 
-use std::io::Write;
+use std::io::Read;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
@@ -77,6 +77,35 @@ fn augmented_path(current: &str) -> Option<String> {
     Some(combined.join(":"))
 }
 
+/// Output of a script run by [`run_bounded`].
+pub struct ScriptOutput {
+    /// Standard output. When the output exceeded the cap, the head is kept
+    /// and a truncation note is appended.
+    pub stdout: String,
+    /// Standard error. When it exceeded the cap, the tail is kept and a
+    /// truncation note is prepended (the interesting part of an error is at
+    /// the end).
+    pub stderr: String,
+    /// Last non-empty stdout line, used by `compact`/`silent`/`inline`
+    /// modes that only need a one-line summary.
+    pub last_line: Option<String>,
+    /// Whether the child exited with status 0.
+    pub success: bool,
+}
+
+/// Max stdout bytes kept for display modes (`fullOutput`/`compact`/`silent`/
+/// `inline`). Beyond this, the tail is noise in the launcher window — and
+/// unbounded capture spikes RSS, which the allocator never returns.
+pub const MAX_DISPLAY_OUTPUT: usize = 1024 * 1024; // 1 MiB
+/// Max stdout bytes kept when piping to the clipboard. Clipboard payloads
+/// are legitimately bigger than display ones, but a few MiB is already far
+/// past any sane use.
+pub const MAX_CLIPBOARD_OUTPUT: usize = 8 * 1024 * 1024; // 8 MiB
+/// Max stderr bytes kept (tail). Any realistic stack trace fits.
+const MAX_STDERR: usize = 256 * 1024; // 256 KiB
+/// Tail kept to compute [`ScriptOutput::last_line`].
+const LAST_LINE_TAIL: usize = 4096;
+
 /// Open an application bundle via macOS `open`. When `new_instance` is true,
 /// `-n` is passed so a fresh instance is launched even if one is already
 /// running; otherwise `open` activates the existing instance.
@@ -88,6 +117,148 @@ pub fn open_app(path: &Path, name: &str, new_instance: bool) {
     cmd.arg(path);
     if let Err(e) = cmd.status() {
         eprintln!("aerofi: failed to run {name}: {e}");
+    }
+}
+
+/// Run the script at `path` and capture its output with streaming readers
+/// whose memory use is bounded by `stdout_cap`, no matter how much the
+/// script writes.
+///
+/// `stdout` is truncated from the tail (head kept), `stderr` from the head
+/// (tail kept), and `last_line` is the last non-empty stdout line. The
+/// child's pipes are always fully drained, so chatty scripts never block on
+/// a full pipe buffer.
+pub fn run_bounded(
+    path: &Path,
+    args: &[String],
+    stdout_cap: usize,
+) -> std::io::Result<ScriptOutput> {
+    let mut child = script_command(path)
+        .args(args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+
+    let stdout = child.stdout.take().expect("stdout is piped");
+    let stderr = child.stderr.take().expect("stderr is piped");
+
+    // Drain stderr concurrently so a script writing a lot to both streams
+    // never blocks on a full pipe buffer.
+    let stderr_thread = std::thread::Builder::new()
+        .name("aerofi-stderr".into())
+        .spawn(move || read_tail_bounded(stderr, MAX_STDERR))
+        .expect("failed to spawn stderr drain thread");
+
+    let read_result = read_capped(stdout, stdout_cap);
+    let stderr = stderr_thread.join().expect("stderr drain thread panicked");
+    use std::os::unix::process::ExitStatusExt;
+    let status = child
+        .wait()
+        .unwrap_or_else(|_| std::process::ExitStatus::from_raw(1));
+    let (head, tail, total, truncated) = read_result?;
+
+    let mut stdout = String::from_utf8_lossy(&head).into_owned();
+    if truncated {
+        stdout.push_str(&format!(
+            "\n\n… [output truncated: showing first {} of {}]",
+            human_size(head.len() as u64),
+            human_size(total)
+        ));
+    }
+    let last_line = last_nonempty_line(&tail);
+
+    Ok(ScriptOutput {
+        stdout,
+        stderr,
+        last_line,
+        success: status.success(),
+    })
+}
+
+/// Read a stream to EOF, keeping the first `cap` bytes (head) and the last
+/// `LAST_LINE_TAIL` bytes (for line-based summaries). Returns
+/// `(head, tail, total bytes read, whether truncated)`.
+fn read_capped<R: Read>(
+    mut reader: R,
+    cap: usize,
+) -> std::io::Result<(Vec<u8>, Vec<u8>, u64, bool)> {
+    let mut head = Vec::new();
+    let mut tail = Vec::new();
+    let mut buf = [0u8; 8192];
+    let mut total: u64 = 0;
+    let mut truncated = false;
+    loop {
+        let n = reader.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        total += n as u64;
+        let chunk = &buf[..n];
+        if head.len() < cap {
+            let take = cap.saturating_sub(head.len()).min(n);
+            head.extend_from_slice(&chunk[..take]);
+            if take < n {
+                truncated = true;
+            }
+        } else {
+            truncated = true;
+        }
+        tail.extend_from_slice(chunk);
+        if tail.len() > LAST_LINE_TAIL {
+            tail.drain(..tail.len() - LAST_LINE_TAIL);
+        }
+    }
+    Ok((head, tail, total, truncated))
+}
+
+/// Read a stream to EOF, keeping only the last `cap` bytes. Returns the
+/// kept text and whether anything was dropped.
+fn read_tail_bounded<R: Read>(mut reader: R, cap: usize) -> String {
+    let mut tail = Vec::new();
+    let mut buf = [0u8; 8192];
+    let mut truncated = false;
+    while let Ok(n) = reader.read(&mut buf) {
+        if n == 0 {
+            break;
+        }
+        tail.extend_from_slice(&buf[..n]);
+        if tail.len() > cap {
+            tail.drain(..tail.len() - cap);
+            truncated = true;
+        }
+    }
+    let text = String::from_utf8_lossy(&tail).into_owned();
+    if truncated {
+        format!("… [stderr truncated]\n{text}")
+    } else {
+        text
+    }
+}
+
+/// Last non-empty line of a byte tail. The tail is the end of the stream,
+/// so the last line is complete unless it alone exceeds the tail, in which
+/// case the best available fragment is returned.
+fn last_nonempty_line(tail: &[u8]) -> Option<String> {
+    String::from_utf8_lossy(tail)
+        .lines()
+        .rfind(|l| !l.trim().is_empty())
+        .map(|s| s.to_string())
+}
+
+/// Format a byte count for human consumption (e.g. `1.2 MiB`).
+fn human_size(bytes: u64) -> String {
+    const KB: f64 = 1024.0;
+    const MB: f64 = KB * 1024.0;
+    const GB: f64 = MB * 1024.0;
+    let b = bytes as f64;
+    if b >= GB {
+        format!("{:.1} GiB", b / GB)
+    } else if b >= MB {
+        format!("{:.1} MiB", b / MB)
+    } else if b >= KB {
+        format!("{:.0} KiB", b / KB)
+    } else {
+        format!("{bytes} B")
     }
 }
 
@@ -114,9 +285,12 @@ pub fn execute(target: &Target) {
                 .name(format!("aerofi-pipe:{name}"))
                 .stack_size(256 * 1024)
                 .spawn(move || {
-                    let output = script_command(&path).output();
-                    let text = match output {
-                        Ok(out) => String::from_utf8_lossy(&out.stdout).to_string(),
+                    let mut child = match script_command(&path)
+                        .stdout(Stdio::piped())
+                        .stderr(Stdio::null())
+                        .spawn()
+                    {
+                        Ok(c) => c,
                         Err(e) => {
                             eprintln!("aerofi: failed to run {thread_name}: {e}");
                             return;
@@ -125,12 +299,23 @@ pub fn execute(target: &Target) {
                     let Ok(mut pbcopy) = Command::new("pbcopy").stdin(Stdio::piped()).spawn()
                     else {
                         eprintln!("aerofi: failed to spawn pbcopy for {thread_name}");
+                        // Drain the child's pipe so it never blocks on a
+                        // full buffer.
+                        if let Some(mut stdout) = child.stdout.take() {
+                            let mut sink = std::io::sink();
+                            let _ = std::io::copy(&mut stdout, &mut sink);
+                        }
+                        let _ = child.wait();
                         return;
                     };
-                    let _ = pbcopy
-                        .stdin
-                        .take()
-                        .map(|mut stdin| stdin.write_all(text.as_bytes()));
+                    // Stream stdout straight into pbcopy so an arbitrarily
+                    // large script output never accumulates in our memory.
+                    if let (Some(mut stdout), Some(mut stdin)) =
+                        (child.stdout.take(), pbcopy.stdin.take())
+                    {
+                        let _ = std::io::copy(&mut stdout, &mut stdin);
+                    }
+                    let _ = child.wait();
                     let _ = pbcopy.wait();
                 });
             if let Err(e) = spawn_result {
@@ -244,5 +429,65 @@ mod tests {
         // Both prefixes already listed → nothing to add → None.
         let current = "/opt/homebrew/bin:/usr/local/bin:/usr/bin";
         assert!(augmented_path(current).is_none());
+    }
+
+    #[test]
+    fn run_bounded_small_output_is_verbatim() {
+        let path = temp_script(
+            "bounded_small",
+            "#!/usr/bin/env bash\necho line1\necho line2",
+        );
+        let out = run_bounded(&path, &[], MAX_DISPLAY_OUTPUT).unwrap();
+        assert!(out.success);
+        assert_eq!(out.stdout, "line1\nline2\n");
+        assert_eq!(out.last_line.as_deref(), Some("line2"));
+        assert!(out.stderr.is_empty());
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn run_bounded_truncates_large_stdout_and_keeps_head() {
+        // `seq 1 200000` is ~1.23 MiB — just over the 1 MiB display cap.
+        let path = temp_script("bounded_large", "#!/usr/bin/env bash\nseq 1 200000");
+        let out = run_bounded(&path, &[], MAX_DISPLAY_OUTPUT).unwrap();
+        assert!(out.success);
+        assert_eq!(out.last_line.as_deref(), Some("200000"));
+        let expected_head: String = (1..=200_000).map(|i| format!("{i}\n")).collect();
+        assert!(
+            out.stdout.starts_with(&expected_head[..MAX_DISPLAY_OUTPUT]),
+            "the head of the output must be kept verbatim"
+        );
+        assert!(out.stdout.contains("[output truncated"));
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn run_bounded_keeps_stderr_tail() {
+        // ~600 KiB of stderr, well over the 256 KiB cap: the head is
+        // dropped, the tail (with the real error) survives.
+        let path = temp_script(
+            "bounded_err",
+            "#!/usr/bin/env bash\nseq 1 100000 >&2\necho final-error >&2",
+        );
+        let out = run_bounded(&path, &[], MAX_DISPLAY_OUTPUT).unwrap();
+        assert!(out.success);
+        assert!(
+            out.stderr.starts_with("… [stderr truncated]"),
+            "stderr should carry the truncation note"
+        );
+        assert!(out.stderr.contains("100000"));
+        assert!(out.stderr.ends_with("final-error\n"));
+        assert!(out.last_line.is_none(), "no stdout was produced");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn run_bounded_reports_failure_status() {
+        let path = temp_script("bounded_fail", "#!/usr/bin/env bash\necho oops\nexit 3");
+        let out = run_bounded(&path, &[], MAX_DISPLAY_OUTPUT).unwrap();
+        assert!(!out.success);
+        assert_eq!(out.stdout, "oops\n");
+        assert_eq!(out.last_line.as_deref(), Some("oops"));
+        let _ = std::fs::remove_file(&path);
     }
 }

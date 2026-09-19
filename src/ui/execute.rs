@@ -43,13 +43,17 @@ pub fn execute_script(
 
     // The closure captures `path` by clone so the async block can own it.
     let path2 = path.clone();
+    // Bound the captured output: display modes only need the head, the
+    // clipboard a generous amount. Unbounded capture spikes RSS on chatty
+    // scripts (the allocator never returns the high-water mark).
+    let stdout_cap = if mode == ScriptMode::Pipe {
+        crate::core::executor::MAX_CLIPBOARD_OUTPUT
+    } else {
+        crate::core::executor::MAX_DISPLAY_OUTPUT
+    };
     cx.spawn(move |_: &mut AsyncApp| async move {
         let result = executor
-            .spawn(async move {
-                let mut cmd = crate::core::executor::script_command(&path2);
-                cmd.args(args);
-                cmd.output()
-            })
+            .spawn(async move { crate::core::executor::run_bounded(&path2, &args, stdout_cap) })
             .await;
 
         cx_async.update(|cx| {
@@ -57,8 +61,7 @@ pub fn execute_script(
                 // pipe: copy stdout to clipboard, hide.
                 ScriptMode::Pipe => {
                     if let Ok(out) = result {
-                        let text = String::from_utf8_lossy(&out.stdout).to_string();
-                        cx.write_to_clipboard(gpui::ClipboardItem::new_string(text));
+                        cx.write_to_clipboard(gpui::ClipboardItem::new_string(out.stdout));
                     }
                     view.update(cx, |launcher, _| launcher.on_hide());
                     crate::ui::window::hide();
@@ -67,16 +70,14 @@ pub fn execute_script(
                 ScriptMode::FullOutput => {
                     let text = match result {
                         Ok(out) => {
-                            let stdout = String::from_utf8_lossy(&out.stdout).to_string();
-                            let stderr = String::from_utf8_lossy(&out.stderr);
-                            if !stderr.trim().is_empty() && stdout.trim().is_empty() {
-                                stderr.into_owned()
-                            } else if !stderr.trim().is_empty() {
-                                format!("{}\n\n[stderr]\n{}", stdout, stderr)
-                            } else if stdout.trim().is_empty() {
+                            if !out.stderr.trim().is_empty() && out.stdout.trim().is_empty() {
+                                out.stderr
+                            } else if !out.stderr.trim().is_empty() {
+                                format!("{}\n\n[stderr]\n{}", out.stdout, out.stderr)
+                            } else if out.stdout.trim().is_empty() {
                                 "(no output)".to_string()
                             } else {
-                                stdout
+                                out.stdout
                             }
                         }
                         Err(e) => format!("Error: {e}"),
@@ -91,15 +92,28 @@ pub fn execute_script(
                     let mut has_output = true;
                     let (text, is_error) = match result {
                         Ok(out) => {
-                            let is_err = !out.status.success();
-                            let src = if is_err { &out.stderr } else { &out.stdout };
-                            let raw = String::from_utf8_lossy(src);
-                            // Show the last non-empty line (Raycast compact behaviour).
-                            if let Some(l) = raw.lines().rfind(|l| !l.trim().is_empty()) {
-                                (l.to_string(), is_err)
+                            let is_err = !out.success;
+                            // Show the last non-empty line (Raycast compact
+                            // behaviour): stderr on failure, stdout
+                            // otherwise.
+                            let line = if is_err {
+                                out.stderr.lines().rfind(|l| !l.trim().is_empty())
                             } else {
-                                has_output = false;
-                                (if is_err { "Script failed.".to_string() } else { "Done.".to_string() }, is_err)
+                                out.last_line.as_deref()
+                            };
+                            match line {
+                                Some(l) => (l.to_string(), is_err),
+                                None => {
+                                    has_output = false;
+                                    (
+                                        if is_err {
+                                            "Script failed.".to_string()
+                                        } else {
+                                            "Done.".to_string()
+                                        },
+                                        is_err,
+                                    )
+                                }
                             }
                         }
                         Err(e) => (format!("Error: {e}"), true),
@@ -142,15 +156,10 @@ pub fn execute_script(
                 }
                 // inline: update the subtitle in the list row.
                 ScriptMode::Inline => {
-                    let output = match result {
-                        Ok(out) => {
-                            let raw = String::from_utf8_lossy(&out.stdout);
-                            raw.lines()
-                                .rfind(|l| !l.trim().is_empty())
-                                .map(|s| gpui::SharedString::from(s.to_string()))
-                        }
-                        Err(_) => None,
-                    };
+                    let output = result
+                        .ok()
+                        .and_then(|out| out.last_line)
+                        .map(gpui::SharedString::from);
                     view.update(cx, |launcher, cx| {
                         launcher.apply_inline_output(&path, output);
                         cx.notify();
