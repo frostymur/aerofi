@@ -57,6 +57,7 @@ image = { version = "0.25.1", default-features = false, features = ["tiff", "jpe
 # Same raw-window-handle version GPUI uses, so we can read the content NSView pointer
 raw-window-handle = "0.6"
 futures = "0.3.34"
+libc = "0.2.189"
 
 [profile.release]
 opt-level = 3

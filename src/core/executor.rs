@@ -14,6 +14,23 @@ use crate::core::item::{ScriptMode, Target};
 pub fn script_command(path: &Path) -> Command {
     let mut cmd = base_script_command(path);
     augment_script_path(&mut cmd);
+    // Run each script in its own process group (pgid == child pid) so a
+    // group kill can take down the script and everything it spawned.
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        unsafe {
+            cmd.pre_exec(move || {
+                if unsafe { libc::setpgid(0, 0) } == 0 {
+                    Ok(())
+                } else {
+                    // Never run in the inherited group: a group kill would
+                    // then hit aerofi's own processes. Abort the child.
+                    unsafe { libc::_exit(127) };
+                }
+            });
+        }
+    }
     cmd
 }
 

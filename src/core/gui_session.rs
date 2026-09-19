@@ -171,9 +171,15 @@ impl GuiSession {
         self.stdin.flush()
     }
 
-    /// Kill the child process (SIGTERM).
+    /// Kill the script's entire process group (SIGKILL).
+    ///
+    /// Scripts run in their own process group (see
+    /// `executor::script_command`), so the negative-pid signal reaches the
+    /// script and every process it spawned — a plain `child.kill()` would
+    /// orphan grandchildren.
     pub fn kill(&mut self) {
-        let _ = self.child.kill();
+        let pid = self.child.id() as libc::c_int;
+        unsafe { libc::kill(-pid, libc::SIGKILL) };
         let _ = self.child.wait();
     }
 }
@@ -301,6 +307,49 @@ mod tests {
         assert_eq!(burst.rows[1].text, "Item Two");
         assert_eq!(burst.rows[1].info, Some("New".to_string()));
 
+        let _ = std::fs::remove_file(&script);
+    }
+
+    #[test]
+    fn session_kill_takes_down_grandchildren() {
+        // A script that spawns a long-lived grandchild and reports its
+        // pid, then blocks. Killing the session must take the grandchild
+        // down too (process-group kill), not orphan it.
+        let dir = std::env::temp_dir();
+        let script = dir.join(format!("aerofi_grandchild_test_{}.sh", std::process::id()));
+        std::fs::write(&script, "#!/bin/bash\nsleep 3601 &\necho $!\nsleep 3600\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = std::fs::metadata(&script).unwrap().permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(&script, perms).unwrap();
+        }
+
+        let mut session =
+            GuiSession::spawn(&script, vec![], std::collections::HashMap::new()).unwrap();
+        let result = session.read_burst(Duration::from_secs(5));
+        let burst = match result {
+            ReadResult::Burst(b) => b,
+            other => panic!("Expected Burst, got {:?}", other),
+        };
+        let pid: i32 = burst.rows[0].text.trim().parse().unwrap();
+        session.kill();
+        std::thread::sleep(Duration::from_millis(200));
+
+        let pid_str = pid.to_string();
+        let alive = std::process::Command::new("kill")
+            .args(["-0", &pid_str])
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+        if alive {
+            // Don't leave a test orphan behind when we fail.
+            let _ = std::process::Command::new("kill")
+                .args(["-9", &pid_str])
+                .status();
+            panic!("grandchild {pid} survived the session kill");
+        }
         let _ = std::fs::remove_file(&script);
     }
 }
