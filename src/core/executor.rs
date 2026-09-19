@@ -131,6 +131,12 @@ pub fn kill_all_scripts() {
     }
 }
 
+/// Serializes every test that spawns a real script process: `kill_all_scripts`
+/// signals all registered groups, so no two such tests may share the registry.
+#[cfg(test)]
+pub(crate) static SCRIPT_PROCESS_LOCK: std::sync::LazyLock<std::sync::Mutex<()>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(()));
+
 /// True if `pid` is currently in the running-scripts registry.
 #[cfg(test)]
 pub fn script_is_registered(pid: u32) -> bool {
@@ -503,6 +509,7 @@ mod tests {
 
     #[test]
     fn run_bounded_small_output_is_verbatim() {
+        let _lock = SCRIPT_PROCESS_LOCK.lock().unwrap();
         let path = temp_script(
             "bounded_small",
             "#!/usr/bin/env bash\necho line1\necho line2",
@@ -517,6 +524,7 @@ mod tests {
 
     #[test]
     fn run_bounded_truncates_large_stdout_and_keeps_head() {
+        let _lock = SCRIPT_PROCESS_LOCK.lock().unwrap();
         // `seq 1 200000` is ~1.23 MiB — just over the 1 MiB display cap.
         let path = temp_script("bounded_large", "#!/usr/bin/env bash\nseq 1 200000");
         let out = run_bounded(&path, &[], MAX_DISPLAY_OUTPUT).unwrap();
@@ -533,6 +541,7 @@ mod tests {
 
     #[test]
     fn run_bounded_keeps_stderr_tail() {
+        let _lock = SCRIPT_PROCESS_LOCK.lock().unwrap();
         // ~600 KiB of stderr, well over the 256 KiB cap: the head is
         // dropped, the tail (with the real error) survives.
         let path = temp_script(
@@ -553,6 +562,7 @@ mod tests {
 
     #[test]
     fn run_bounded_reports_failure_status() {
+        let _lock = SCRIPT_PROCESS_LOCK.lock().unwrap();
         let path = temp_script("bounded_fail", "#!/usr/bin/env bash\necho oops\nexit 3");
         let out = run_bounded(&path, &[], MAX_DISPLAY_OUTPUT).unwrap();
         assert!(!out.success);
@@ -563,6 +573,7 @@ mod tests {
 
     #[test]
     fn run_bounded_registers_and_unregisters_script() {
+        let _lock = SCRIPT_PROCESS_LOCK.lock().unwrap();
         // A script that blocks: while it runs, its pid must be in the
         // registry; after run_bounded returns, it must be gone.
         let path = temp_script("registry", "#!/usr/bin/env bash\nsleep 2\necho done");
@@ -595,6 +606,7 @@ mod tests {
 
     #[test]
     fn kill_all_scripts_drains_registry_without_hitting_other_groups() {
+        let _lock = SCRIPT_PROCESS_LOCK.lock().unwrap();
         // A plain child shares THIS process's group, so its pid is not a
         // group id: kill(-pid) is a guaranteed ESRCH no-op. Registering it
         // simulates a stale registry entry and proves kill_all_scripts

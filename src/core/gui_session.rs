@@ -283,6 +283,7 @@ mod tests {
 
     #[test]
     fn session_spawn_and_read() {
+        let _lock = crate::core::executor::SCRIPT_PROCESS_LOCK.lock().unwrap();
         // Spawn a simple echo script that outputs protocol lines and exits.
         let dir = std::env::temp_dir();
         let script = dir.join(format!("aerofi_gui_test_{}.sh", std::process::id()));
@@ -323,6 +324,7 @@ mod tests {
 
     #[test]
     fn session_kill_takes_down_grandchildren() {
+        let _lock = crate::core::executor::SCRIPT_PROCESS_LOCK.lock().unwrap();
         // A script that spawns a long-lived grandchild and reports its
         // pid, then blocks. Killing the session must take the grandchild
         // down too (process-group kill), not orphan it.
