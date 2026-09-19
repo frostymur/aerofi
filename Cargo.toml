@@ -5,9 +5,14 @@ members = [
   "examples/plugins/file_search",
 ]
 
+# Shared version so `cargo release` renders {{version}} in the bump commit
+# message (without it the workspace commit template has no version variable).
+[workspace.package]
+version = "0.2.2"
+
 [package]
 name = "aerofi"
-version = "0.2.2"
+version.workspace = true
 edition = "2024"
 license = "MIT"
 publish = false
