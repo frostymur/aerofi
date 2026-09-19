@@ -623,6 +623,10 @@ impl Launcher {
         {
             s.kill();
         }
+        // Best-effort: ask the allocator to munmap the session's freed
+        // pages while we are hidden. Modern macOS often releases nothing
+        // (see sys::memory); harmless either way.
+        crate::sys::memory::pressure_relief();
     }
 
     /// Called when the window is shown.  Refills `filtered` from `all`

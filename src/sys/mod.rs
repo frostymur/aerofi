@@ -6,3 +6,4 @@ pub mod appkit;
 pub mod carbon;
 pub mod fonts;
 pub mod icons;
+pub mod memory;
