@@ -627,12 +627,18 @@ impl Launcher {
         // pages while we are hidden. Modern macOS often releases nothing
         // (see sys::memory); harmless either way.
         crate::sys::memory::pressure_relief();
+        // Tell the GPU driver to evict the atlases/drawables we no longer
+        // render; they re-fault on the next show.
+        crate::sys::gpu::trim_gpu_memory();
     }
 
     /// Called when the window is shown.  Refills `filtered` from `all`
     /// so the next render creates fresh `img()` elements that GPUI will
     /// decode on demand.
     pub fn on_show(&mut self) {
+        // Lift the hidden GPU working-set budget before the first frame so
+        // the driver keeps the re-faulted buffers resident.
+        crate::sys::gpu::restore_gpu_memory();
         self.refilter(None);
         // refilter() resets the scroll to the top, but the selection
         // survived the hide/show cycle — restore the view to it so the
