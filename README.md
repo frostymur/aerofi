@@ -53,28 +53,15 @@ Compare to alternatives:
 ## 🚀 Installation
 
 ### Homebrew (Recommended)
-Install aerofi and start it as a native macOS background service. The formula
-is installed directly from its URL, so no `brew tap` is required:
+Install aerofi and start it as a native macOS background service:
 ```bash
-brew install https://raw.githubusercontent.com/frostymur/homebrew-aerofi/main/Formula/aerofi.rb
+brew install frostymur/tap/aerofi
 
 # Start as a background service (starts automatically at login)
 brew services start aerofi
 ```
 
-<details>
-<summary><b>Prefer a tap?</b> so <code>brew upgrade</code> tracks new releases</summary>
-
-A formula installed from the URL above is "external" and won't be auto-upgraded.
-If you want `brew upgrade aerofi` to pick up new releases, use the tap instead:
-
-```bash
-brew tap frostymur/homebrew-aerofi
-brew install aerofi
-brew services start aerofi
-```
-
-</details>
+`brew upgrade aerofi` picks up new releases.
 
 ### Prebuilt Binary (Direct Download)
 Download the latest prebuilt binary from [GitHub Releases](https://github.com/frostymur/aerofi/releases/latest):

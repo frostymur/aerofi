@@ -63,9 +63,9 @@ jobs:
       - name: Checkout Homebrew Tap
         uses: actions/checkout@v4
         with:
-          repository: frostymur/homebrew-aerofi
+          repository: frostymur/homebrew-tap
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-          path: homebrew-aerofi
+          path: homebrew-tap
           ref: main
 
       - name: Calculate Checksums & Update Formula
@@ -145,13 +145,13 @@ jobs:
 
           clean_formula = textwrap.dedent(formula).strip() + "\n"
 
-          with open("homebrew-aerofi/Formula/aerofi.rb", "w") as f:
+          with open("homebrew-tap/Formula/aerofi.rb", "w") as f:
               f.write(clean_formula)
           '
 
       - name: Commit and push changes
         run: |
-          cd homebrew-aerofi
+          cd homebrew-tap
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add Formula/aerofi.rb
