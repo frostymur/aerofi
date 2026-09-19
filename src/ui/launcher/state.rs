@@ -1292,8 +1292,12 @@ impl Launcher {
                     // We must return early to avoid the `self.state = GuiMode`
                     // assignment at the bottom of this function overwriting the
                     // `Search` state that gui_leave() sets.
-                    self.gui_leave();
-                    self.reload();
+                    // gui_leave() already reloaded when the theme changed on
+                    // disk; only reload again for other config changes so a
+                    // theme switch triggers exactly one full re-index.
+                    if !self.gui_leave() {
+                        self.reload();
+                    }
                     return;
                 }
             }
@@ -1792,7 +1796,10 @@ impl Launcher {
     }
 
     /// Leave GUI mode: kill the session and return to the search list.
-    fn gui_leave(&mut self) {
+    /// Leave GUI mode. Returns `true` if a reload was performed because the
+    /// theme changed on disk (callers that also want a reload — e.g. the
+    /// `Reload` GUI command — can skip their own to avoid a double re-index).
+    fn gui_leave(&mut self) -> bool {
         if let Some(session) = self.gui_session.take()
             && let Ok(mut s) = session.lock()
         {
@@ -1804,7 +1811,8 @@ impl Launcher {
         // after closing a gui-mode script that declared columns = 1.
         self.sticky_metatags = None;
         let new_config = crate::core::config::AppConfig::load();
-        if new_config.theme != self.app_config.theme {
+        let reloaded = new_config.theme != self.app_config.theme;
+        if reloaded {
             self.reload();
         }
         self.state = LauncherState::Search;
@@ -1826,5 +1834,6 @@ impl Launcher {
         // (same size → early return in `set_frame_size`).
         let t = &self.theme;
         crate::sys::appkit::set_window_size(t.window.width as f64, t.window.height as f64);
+        reloaded
     }
 }
