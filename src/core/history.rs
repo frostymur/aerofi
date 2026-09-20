@@ -9,6 +9,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use gpui::SharedString;
@@ -29,7 +30,9 @@ pub struct History {
     records: Vec<ExecutionRecord>,
     path: PathBuf,
     /// Lazily computed frecency map, invalidated on `record_launch`.
-    frecency_cache: RefCell<Option<HashMap<String, u32>>>,
+    /// Shared through an `Arc` so every `search()` call only bumps a
+    /// refcount instead of deep-cloning the whole map per keystroke.
+    frecency_cache: RefCell<Option<Arc<HashMap<String, u32>>>>,
 }
 
 impl History {
@@ -110,19 +113,21 @@ impl History {
 
     /// Calculate the frecency points for all recorded targets in a single pass.
     /// Returns a cached map of target identifier to its total frecency score.
-    /// The cache is invalidated when `record_launch` is called.
-    pub fn calculate_frecency_map(&self) -> std::collections::HashMap<String, u32> {
+    /// The cache is invalidated when `record_launch` is called; the map is
+    /// shared through an `Arc`, so each call returns in O(1).
+    pub fn calculate_frecency_map(&self) -> Arc<HashMap<String, u32>> {
         if let Some(cached) = self.frecency_cache.borrow().as_ref() {
             return cached.clone();
         }
         let now = now_secs();
-        let mut map = std::collections::HashMap::new();
+        let mut map = HashMap::new();
         for r in &self.records {
             let pts = recency_points(now.saturating_sub(r.timestamp));
             *map.entry(r.target_identifier.to_string()).or_insert(0) += pts;
         }
-        *self.frecency_cache.borrow_mut() = Some(map.clone());
-        map
+        let shared = Arc::new(map);
+        *self.frecency_cache.borrow_mut() = Some(shared.clone());
+        shared
     }
 
     /// Persist the current records to `path` (best effort: failures are
