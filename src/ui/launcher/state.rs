@@ -696,6 +696,12 @@ impl Launcher {
         // Lift the hidden GPU working-set budget before the first frame so
         // the driver keeps the re-faulted buffers resident.
         crate::sys::gpu::restore_gpu_memory();
+        // Inline daemons buffered their ticks while the window was hidden
+        // (the main thread was never woken for them); apply the latest of
+        // each before the first frame so subtitles aren't stale.
+        for (path, text) in crate::core::scheduler::flush_pending_inline() {
+            self.apply_inline_output(&path, Some(gpui::SharedString::from(text)));
+        }
         self.refilter(None);
         // refilter() resets the scroll to the top, but the selection
         // survived the hide/show cycle — restore the view to it so the

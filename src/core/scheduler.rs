@@ -1,12 +1,21 @@
 use crate::core::item::{ScriptMode, Target};
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use std::sync::{LazyLock, Mutex};
-use std::time::Duration;
+use std::process::{ChildStdin, Command, Stdio};
+use std::sync::{Arc, LazyLock, Mutex};
+use std::time::{Duration, Instant};
 
 const BOUNDARY: &str = "__AEROFI_BOUNDARY__";
+
+/// One byte written to a daemon's stdin re-sources its script immediately
+/// (the wrapper's `read` returns early). Pacing the writes paces the ticks.
+const WAKE: &[u8] = b"\n";
+
+/// Safety-net timeout for the daemon wrapper's `read`: if aerofi's pacing
+/// ever stops (or the window stays hidden for a long time), the daemon
+/// still refreshes at least this often.
+const DAEMON_FALLBACK_SECS: u64 = 3600;
 
 /// Parses a refresh time string like "5m", "1h", "30s" into a Duration.
 pub fn parse_refresh_time(s: &str) -> Option<Duration> {
@@ -37,18 +46,76 @@ struct DaemonInfo {
     path: PathBuf,
     /// Refresh interval in seconds (a change restarts the daemon).
     secs: u64,
+    /// The daemon's stdin — writing to it paces the daemon's refresh ticks
+    /// (see [`WAKE`]).
+    stdin: Arc<Mutex<Option<ChildStdin>>>,
 }
+
+/// When each daemon last received a pacing wake. Drives the per-daemon
+/// cadence: a daemon is woken once its interval has elapsed.
+static LAST_TICK: LazyLock<Mutex<HashMap<String, Instant>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// Running daemons, keyed by script filename stem.
 static DAEMONS: LazyLock<Mutex<HashMap<String, DaemonInfo>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
-/// Output channel shared by every daemon thread. One app-scoped dispatcher
-/// task (started by `start_daemon`) applies messages to the launcher; the
-/// global sender keeps that task alive for the whole app run.
-type DaemonOutputTx = futures::channel::mpsc::UnboundedSender<(PathBuf, String)>;
+/// Events flowing from the daemon reader threads (and the main thread)
+/// into the single dispatcher task.
+enum DaemonEvent {
+    /// A daemon produced new output.
+    Output(PathBuf, String),
+    /// The window was shown: poke every daemon for a fresh tick and resume
+    /// pacing.
+    Show,
+    /// The window was hidden: stop pacing.
+    Hide,
+}
 
-static OUTPUT_TX: LazyLock<Mutex<Option<DaemonOutputTx>>> = LazyLock::new(|| Mutex::new(None));
+/// Event channel shared by every daemon thread. One app-scoped dispatcher
+/// task (started by `start_daemon`) applies messages to the launcher and
+/// paces the daemons' refresh cadence; the global sender keeps that task
+/// alive for the whole app run.
+type DaemonEventTx = futures::channel::mpsc::UnboundedSender<DaemonEvent>;
+
+static OUTPUT_TX: LazyLock<Mutex<Option<DaemonEventTx>>> = LazyLock::new(|| Mutex::new(None));
+
+/// Tell the dispatcher about a window visibility change so it resumes or
+/// stops pacing the daemons. Call from the main thread.
+pub fn notify_visibility(visible: bool) {
+    let Some(tx) = OUTPUT_TX
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone()
+    else {
+        return;
+    };
+    let _ = tx.unbounded_send(if visible {
+        DaemonEvent::Show
+    } else {
+        DaemonEvent::Hide
+    });
+}
+
+/// Latest per-daemon output produced while the window was hidden.
+///
+/// Pushing a hidden tick over the channel would wake the main thread (and
+/// run a `view.update`) for output nobody is looking at. Instead the reader
+/// thread parks the tick here, and [`flush_pending_inline`] drains it when
+/// the window is shown again. Keyed by script path, so at most one entry
+/// per inline daemon is retained.
+static PENDING_INLINE: LazyLock<Mutex<HashMap<PathBuf, String>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Drain and return the inline outputs buffered while the window was
+/// hidden. Must be called on the main thread (e.g. from `on_show`); the
+/// caller is expected to apply each entry to the launcher.
+pub fn flush_pending_inline() -> Vec<(PathBuf, String)> {
+    let mut pending = PENDING_INLINE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    pending.drain().collect()
+}
 
 fn lock_daemons() -> std::sync::MutexGuard<'static, HashMap<String, DaemonInfo>> {
     DAEMONS
@@ -88,6 +155,93 @@ fn desired_daemons(targets: &[Target]) -> HashMap<String, (PathBuf, u64)> {
     desired
 }
 
+/// Apply one daemon event to the launcher, returning the resulting
+/// visibility state: `Show`/`Hide` override it, `Output` preserves it.
+/// Kept as a plain (synchronous) function so the dispatcher's borrow of
+/// `visible` never spans an await point.
+fn handle_daemon_event(
+    ev: DaemonEvent,
+    visible: bool,
+    app: &gpui::AsyncApp,
+    view: &gpui::Entity<crate::ui::launcher::Launcher>,
+) -> bool {
+    match ev {
+        DaemonEvent::Output(path, text) => {
+            app.update(|cx| {
+                view.update(cx, |launcher, cx| {
+                    launcher.apply_inline_output(&path, Some(gpui::SharedString::from(text)));
+                    if crate::ui::window::is_visible() {
+                        cx.notify();
+                    }
+                });
+            });
+            visible
+        }
+        DaemonEvent::Show => {
+            // Fresh data on the first frame after a show.
+            poke_all_daemons();
+            true
+        }
+        DaemonEvent::Hide => false,
+    }
+}
+
+/// The time until the next daemon's pacing wake is due, or an hour if
+/// there are no daemons (the timer then just re-checks state).
+fn next_pace_in() -> Duration {
+    let now = Instant::now();
+    let daemons = lock_daemons();
+    let last = LAST_TICK.lock().unwrap_or_else(|p| p.into_inner());
+    daemons
+        .iter()
+        .map(|(stem, d)| {
+            let last_at = last.get(stem).copied().unwrap_or(now);
+            (last_at + Duration::from_secs(d.secs)).saturating_duration_since(now)
+        })
+        .min()
+        .unwrap_or(Duration::from_secs(DAEMON_FALLBACK_SECS))
+}
+
+/// Write a pacing wake to every daemon whose refresh interval has elapsed.
+/// Called by the dispatcher's timer while the window is visible.
+fn pace_daemons() {
+    let now = Instant::now();
+    let daemons = lock_daemons();
+    let mut last = LAST_TICK.lock().unwrap_or_else(|p| p.into_inner());
+    for (stem, d) in daemons.iter() {
+        let due = last
+            .get(stem)
+            .is_none_or(|t| now.duration_since(*t) >= Duration::from_secs(d.secs));
+        if due {
+            let _ = d
+                .stdin
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .as_mut()
+                .and_then(|s| s.write_all(WAKE).ok());
+            last.insert(stem.clone(), now);
+        }
+    }
+}
+
+/// Immediately re-source every daemon by writing a wake to its stdin.
+/// Called when the window is shown so inline subtitles are fresh on the
+/// first frame. Must be called on the main thread.
+pub fn poke_all_daemons() {
+    let now = Instant::now();
+    let daemons = lock_daemons();
+    let mut last = LAST_TICK.lock().unwrap_or_else(|p| p.into_inner());
+    for (stem, d) in daemons.iter() {
+        let _ = d
+            .stdin
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .as_mut()
+            .and_then(|s| s.write_all(WAKE).ok());
+        last.insert(stem.clone(), now);
+    }
+}
+
 /// Start the inline-script daemon subsystem: installs the shared output
 /// channel, spawns the single dispatcher task that pushes daemon output to
 /// the launcher, and starts the daemons for `all_targets`.
@@ -99,27 +253,47 @@ pub fn start_daemon(
     all_targets: &[Target],
     view: gpui::Entity<crate::ui::launcher::Launcher>,
 ) {
-    let (tx, mut rx) = futures::channel::mpsc::unbounded::<(PathBuf, String)>();
+    let (tx, mut rx) = futures::channel::mpsc::unbounded::<DaemonEvent>();
     *OUTPUT_TX
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(tx);
 
-    // Single dispatcher for all daemons: truly sleeps via Stream::next()
-    // until a message arrives — zero CPU between script outputs.
+    // Single dispatcher for all daemons: applies daemon output as it
+    // arrives and — while the window is visible — writes the pacing wakes
+    // to the daemons' stdin. While hidden it parks on the event channel
+    // with no timer at all: the `Show` event wakes it immediately, so the
+    // daemons (and their reader threads) stay fully asleep in the
+    // background.
     let app_async = cx.to_async();
     let dispatcher_app = app_async.clone();
+    // Owned handle (cloned out of `app_async`) so the timer futures the
+    // dispatcher awaits are 'static and the async block never borrows the
+    // spawn closure's `&mut AsyncApp` parameter.
+    let bg = app_async.background_executor().clone();
     app_async
         .spawn(move |_: &mut gpui::AsyncApp| async move {
-            use futures::StreamExt;
-            while let Some((path, text)) = rx.next().await {
-                dispatcher_app.update(|cx| {
-                    view.update(cx, |launcher, cx| {
-                        launcher.apply_inline_output(&path, Some(gpui::SharedString::from(text)));
-                        if crate::ui::window::is_visible() {
-                            cx.notify();
+            use futures::{FutureExt, StreamExt};
+            let mut visible = crate::ui::window::is_visible();
+            loop {
+                if visible {
+                    let delay = next_pace_in();
+                    futures::select! {
+                        ev = rx.next() => {
+                            let Some(ev) = ev else { return };
+                            visible = handle_daemon_event(ev, visible, &dispatcher_app, &view);
                         }
-                    });
-                });
+                        _ = bg.timer(delay).fuse() => {
+                            pace_daemons();
+                        }
+                    }
+                } else {
+                    // Hidden: park on the channel with no timer at all. A
+                    // `Show` event wakes this immediately and resumes pacing.
+                    let Some(ev) = rx.next().await else {
+                        return;
+                    };
+                    visible = handle_daemon_event(ev, visible, &dispatcher_app, &view);
+                }
             }
         })
         .detach();
@@ -157,7 +331,7 @@ pub fn reconcile_daemons(targets: &[Target]) {
         if daemons.get(stem).is_some() {
             continue;
         }
-        let Some(pid) = spawn_daemon(stem, path, *secs) else {
+        let Some((pid, stdin)) = spawn_daemon(stem, path) else {
             continue;
         };
         daemons.insert(
@@ -166,15 +340,21 @@ pub fn reconcile_daemons(targets: &[Target]) {
                 pid,
                 path: path.clone(),
                 secs: *secs,
+                stdin,
             },
         );
     }
 }
 
-/// Spawn one daemon: a long-lived bash wrapper that sources the script
-/// every `secs` seconds and emits its output delimited by a boundary line.
-/// Returns the bash pid (registered for quit-time kill).
-fn spawn_daemon(stem: &str, path: &Path, secs: u64) -> Option<u32> {
+/// Spawn one daemon: a long-lived bash wrapper that sources the script,
+/// emits its output delimited by a boundary line, and then waits for aerofi
+/// to write a wake byte to its stdin (pacing the refresh). A long `read -t`
+/// timeout is the safety net in case aerofi never paces (e.g. the window
+/// stays hidden for a long time).
+///
+/// Returns the bash pid (registered for quit-time kill) and the handle to
+/// the daemon's stdin, used to send the pacing wakes.
+fn spawn_daemon(stem: &str, path: &Path) -> Option<(u32, Arc<Mutex<Option<ChildStdin>>>)> {
     let Some(tx) = OUTPUT_TX
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -184,17 +364,26 @@ fn spawn_daemon(stem: &str, path: &Path, secs: u64) -> Option<u32> {
         return None;
     };
 
+    // A fresh daemon starts its own cadence.
+    LAST_TICK
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .remove(stem);
+
     let path_str = path.to_string_lossy().into_owned();
+    // The sourced script's stdin is /dev/null so it can never consume a
+    // pacing wake; only the outer `read` reads from the pipe.
     let bash_script = format!(
-        "while true; do\n  . \"{script}\" 2>/dev/null || true\n  printf '%s\\n' '{boundary}'\n  read -t {secs} _ 2>/dev/null || true\ndone",
+        "while true; do\n  . \"{script}\" < /dev/null 2>/dev/null || true\n  printf '%s\\n' '{boundary}'\n  read -t {fallback} _ 2>/dev/null || true\ndone",
         script = path_str,
         boundary = BOUNDARY,
-        secs = secs,
+        fallback = DAEMON_FALLBACK_SECS,
     );
 
     let mut cmd = Command::new("bash");
     cmd.arg("-c")
         .arg(&bash_script)
+        .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
     // Own process group so quit-time group kills reach the daemon bash and
@@ -220,6 +409,7 @@ fn spawn_daemon(stem: &str, path: &Path, secs: u64) -> Option<u32> {
             return None;
         }
     };
+    let stdin = child.stdin.take();
 
     let path2 = path.to_path_buf();
     let stem2 = stem.to_string();
@@ -244,10 +434,23 @@ fn spawn_daemon(stem: &str, path: &Path, secs: u64) -> Option<u32> {
                     buf.clear();
 
                     if !text.is_empty() {
-                        // UnboundedSender::unbounded_send never blocks.
-                        if tx.unbounded_send((path2.clone(), text)).is_err() {
-                            // Dispatcher gone — UI shut down.
-                            break;
+                        if crate::ui::window::is_visible() {
+                            // UnboundedSender::unbounded_send never blocks.
+                            if tx
+                                .unbounded_send(DaemonEvent::Output(path2.clone(), text))
+                                .is_err()
+                            {
+                                // Dispatcher gone — UI shut down.
+                                break;
+                            }
+                        } else {
+                            // Hidden: buffer the latest tick without waking
+                            // the main thread; `Launcher::on_show` flushes
+                            // it via `flush_pending_inline`.
+                            let mut pending = PENDING_INLINE
+                                .lock()
+                                .unwrap_or_else(|poisoned| poisoned.into_inner());
+                            pending.insert(path2.clone(), text);
                         }
                     }
                 } else if buf.len() < 500 {
@@ -264,5 +467,28 @@ fn spawn_daemon(stem: &str, path: &Path, secs: u64) -> Option<u32> {
             daemon_remove(&stem2, pid);
         });
 
-    Some(pid)
+    Some((pid, Arc::new(Mutex::new(stdin))))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn flush_pending_inline_drains_latest_per_path() {
+        let path = PathBuf::from("/tmp/aerofi-test-inline.sh");
+        // Simulate two hidden ticks for the same daemon (latest wins).
+        for text in ["stale", "fresh"] {
+            PENDING_INLINE
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .insert(path.clone(), text.to_string());
+        }
+
+        let out = flush_pending_inline();
+        assert_eq!(out, vec![(path.clone(), "fresh".to_string())]);
+
+        // A second flush is empty (buffer was drained).
+        assert!(flush_pending_inline().is_empty());
+    }
 }

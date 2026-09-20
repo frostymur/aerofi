@@ -108,6 +108,7 @@ Displays a minimalist floating indicator on screen while the script runs, then s
 The script runs in the background and its output is displayed directly as a subtitle inside the aerofi launcher list.
 - **Example Script**: [examples/scripts/inline.sh](../examples/scripts/inline.sh)
 - **Ideal for**: Live status widgets (e.g. current Spotify track, active Git branch, weather, battery health). When combined with `@aerofi.refreshTime 10s`, aerofi automatically refreshes the output periodically.
+- **Stopping the background refresh**: the refresh daemon lives only while the script is present with `mode: inline` + `refreshTime`. To stop it, either remove the `@aerofi.refreshTime` line, change `@aerofi.mode` to something else, or delete the script — then press `Cmd+R` (Reload Configuration). Aerofi reconciles the daemon set on every reload and kills the retired daemon's whole process group. Quitting aerofi also kills all of them. While the launcher is hidden the daemons are paused (no CPU); they get one fresh tick when you show the window again.
 
 ### 4. `fullOutput`
 Executes the command and renders stdout in aerofi's built-in rich markdown viewer. Supports headings, tables, code blocks, blockquotes, and lists.
