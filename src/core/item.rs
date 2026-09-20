@@ -508,8 +508,10 @@ impl Target {
 
     /// If `icon` is a local image path, resolve it to an absolute path once
     /// (expanding a leading `~` and joining bare relative paths onto the
-    /// script's directory). Returns `None` for emoji/glyph icons so callers
-    /// fall back to text rendering.
+    /// script's directory) and downscale it to a bounded thumbnail so the
+    /// renderer never decodes the original (potentially huge) file.
+    /// Returns `None` for emoji/glyph icons so callers fall back to text
+    /// rendering.
     fn resolve_icon_image(icon: Option<&str>, script_path: &Path) -> Option<Arc<Path>> {
         let icon = icon?;
         if !Self::looks_like_image(icon) {
@@ -523,7 +525,8 @@ impl Target {
                 .map(|d| d.join(icon))
                 .unwrap_or_else(|| Path::new(icon).to_path_buf())
         };
-        Some(Arc::from(resolved))
+        let path = crate::sys::icons::thumbnail_for(&resolved).unwrap_or(resolved);
+        Some(Arc::from(path))
     }
 
     /// Whether a string looks like a local image file path (same rules the

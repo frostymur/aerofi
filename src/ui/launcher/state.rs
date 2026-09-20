@@ -605,8 +605,13 @@ impl Launcher {
                                 .name("aerofi-plugin-search".into())
                                 .spawn(move || {
                                     let results = plugin_clone.query(&remainder_str);
-                                    let parsed = plugin_clone.parse_results(&results);
+                                    let mut parsed = plugin_clone.parse_results(&results);
                                     plugin_clone.free_results(results);
+                                    // Swap full-resolution image paths for
+                                    // bounded thumbnails before the rows hit
+                                    // the renderer (first use decodes here,
+                                    // off the main thread).
+                                    crate::sys::icons::thumbnail_image_icons(&mut parsed);
                                     let _ = tx.send(parsed);
                                 })
                                 .unwrap();
