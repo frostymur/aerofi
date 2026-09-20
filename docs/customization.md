@@ -163,12 +163,16 @@ toggle = "opt+space"
 
 aerofi themes are defined in standard TOML under `~/.config/aerofi/themes/{theme}.toml`.
 
+Two optional top-level metadata fields identify the theme file:
+`name` (display name) and `author`.
+
 ### Modular Themes & Imports (`imports = [...]`)
 
 aerofi allows you to cleanly separate colors, window geometry, and widget hierarchies across multiple files using the top-level `imports` array:
 
 ```toml
 name = "My Custom Theme"
+author = "Your Name"
 
 # Import reusable color palette and layout mixins
 imports = [
@@ -245,6 +249,20 @@ y_offset = -40.0
 # background_position = "cover" # "cover" (default), "left", "right"
 ```
 
+### Image Banner (`[banner]`)
+
+The built-in `Banner` widget (listed in `[mainbox].children`) renders a
+full-width decorative image, cropped to fill (`cover`) and rounded. It is
+only drawn when `[banner].image_path` is set — otherwise the widget is
+skipped and takes no space.
+
+```toml
+[banner]
+# Image file (PNG, JPEG, …). "~" expands to your home directory.
+# image_path = "~/.config/aerofi/themes/banner.png"
+height = 80.0                         # Banner height in points (default: 120.0)
+```
+
 ### GUI Mode (`[gui]`)
 
 GUI mode (theme switcher, script output) renders outside the mainbox
@@ -314,6 +332,8 @@ placeholder_color = "$subtle"
 corner_radius = 10.0
 icon = "❯"
 icon_color = "$accent"
+border_width = 0.0                    # 0.0 = no border (default)
+border_color = "transparent"          # border colour (default: transparent)
 
 # Optional font override for the search text (any subset of the
 # global [font] fields; unset fields inherit):

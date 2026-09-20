@@ -192,6 +192,11 @@ placeholder_color = "$subtle"
 # Type: Float (f32)
 corner_radius = 10.0
 
+# Border around the input bar. 0.0 = no border.
+# Type: Float (f32), String (Hex / $alias)
+border_width = 0.0
+border_color = "transparent"
+
 # Input field leading prompt icon and color.
 # Type: String (Optional), String (Hex / $alias)
 icon = "❯"
