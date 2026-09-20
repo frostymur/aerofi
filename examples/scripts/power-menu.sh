@@ -9,6 +9,7 @@
 # @aerofi.columns 5
 # @aerofi.preset power
 # @aerofi.width 680
+# @aerofi.hide_on_exit true
 
 # Each row: <label>\0icon\x1f<glyph>\0id\x1f<id>
 # The glyph lives in the icon field (rendered large); the label is the text.
@@ -40,10 +41,14 @@ done
 # for aerofi (System Settings > Privacy & Security > Accessibility).
 # Restart/Shut Down need a NOPASSWD sudoers rule for /sbin/shutdown, e.g.:
 #   echo "<user> ALL=(root) NOPASSWD: /sbin/shutdown" | sudo tee /etc/sudoers.d/aerofi
+#
+# Command output is sent to /dev/null so it never becomes a GUI row (e.g.
+# `pmset sleepnow` prints "Sleeping now..."). The @aerofi.hide_on_exit tag
+# above makes the launcher disappear once the script exits.
 case "$choice" in
-  lock)     osascript -e 'tell application "System Events" to keystroke "q" using {command down, control down}' ;;
-  sleep)    pmset sleepnow ;;
-  logout)   osascript -e 'tell application "loginwindow" to «event aevtrlgo»' ;;
-  restart)  sudo shutdown -r now ;;
-  shutdown) sudo shutdown -h now ;;
+  lock)     osascript -e 'tell application "System Events" to keystroke "q" using {command down, control down}' >/dev/null 2>&1 ;;
+  sleep)    pmset sleepnow >/dev/null 2>&1 ;;
+  logout)   osascript -e 'tell application "loginwindow" to «event aevtrlgo»' >/dev/null 2>&1 ;;
+  restart)  sudo shutdown -r now >/dev/null 2>&1 ;;
+  shutdown) sudo shutdown -h now >/dev/null 2>&1 ;;
 esac

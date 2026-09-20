@@ -166,6 +166,10 @@ pub struct ScriptMetatags {
     pub layout: Option<String>,
     /// Override window width in points (`# @aerofi.width 320`).
     pub width: Option<f32>,
+    /// Hide the launcher window when the GUI script exits
+    /// (`# @aerofi.hide_on_exit true`). Used by fire-and-forget action
+    /// menus (e.g. a power menu) that should disappear after a selection.
+    pub hide_on_exit: Option<bool>,
 }
 
 /// A single launchable element: an application bundle, a shell script, or
@@ -437,6 +441,9 @@ impl Target {
                         if let Ok(w) = value.parse::<f32>() {
                             metatags.width = Some(w);
                         }
+                    }
+                    "hide_on_exit" if is_aerofi || metatags.hide_on_exit.is_none() => {
+                        metatags.hide_on_exit = Some(value.eq_ignore_ascii_case("true"));
                     }
                     // Metadata annotations (supported via @aerofi.* and @raycast.*)
                     "schemaVersion" if is_aerofi || metadata.schema_version.is_none() => {
@@ -764,6 +771,57 @@ echo "Theme switcher..."
         assert_eq!(metatags.columns, Some(2));
 
         let _ = std::fs::remove_file(&file_path);
+    }
+
+    #[test]
+    fn parses_hide_on_exit_metatag() {
+        let temp_dir = std::env::temp_dir();
+        let file_path = temp_dir.join(format!("test_hide_on_exit_{}.sh", std::process::id()));
+
+        let write_and_parse = |body: &str| -> Option<bool> {
+            std::fs::write(&file_path, body).unwrap();
+            let target = Target::script_from_file(&file_path).expect("parse");
+            match target {
+                Target::Script { metatags, .. } => metatags.hide_on_exit,
+                _ => panic!("Expected Target::Script"),
+            }
+        };
+
+        // true
+        assert_eq!(
+            write_and_parse(
+                "#!/usr/bin/env bash\n# @aerofi.mode gui\n# @aerofi.hide_on_exit true\n"
+            ),
+            Some(true)
+        );
+        // false
+        assert_eq!(
+            write_and_parse(
+                "#!/usr/bin/env bash\n# @aerofi.mode gui\n# @aerofi.hide_on_exit false\n"
+            ),
+            Some(false)
+        );
+        // absent
+        assert_eq!(
+            write_and_parse("#!/usr/bin/env bash\n# @aerofi.mode gui\n"),
+            None
+        );
+
+        let _ = std::fs::remove_file(&file_path);
+    }
+
+    #[test]
+    fn power_menu_example_parses_with_hide_on_exit() {
+        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let script_path = manifest_dir.join("examples/scripts/power-menu.sh");
+        let target =
+            Target::script_from_file(&script_path).expect("power-menu.sh should parse");
+        let Target::Script { metatags, .. } = target else {
+            panic!("Expected Target::Script");
+        };
+        assert_eq!(metatags.hide_on_exit, Some(true));
+        assert_eq!(metatags.show_search, Some(false));
+        assert_eq!(metatags.columns, Some(5));
     }
 
     #[test]

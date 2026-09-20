@@ -2078,6 +2078,12 @@ impl Launcher {
     /// theme changed on disk (callers that also want a reload — e.g. the
     /// `Reload` GUI command — can skip their own to avoid a double re-index).
     fn gui_leave(&mut self) -> bool {
+        // Capture before clearing sticky_metatags below: a GUI script may
+        // declare `@aerofi.hide_on_exit true` to make the launcher disappear
+        // (returning focus to the previous app) once the script ends.
+        let hide_on_exit =
+            self.sticky_metatags.as_ref().and_then(|m| m.hide_on_exit) == Some(true);
+
         if let Some(session) = self.gui_session.take()
             && let Ok(mut s) = session.lock()
         {
@@ -2114,6 +2120,14 @@ impl Launcher {
         // (same size → early return in `set_frame_size`).
         let t = &self.theme;
         crate::sys::appkit::set_window_size(t.window.width as f64, t.window.height as f64);
+
+        // Fire-and-forget GUI script: hide the launcher and return focus to
+        // the previously active app instead of leaving the search list up.
+        if hide_on_exit {
+            self.on_hide();
+            crate::ui::window::hide();
+        }
+
         reloaded
     }
 }

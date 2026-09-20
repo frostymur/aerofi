@@ -49,6 +49,7 @@ fn grid_item(name: &str) -> Target {
             columns: Some(3),
             layout: None,
             width: None,
+            hide_on_exit: None,
         };
     }
     t
