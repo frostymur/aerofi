@@ -2116,7 +2116,20 @@ impl Launcher {
         if !t.listview.highlight_matches || self.query.is_empty() || name.is_empty() {
             return None;
         }
-        let ranges = crate::core::search::highlight_ranges(name, &self.query);
+        // The ranges depend only on (query, name); look them up in the
+        // per-query memo so selection changes and redraws don't re-run the
+        // fuzzy matcher for every visible row on every render pass.
+        let ranges = {
+            let mut cache = self.highlight_cache.borrow_mut();
+            match cache.get(name) {
+                Some(r) => r.clone(),
+                None => {
+                    let r = crate::core::search::highlight_ranges(name, &self.query);
+                    cache.insert(gpui::SharedString::from(name), r.clone());
+                    r
+                }
+            }
+        };
         if ranges.is_empty() {
             return None;
         }
@@ -2152,7 +2165,7 @@ impl Launcher {
         selected_color: Option<gpui::Hsla>,
     ) -> Option<gpui::StyledText> {
         let hl = self.name_highlights(text, selected_color)?;
-        Some(gpui::StyledText::new(text.to_string()).with_highlights(hl))
+        Some(gpui::StyledText::new(text).with_highlights(hl))
     }
 
     fn render_row_name(
@@ -2165,15 +2178,15 @@ impl Launcher {
         let t = &self.theme;
         let subtitle_opt = item.inline_output().or_else(|| item.package_name());
 
-        let name = item.name().to_string();
+        let name = item.name();
         let sel_color = if is_selected {
             Some(Self::hsla_hex(Self::color(&t.element.selected.text_color)))
         } else {
             None
         };
-        let name_el: gpui::AnyElement = match self.query_highlighted_text(&name, sel_color) {
+        let name_el: gpui::AnyElement = match self.query_highlighted_text(name, sel_color) {
             Some(st) => st.into_any(),
-            None => name.into_any_element(),
+            None => name.to_string().into_any_element(),
         };
         let (name_font, name_size) = &self.element_font_val;
 

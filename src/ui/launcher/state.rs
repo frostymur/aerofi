@@ -110,6 +110,13 @@ pub struct Launcher {
     /// fallback containing "mono", else "SF Mono"). Derived from the theme,
     /// recomputed on reload.
     pub(super) mono_font: gpui::SharedString,
+    /// Query match ranges (byte offsets) memoized per rendered text. Cleared
+    /// on every `refilter()` (i.e. on any query change), so selection
+    /// changes and plain redraws don't re-run the fuzzy matcher for each
+    /// visible row on every render pass.
+    pub(super) highlight_cache: std::cell::RefCell<
+        std::collections::HashMap<gpui::SharedString, Vec<std::ops::Range<usize>>>,
+    >,
 }
 
 impl Launcher {
@@ -157,6 +164,7 @@ impl Launcher {
             inputbar_font,
             element_font_val,
             mono_font,
+            highlight_cache: std::cell::RefCell::new(std::collections::HashMap::new()),
         }
     }
 
@@ -523,6 +531,8 @@ impl Launcher {
 
     /// Re-run the fuzzy match for the current query and rebuild `filtered`.
     fn refilter(&mut self, cx: Option<&mut Context<Self>>) {
+        // A new query changes every row's highlight ranges; drop the memo.
+        self.highlight_cache.borrow_mut().clear();
         // Clear any previous plugin items and release excess capacity.
         self.all.truncate(self.base_count);
         if self.all.capacity() > self.base_count * 2 {
