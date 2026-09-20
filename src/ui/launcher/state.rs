@@ -87,6 +87,8 @@ pub struct Launcher {
     pub(super) plugin_manager: crate::core::plugin_manager::PluginManager,
     /// Active plugin search task.
     pub(super) plugin_search_task: Option<gpui::Task<()>>,
+    /// Pending background icon-extraction task (startup), if any.
+    pub(super) icon_task: Option<gpui::Task<()>>,
     /// Number of base items (apps/scripts/builtins). Plugin items are appended after this.
     pub(super) base_count: usize,
     /// Set to `true` after a config/theme reload so the next `render()` call
@@ -169,6 +171,7 @@ impl Launcher {
             gui_session: None,
             plugin_manager: crate::core::plugin_manager::PluginManager::load_all(),
             plugin_search_task: None,
+            icon_task: None,
             base_count,
             needs_center: false,
             last_window_size: None,
@@ -1038,6 +1041,45 @@ impl Launcher {
         println!(
             "aerofi: configuration reloaded (theme: {})",
             self.app_config.theme
+        );
+    }
+
+    /// Start background icon processing for the given jobs (collected on
+    /// the main thread by [`crate::sys::icons::prepare_icon_jobs`]). The
+    /// CPU-heavy downsample runs on a worker thread; results are applied to
+    /// `all` when they arrive, so the first frame never waits on it.
+    pub fn start_icon_jobs(
+        &mut self,
+        jobs: Vec<crate::sys::icons::IconJob>,
+        cx: &mut Context<Self>,
+    ) {
+        if jobs.is_empty() {
+            return;
+        }
+        let (tx, rx) = futures::channel::oneshot::channel();
+        if let Err(e) = std::thread::Builder::new()
+            .name("aerofi-icon-extract".into())
+            .spawn(move || {
+                let _ = tx.send(crate::sys::icons::process_icon_jobs(jobs));
+            })
+        {
+            eprintln!("aerofi: failed to spawn icon worker thread: {e}");
+            return;
+        }
+        self.icon_task = Some(
+            cx.spawn(|view: gpui::WeakEntity<Self>, cx: &mut gpui::AsyncApp| {
+                // Clone into an owned handle so the future is 'static.
+                let mut cx = cx.clone();
+                async move {
+                    let Ok(results) = rx.await else {
+                        return;
+                    };
+                    let _ = view.update(&mut cx, |this, cx| {
+                        crate::sys::icons::apply_icon_results(&mut this.all, results);
+                        cx.notify();
+                    });
+                }
+            }),
         );
     }
 

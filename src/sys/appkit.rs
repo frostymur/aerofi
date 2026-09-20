@@ -283,9 +283,11 @@ pub fn hide_launcher_window() {
 /// upscaled ~1.5x — mildly soft but acceptable. Each cached TIFF is ~36 KB.
 const ICON_SIZE: u32 = 96;
 
-/// Extract the icon for an `.app` bundle, downsampled to 96×96 via the
-/// `image` crate so each cached TIFF is ~36 KB. Returns `None` on failure.
-pub fn icon_for_app_bundle(path: &Path) -> Option<Vec<u8>> {
+/// Fetch the raw multi-resolution TIFF for an `.app` bundle from AppKit.
+/// Fast, but must run on the main thread (AppKit / MainThreadMarker). The
+/// heavy downsample is split out into [`process_icon_tiff`] so it can run
+/// on a worker thread.
+pub fn raw_icon_for_app_bundle(path: &Path) -> Option<Vec<u8>> {
     let _mtm = MainThreadMarker::new()?;
     let path_str = NSString::from_str(path.to_str()?);
     let workspace = unsafe { NSWorkspace::sharedWorkspace() };
@@ -293,10 +295,15 @@ pub fn icon_for_app_bundle(path: &Path) -> Option<Vec<u8>> {
 
     // Get the raw multi-resolution TIFF from AppKit.
     let tiff_data = unsafe { image.TIFFRepresentation() }?;
-    let raw_bytes: Vec<u8> = tiff_data.bytes().to_vec();
+    Some(tiff_data.bytes().to_vec())
+}
 
+/// Downsample a raw AppKit TIFF to 96×96 via the `image` crate so each
+/// cached TIFF is ~36 KB. Pure image processing — thread-safe, no main
+/// thread requirement. Returns `None` on decode/encode failure.
+pub fn process_icon_tiff(raw_bytes: &[u8]) -> Option<Vec<u8>> {
     // Decode the full-res TIFF.
-    let img = image::load_from_memory(&raw_bytes).ok()?;
+    let img = image::load_from_memory(raw_bytes).ok()?;
 
     // Resize to 96×96 using Lanczos3 for quality.
     let resized = img.resize(ICON_SIZE, ICON_SIZE, image::imageops::FilterType::Lanczos3);

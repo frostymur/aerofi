@@ -90,9 +90,12 @@ fn main() {
         // applicationDidFinishLaunching just forced the Regular policy, and
         // we are still inside it, so the Dock icon never appears.
         sys::appkit::hide_from_dock();
-        // Extract native app icons now that the Objective-C run loop is
-        // active and MainThreadMarker is available.
-        sys::icons::extract_all(&mut targets);
+        // Collect icon jobs now that the Objective-C run loop is active and
+        // MainThreadMarker is available (disk-cached icons are applied here;
+        // uncached apps' raw TIFFs are fetched). The CPU-heavy downsample is
+        // deferred to a worker thread after the window exists, so the first
+        // frame doesn't wait on it.
+        let icon_jobs = sys::icons::prepare_icon_jobs(&mut targets);
         // Register bundled fonts (~/.config/aerofi/fonts/) before the first
         // render so a theme's [font] family can reference them.
         let bundled = sys::fonts::load_custom_fonts(cx);
@@ -103,6 +106,12 @@ fn main() {
         let toggle_hotkey = app_config.bindings.toggle.clone();
         let view =
             ui::window::create_launcher_window(cx, targets.clone(), theme, app_config, history);
+
+        // Hand the uncached apps off to a background icon worker; results
+        // are applied to the view when they arrive.
+        view.update(cx, |launcher, cx| {
+            launcher.start_icon_jobs(icon_jobs, cx);
+        });
 
         // start_daemon uses only std::thread + cx.spawn (foreground executor).
         // We intentionally do NOT call cx.background_executor() here: that call

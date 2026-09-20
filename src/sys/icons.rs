@@ -75,12 +75,24 @@ pub fn cache_icon(name: &str, tiff_bytes: &[u8]) -> Option<PathBuf> {
     Some(path)
 }
 
-/// Extract and cache icons for every `Target::App` in the list, mutating
-/// the `icon_path` field in-place. Must be called from the main thread
-/// after the Objective-C run loop has started (i.e. inside
-/// `on_finish_launching`).
-pub fn extract_all(targets: &mut [Target]) {
+/// One uncached app awaiting icon processing: its identity (for applying
+/// the result back) and the raw AppKit TIFF.
+pub struct IconJob {
+    /// App path (identifier) to match against when applying results.
+    pub target: std::sync::Arc<std::path::Path>,
+    /// Application name, used to derive the cache file name.
+    pub name: String,
+    /// Raw multi-resolution TIFF fetched from AppKit on the main thread.
+    pub raw_tiff: Vec<u8>,
+}
+
+/// Main-thread phase: apply disk-cached icons in place and collect the
+/// uncached apps' raw TIFFs (fast AppKit fetch) for background
+/// processing. Must be called from the main thread after the Objective-C
+/// run loop has started (i.e. inside `on_finish_launching`).
+pub fn prepare_icon_jobs(targets: &mut [Target]) -> Vec<IconJob> {
     let dir = icon_dir();
+    let mut jobs = Vec::new();
     for target in targets.iter_mut() {
         let Target::App {
             name,
@@ -98,7 +110,72 @@ pub fn extract_all(targets: &mut [Target]) {
             *icon_path = Some(std::sync::Arc::from(cached));
             continue;
         }
-        *icon_path = crate::sys::appkit::icon_for_app_bundle(path)
-            .and_then(|tiff| cache_icon(name, &tiff).map(std::sync::Arc::from));
+        if let Some(raw_tiff) = crate::sys::appkit::raw_icon_for_app_bundle(path) {
+            jobs.push(IconJob {
+                target: std::sync::Arc::clone(path),
+                name: name.to_string(),
+                raw_tiff,
+            });
+        }
     }
+    jobs
+}
+
+/// Worker-thread phase: downsample every job's raw TIFF and write it to
+/// the cache. Returns `(app path, cached icon path)` per job.
+pub fn process_icon_jobs(
+    jobs: Vec<IconJob>,
+) -> Vec<(
+    std::sync::Arc<std::path::Path>,
+    Option<std::sync::Arc<std::path::Path>>,
+)> {
+    jobs.into_iter()
+        .map(|job| {
+            let icon = crate::sys::appkit::process_icon_tiff(&job.raw_tiff)
+                .and_then(|tiff| cache_icon(&job.name, &tiff).map(std::sync::Arc::from));
+            (job.target, icon)
+        })
+        .collect()
+}
+
+/// Main-thread phase: apply worker results to the target list in place.
+pub fn apply_icon_results(
+    targets: &mut [Target],
+    results: Vec<(
+        std::sync::Arc<std::path::Path>,
+        Option<std::sync::Arc<std::path::Path>>,
+    )>,
+) {
+    for (path, icon) in results {
+        let id = path.to_str().unwrap_or("");
+        for target in targets.iter_mut() {
+            if target.identifier() != id {
+                continue;
+            }
+            if let Target::App { icon_path, .. } = target
+                && icon_path.is_none()
+            {
+                *icon_path = icon;
+            }
+            break;
+        }
+    }
+}
+
+/// Extract and cache icons for every `Target::App` in the list, mutating
+/// the `icon_path` field in-place. The AppKit fetch runs on the main
+/// thread; the CPU-heavy downsample runs on a worker thread that this call
+/// joins, so the main thread does no image processing.
+pub fn extract_all(targets: &mut [Target]) {
+    let jobs = prepare_icon_jobs(targets);
+    if jobs.is_empty() {
+        return;
+    }
+    let results = std::thread::Builder::new()
+        .name("aerofi-icon-extract".into())
+        .spawn(move || process_icon_jobs(jobs))
+        .ok()
+        .and_then(|h| h.join().ok())
+        .unwrap_or_default();
+    apply_icon_results(targets, results);
 }
