@@ -326,6 +326,81 @@ mod tests {
     }
 
     #[test]
+    fn session_send_event_reaches_script_stdin() {
+        let _lock = crate::core::executor::SCRIPT_PROCESS_LOCK.lock().unwrap();
+        // Replicates the power-menu flow: emit rows + flush, block on a
+        // selection, then act on the selected id. Proves the Rust
+        // send_event path delivers the structured event to the script.
+        let dir = std::env::temp_dir();
+        let pid = std::process::id();
+        let script = dir.join(format!("aerofi_gui_send_test_{pid}.sh"));
+        let result_file = dir.join(format!("aerofi_gui_send_test_{pid}.out"));
+        let _ = std::fs::remove_file(&result_file);
+        std::fs::write(
+            &script,
+            &format!(
+                "#!/bin/bash\n\
+                 printf '\\0no-custom\\x1ftrue\\n'\n\
+                 printf 'Lock\\0icon\\x1fX\\0id\\x1flock\\n'\n\
+                 printf 'Sleep\\0icon\\x1fY\\0id\\x1fsleep\\n'\n\
+                 printf '\\0flush\\n'\n\
+                 IFS= read -r -n 1 _nul\n\
+                 IFS= read -r event_line\n\
+                 choice=\"\"\n\
+                 IFS=$'\\x1f' read -r -a fields <<< \"$event_line\"\n\
+                 for kv in \"${{fields[@]}}\"; do\n\
+                 case \"$kv\" in id:*) choice=${{kv#id:}} ;; esac\n\
+                 done\n\
+                 printf '%s' \"$choice\" > \"{out}\"\n",
+                out = result_file.display(),
+            ),
+        )
+        .unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = std::fs::metadata(&script).unwrap().permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(&script, perms).unwrap();
+        }
+
+        let mut session =
+            GuiSession::spawn(&script, vec![], std::collections::HashMap::new()).unwrap();
+        let result = session.read_burst(Duration::from_secs(5));
+        let burst = match result {
+            ReadResult::Burst(b) | ReadResult::BurstThenExit(b) => b,
+            other => panic!("Expected Burst, got {:?}", other),
+        };
+        assert_eq!(burst.rows.len(), 2);
+        assert_eq!(burst.rows[0].id.as_deref(), Some("lock"));
+
+        // Send a Select for row 0 ("lock") and confirm the script received it.
+        let event = crate::core::gui_protocol::GuiEvent::Select {
+            key: "enter".to_string(),
+            index: 0,
+            id: "lock".to_string(),
+            text: "Lock".to_string(),
+            retv: 1,
+            data: None,
+            selected_ids: vec!["lock".to_string()],
+            selected_texts: vec!["Lock".to_string()],
+        };
+        session.send_event(&event).expect("send_event failed");
+        // Give the script a moment to read + write the result file.
+        std::thread::sleep(Duration::from_millis(300));
+
+        let got = std::fs::read_to_string(&result_file).unwrap_or_default();
+        assert_eq!(
+            got.trim(),
+            "lock",
+            "script did not receive/parse the selection event"
+        );
+        session.kill();
+        let _ = std::fs::remove_file(&script);
+        let _ = std::fs::remove_file(&result_file);
+    }
+
+    #[test]
     fn session_kill_takes_down_grandchildren() {
         let _lock = crate::core::executor::SCRIPT_PROCESS_LOCK.lock().unwrap();
         // A script that spawns a long-lived grandchild and reports its
