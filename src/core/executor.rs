@@ -7,6 +7,27 @@ use std::process::{Command, Stdio};
 use crate::core::item::{ScriptMode, Target};
 
 /// Build the `Command` that runs a script: the interpreter from its
+/// Put a spawned child in its own process group (pgid == child pid) so a
+/// group kill can take down the child and everything it spawned.
+#[cfg(unix)]
+pub fn with_own_process_group(cmd: &mut Command) {
+    use std::os::unix::process::CommandExt;
+    unsafe {
+        cmd.pre_exec(move || {
+            if libc::setpgid(0, 0) == 0 {
+                Ok(())
+            } else {
+                // Never run in the inherited group: a group kill would
+                // then hit aerofi's own processes. Abort the child.
+                libc::_exit(127);
+            }
+        });
+    }
+}
+
+#[cfg(not(unix))]
+pub fn with_own_process_group(_cmd: &mut Command) {}
+
 /// shebang (`#!/usr/bin/env bash`, `#!/usr/bin/env node`, ...). Without a
 /// shebang, an executable file runs directly; a non-executable one falls
 /// back to `sh` (the scanner accepts shell-extension files regardless of
@@ -16,21 +37,7 @@ pub fn script_command(path: &Path) -> Command {
     augment_script_path(&mut cmd);
     // Run each script in its own process group (pgid == child pid) so a
     // group kill can take down the script and everything it spawned.
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt;
-        unsafe {
-            cmd.pre_exec(move || {
-                if libc::setpgid(0, 0) == 0 {
-                    Ok(())
-                } else {
-                    // Never run in the inherited group: a group kill would
-                    // then hit aerofi's own processes. Abort the child.
-                    libc::_exit(127);
-                }
-            });
-        }
-    }
+    with_own_process_group(&mut cmd);
     cmd
 }
 
