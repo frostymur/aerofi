@@ -21,6 +21,7 @@
 
 use gpui::SharedString;
 use serde::{Deserialize, Serialize};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -373,7 +374,7 @@ impl Target {
     /// Parse a single script file into a `Target::Script`.
     pub fn script_from_file(path: &Path) -> Option<Self> {
         let file_stem = path.file_stem()?.to_string_lossy().into_owned();
-        let content = std::fs::read_to_string(path).ok()?;
+        let content = read_header(path)?;
 
         let mut metadata = RaycastMetadata::default();
         let mut metatags = ScriptMetatags::default();
@@ -546,6 +547,29 @@ impl Target {
         }
         Path::new(p).to_path_buf()
     }
+}
+
+/// Maximum bytes read from a script for header parsing. Annotations are
+/// limited to the first 50 comment lines, so 32 KiB covers them with wide
+/// margin; scripts longer than this only cost a fixed 32 KiB read instead
+/// of their full size when indexed.
+const HEADER_READ_LIMIT: usize = 32 * 1024;
+
+/// Read the first [`HEADER_READ_LIMIT`] bytes of `path` as a string for
+/// header parsing, instead of the whole file. Returns `None` for an
+/// unreadable file or non-UTF-8 content (matching `read_to_string`'s
+/// failure mode). If the read hits the limit mid-line, the trailing
+/// partial line is dropped so an annotation is never parsed half-way.
+fn read_header(path: &Path) -> Option<String> {
+    let mut file = std::fs::File::open(path).ok()?;
+    let mut buf = vec![0u8; HEADER_READ_LIMIT];
+    let n = file.read(&mut buf).ok()?;
+    buf.truncate(n);
+    if n == HEADER_READ_LIMIT && !buf.ends_with(b"\n") {
+        let pos = buf.iter().rposition(|&b| b == b'\n')?;
+        buf.truncate(pos);
+    }
+    String::from_utf8(buf).ok()
 }
 
 #[cfg(test)]
@@ -839,5 +863,34 @@ echo "Theme switcher..."
         assert_eq!(script.category_label(), "Script");
         assert_eq!(builtin.category_label(), "Aerofi");
         assert_eq!(builtin.icon(), None);
+    }
+
+    #[test]
+    fn header_parsed_from_large_script_without_reading_body() {
+        let dir = std::env::temp_dir();
+        let file_path = dir.join(format!("test_large_{}.sh", std::process::id()));
+        let mut file = std::fs::File::create(&file_path).unwrap();
+        writeln!(
+            file,
+            r#"#!/bin/bash
+# @aerofi.title Big Script
+# @aerofi.mode fullOutput
+"#
+        )
+        .unwrap();
+        // Pad the body well past HEADER_READ_LIMIT so only a prefix is read.
+        let filler = "echo \"padding line to grow the body\";\n";
+        while file.metadata().unwrap().len() < HEADER_READ_LIMIT as u64 + 4096 {
+            file.write_all(filler.as_bytes()).unwrap();
+        }
+
+        let target = Target::script_from_file(&file_path).expect("Failed to parse script");
+        let Target::Script { name, mode, .. } = target else {
+            panic!("Expected Target::Script");
+        };
+        assert_eq!(name.as_ref(), "Big Script");
+        assert_eq!(mode, ScriptMode::FullOutput);
+
+        let _ = std::fs::remove_file(&file_path);
     }
 }
