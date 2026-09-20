@@ -61,8 +61,11 @@ impl GuiSession {
 
         let (tx, rx) = mpsc::channel();
         // Background thread reads stdout line by line and sends events.
+        // The reader loop only does BufReader::lines() + a channel send —
+        // the default 8 MB stack reservation is unnecessary.
         std::thread::Builder::new()
             .name("aerofi-gui-stdout".to_string())
+            .stack_size(256 * 1024)
             .spawn(move || {
                 Self::stdout_reader_thread(stdout, tx);
             })

@@ -221,6 +221,9 @@ pub fn run_bounded(
     // never blocks on a full pipe buffer.
     let stderr_thread = std::thread::Builder::new()
         .name("aerofi-stderr".into())
+        // The drain loop only does bounded reads — the default 8 MB stack
+        // reservation is unnecessary.
+        .stack_size(256 * 1024)
         .spawn(move || read_tail_bounded(stderr, MAX_STDERR))
         .expect("failed to spawn stderr drain thread");
 
