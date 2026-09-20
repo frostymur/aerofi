@@ -19,7 +19,7 @@ use crate::core::theme::ThemeConfig;
 use crate::core::widget::WidgetRegistry;
 
 use super::helpers::combo_matches;
-use super::types::{LauncherAction, LauncherState};
+use super::types::{LauncherAction, LauncherState, MdStyled};
 
 /// Pango parse result for a GUI row: the plain text plus the highlight
 /// style for each markup span.
@@ -62,6 +62,10 @@ pub struct Launcher {
     /// Parsed markdown blocks of the current full-output result (empty
     /// while not showing one; cleared on hide to release the memory).
     pub(super) full_output_blocks: Vec<crate::core::markdown::MdBlock>,
+    /// Precomputed markdown styling, parallel to `full_output_blocks`
+    /// (None for blocks without inline text). Rebuilt whenever the blocks
+    /// change and when the theme is reloaded.
+    pub(super) full_output_styled: Vec<Option<MdStyled>>,
     /// Layout overrides (`@aerofi.show_search` / `@aerofi.columns`)
     /// committed by the last executed script. Kept until the launcher is
     /// hidden; never applied by selection alone.
@@ -157,6 +161,7 @@ impl Launcher {
             preview_list: ListState::new(0, ListAlignment::Top, px(16.0)),
             gui_rows_scroll: UniformListScrollHandle::new(),
             full_output_blocks: Vec::new(),
+            full_output_styled: Vec::new(),
             gui_live_search: None,
             sticky_metatags: None,
             widget_registry,
@@ -655,6 +660,7 @@ impl Launcher {
         if matches!(self.state, LauncherState::RunningFull { .. }) {
             self.state = LauncherState::Search;
             self.full_output_blocks.clear();
+            self.full_output_styled.clear();
             self.full_output_list.reset(0);
         }
         // Kill any active GUI session.
@@ -816,7 +822,9 @@ impl Launcher {
     pub fn set_full_output(&mut self, title: String, text: String) {
         // Parse once here, not per render: the view re-renders on every
         // keystroke while visible, and output can be large.
-        self.full_output_blocks = crate::core::markdown::parse(&text);
+        let blocks = crate::core::markdown::parse(&text);
+        self.full_output_styled = blocks.iter().map(|b| self.build_md_styled(b)).collect();
+        self.full_output_blocks = blocks;
         // Reset to the top with the new item count.
         self.full_output_list.reset(self.full_output_blocks.len());
         self.state = LauncherState::FullOutput { title };
@@ -947,6 +955,7 @@ impl Launcher {
         ) {
             self.state = LauncherState::Search;
             self.full_output_blocks.clear();
+            self.full_output_styled.clear();
             self.full_output_list.reset(0);
         }
     }
@@ -1001,6 +1010,24 @@ impl Launcher {
         self.inputbar_font = inputbar_font;
         self.element_font_val = element_font_val;
         self.mono_font = mono_font;
+        // Markdown styling is theme-derived (link color, code background,
+        // mono family), so rebuild it for any blocks still on screen.
+        self.full_output_styled = self
+            .full_output_blocks
+            .iter()
+            .map(|b| self.build_md_styled(b))
+            .collect();
+        if let LauncherState::GuiMode {
+            preview_blocks: Some(blocks),
+            ..
+        } = &self.state
+        {
+            let styled: Vec<Option<MdStyled>> =
+                blocks.iter().map(|b| self.build_md_styled(b)).collect();
+            if let LauncherState::GuiMode { preview_styled, .. } = &mut self.state {
+                *preview_styled = Some(styled);
+            }
+        }
         crate::sys::appkit::set_corner_radius(self.theme.window.corner_radius);
         // Defer centering to the next render() call so it fires *after*
         // window.resize() applies the new theme dimensions.
@@ -1239,6 +1266,7 @@ impl Launcher {
             active_indices: Vec::new(),
             data: None,
             preview_blocks: None,
+            preview_styled: None,
             multi_select: false,
             toggled_indices: std::collections::HashSet::new(),
             markup_rows: false,
@@ -1291,6 +1319,7 @@ impl Launcher {
         let mut active_indices = Vec::new();
         let mut data = None;
         let mut preview_blocks = None;
+        let mut preview_styled = None;
         let mut preview_changed = false;
         let mut multi_select = false;
         let mut toggled_indices = std::collections::HashSet::new();
@@ -1306,6 +1335,7 @@ impl Launcher {
             active_indices: prev_active_indices,
             data: prev_data,
             preview_blocks: prev_preview_blocks,
+            preview_styled: prev_preview_styled,
             multi_select: prev_multi_select,
             toggled_indices: prev_toggled_indices,
             markup_rows: prev_markup_rows,
@@ -1320,6 +1350,7 @@ impl Launcher {
             active_indices = prev_active_indices.clone();
             data = prev_data.clone();
             preview_blocks = prev_preview_blocks.clone();
+            preview_styled = prev_preview_styled.clone();
             multi_select = *prev_multi_select;
             toggled_indices = prev_toggled_indices.clone();
             markup_rows = *prev_markup_rows;
@@ -1340,13 +1371,18 @@ impl Launcher {
                 GuiCommand::SetActiveIndices(indices) => active_indices = indices.clone(),
                 GuiCommand::SetData(d) => data = Some(d.clone()),
                 GuiCommand::PreviewText(text) => {
-                    preview_blocks = Some(crate::core::markdown::parse(text));
+                    let blocks = crate::core::markdown::parse(text);
+                    preview_styled = Some(blocks.iter().map(|b| self.build_md_styled(b)).collect());
+                    preview_blocks = Some(blocks);
                     preview_changed = true;
                 }
                 GuiCommand::PreviewFile(file_path) => {
                     let resolved = super::helpers::expand_tilde_path(file_path);
                     if let Ok(text) = std::fs::read_to_string(&resolved) {
-                        preview_blocks = Some(crate::core::markdown::parse(&text));
+                        let blocks = crate::core::markdown::parse(&text);
+                        preview_styled =
+                            Some(blocks.iter().map(|b| self.build_md_styled(b)).collect());
+                        preview_blocks = Some(blocks);
                         preview_changed = true;
                     }
                 }
@@ -1397,6 +1433,7 @@ impl Launcher {
             active_indices,
             data,
             preview_blocks,
+            preview_styled,
             multi_select,
             toggled_indices,
             markup_rows,

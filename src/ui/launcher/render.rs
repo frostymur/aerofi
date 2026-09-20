@@ -13,7 +13,7 @@ use super::helpers::{
     apply_md_style, expand_tilde_path, format_combo, is_image_path, is_primary_click,
 };
 use super::state::Launcher;
-use super::types::LauncherState;
+use super::types::{LauncherState, MdStyled};
 
 impl Render for Launcher {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -963,11 +963,16 @@ impl Launcher {
                 cx.processor(move |this: &mut Launcher, ix: usize, _window, _cx| {
                     if let LauncherState::GuiMode {
                         preview_blocks: Some(b),
+                        preview_styled,
                         ..
                     } = &this.state
                     {
+                        let styled = preview_styled
+                            .as_ref()
+                            .and_then(|v| v.get(ix))
+                            .and_then(|s| s.as_ref());
                         b.get(ix)
-                            .map(|blk| this.render_md_block(blk))
+                            .map(|blk| this.render_md_block(blk, styled))
                             .unwrap_or_else(|| div().into_any())
                     } else {
                         div().into_any()
@@ -1397,9 +1402,10 @@ impl Launcher {
             gpui::list(
                 self.full_output_list.clone(),
                 cx.processor(move |this: &mut Launcher, ix: usize, _window, _cx| {
+                    let styled = this.full_output_styled.get(ix).and_then(|s| s.as_ref());
                     this.full_output_blocks
                         .get(ix)
-                        .map(|b| this.render_md_block(b))
+                        .map(|b| this.render_md_block(b, styled))
                         .unwrap_or_else(|| div().into_any())
                 }),
             )
@@ -1419,7 +1425,11 @@ impl Launcher {
     }
 
     /// Render one markdown block of the full-output view.
-    fn render_md_block(&self, block: &crate::core::markdown::MdBlock) -> gpui::AnyElement {
+    fn render_md_block(
+        &self,
+        block: &crate::core::markdown::MdBlock,
+        styled: Option<&MdStyled>,
+    ) -> gpui::AnyElement {
         use crate::core::markdown::{MdBlock, TableAlignment};
         let t = &self.theme;
         let text_color = rgba(Self::color(&t.element.text_color));
@@ -1444,11 +1454,11 @@ impl Launcher {
                 style.font_size = px(t.font.size * scale).into();
                 style.font_weight = gpui::FontWeight::BOLD;
                 apply_md_style(div().w_full().mt_2(), &style)
-                    .child(self.styled_md_text(text))
+                    .child(self.styled_md_text(text, styled))
                     .into_any()
             }
             MdBlock::Paragraph(text) => apply_md_style(div().w_full(), &base)
-                .child(self.styled_md_text(text))
+                .child(self.styled_md_text(text, styled))
                 .into_any(),
             MdBlock::Blockquote(text) => {
                 let mut style = base.clone();
@@ -1461,7 +1471,7 @@ impl Launcher {
                         .pl_3(),
                     &style,
                 )
-                .child(self.styled_md_text(text))
+                .child(self.styled_md_text(text, styled))
                 .into_any()
             }
             MdBlock::CodeBlock { lang, text } => {
@@ -1562,7 +1572,7 @@ impl Launcher {
                         div()
                             .flex_1()
                             .min_w(px(0.0))
-                            .child(self.styled_md_text(text)),
+                            .child(self.styled_md_text(text, styled)),
                     )
                     .into_any()
             }
@@ -1582,16 +1592,31 @@ impl Launcher {
         }
     }
 
-    /// Build a GPUI `StyledText` element for markdown text: one text layout
-    /// per block with per-range highlights for inline emphasis and a
-    /// monospace font override for inline code. The base style (family,
-    /// size, colour) is inherited from the parent element's `text_style`.
-    fn styled_md_text(&self, md: &crate::core::markdown::MdText) -> gpui::StyledText {
+    /// Precompute the GPUI styling for a markdown block (None for blocks
+    /// without inline text). Runs when the block is parsed and when the
+    /// theme is reloaded, not on every render pass.
+    pub(super) fn build_md_styled(
+        &self,
+        block: &crate::core::markdown::MdBlock,
+    ) -> Option<MdStyled> {
+        use crate::core::markdown::MdBlock;
+        let md = match block {
+            MdBlock::Heading { text, .. } | MdBlock::ListItem { text, .. } => text,
+            MdBlock::Paragraph(md) | MdBlock::Blockquote(md) => md,
+            _ => return None,
+        };
+        Some(self.styled_for_md(md))
+    }
+
+    /// Walk a text block's inline marks into highlight ranges (with
+    /// theme-derived styles) and code-span ranges.
+    fn styled_for_md(&self, md: &crate::core::markdown::MdText) -> MdStyled {
         use crate::core::markdown::InlineKind;
         let t = &self.theme;
 
-        let mut highlights: Vec<(std::ops::Range<usize>, gpui::HighlightStyle)> = Vec::new();
-        let mut code_ranges: Vec<(std::ops::Range<usize>, gpui::SharedString)> = Vec::new();
+        let mut highlights: Vec<(std::ops::Range<usize>, gpui::HighlightStyle)> =
+            Vec::with_capacity(md.marks.len());
+        let mut code_ranges: Vec<std::ops::Range<usize>> = Vec::new();
         for mark in &md.marks {
             let style = match mark.kind {
                 InlineKind::Bold => gpui::HighlightStyle {
@@ -1619,14 +1644,41 @@ impl Launcher {
                 },
             };
             if mark.kind == InlineKind::Code {
-                code_ranges.push((mark.range.clone(), self.mono_font.clone()));
+                code_ranges.push(mark.range.clone());
             }
             highlights.push((mark.range.clone(), style));
         }
+        MdStyled {
+            highlights,
+            code_ranges,
+        }
+    }
+
+    /// Build a GPUI `StyledText` element for markdown text: one text layout
+    /// per block with per-range highlights for inline emphasis and a
+    /// monospace font override for inline code. The base style (family,
+    /// size, colour) is inherited from the parent element's `text_style`.
+    fn styled_md_text(
+        &self,
+        md: &crate::core::markdown::MdText,
+        styled: Option<&MdStyled>,
+    ) -> gpui::StyledText {
+        // Clone the two small precomputed vecs instead of re-walking the
+        // marks; fall back to computing them when a parallel entry is
+        // missing (defensive: blocks built outside the usual paths).
+        let (highlights, code_ranges) = match styled {
+            Some(s) => (s.highlights.clone(), s.code_ranges.clone()),
+            None => {
+                let s = self.styled_for_md(md);
+                (s.highlights, s.code_ranges)
+            }
+        };
 
         let mut styled = gpui::StyledText::new(md.text.clone());
         if !code_ranges.is_empty() {
-            styled = styled.with_font_family_overrides(code_ranges);
+            styled = styled.with_font_family_overrides(
+                code_ranges.into_iter().map(|r| (r, self.mono_font.clone())),
+            );
         }
         if !highlights.is_empty() {
             styled = styled.with_highlights(highlights);

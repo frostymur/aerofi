@@ -34,6 +34,17 @@ pub enum LauncherAction {
     },
 }
 
+/// GPUI styling for one markdown text block, precomputed once when the
+/// block is parsed (and again when the theme is reloaded): highlight ranges
+/// with their theme-derived styles plus the byte ranges of inline code
+/// spans. Lets the render pass clone two small vecs instead of re-walking
+/// `MdText.marks` and re-deriving theme styles on every frame.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MdStyled {
+    pub highlights: Vec<(std::ops::Range<usize>, gpui::HighlightStyle)>,
+    pub code_ranges: Vec<std::ops::Range<usize>>,
+}
+
 /// State of the launcher UI.
 #[derive(Debug, Clone, PartialEq)]
 pub enum LauncherState {
@@ -89,6 +100,8 @@ pub enum LauncherState {
         data: Option<String>,
         /// Parsed markdown blocks from `\0preview` or `\0preview-file`.
         preview_blocks: Option<Vec<crate::core::markdown::MdBlock>>,
+        /// Precomputed markdown styling, parallel to `preview_blocks`.
+        preview_styled: Option<Vec<Option<MdStyled>>>,
         /// Whether multi-selection is enabled.
         multi_select: bool,
         /// The set of row indices that have been toggled for multi-selection.

@@ -368,6 +368,7 @@ fn gui_arrow_key_defers_scroll_to_selected_row() {
         active_indices: Vec::new(),
         data: None,
         preview_blocks: None,
+        preview_styled: None,
         multi_select: false,
         toggled_indices: std::collections::HashSet::new(),
         markup_rows: false,
