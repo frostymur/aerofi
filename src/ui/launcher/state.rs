@@ -21,6 +21,10 @@ use crate::core::widget::WidgetRegistry;
 use super::helpers::combo_matches;
 use super::types::{LauncherAction, LauncherState};
 
+/// Pango parse result for a GUI row: the plain text plus the highlight
+/// style for each markup span.
+type PangoParse = (String, Vec<(std::ops::Range<usize>, gpui::HighlightStyle)>);
+
 /// Root view: renders the filter field and the ranked list of targets.
 pub struct Launcher {
     /// Every indexed target, kept in name-sorted order (the "unfiltered" order).
@@ -117,6 +121,11 @@ pub struct Launcher {
     pub(super) highlight_cache: std::cell::RefCell<
         std::collections::HashMap<gpui::SharedString, Vec<std::ops::Range<usize>>>,
     >,
+    /// Pango markup parse results memoized per GUI row text. Cleared
+    /// whenever a new burst installs new rows, since the parse output
+    /// depends only on the row text.
+    pub(super) pango_cache:
+        std::cell::RefCell<std::collections::HashMap<gpui::SharedString, PangoParse>>,
 }
 
 impl Launcher {
@@ -165,6 +174,7 @@ impl Launcher {
             element_font_val,
             mono_font,
             highlight_cache: std::cell::RefCell::new(std::collections::HashMap::new()),
+            pango_cache: std::cell::RefCell::new(std::collections::HashMap::new()),
         }
     }
 
@@ -1208,6 +1218,8 @@ impl Launcher {
         if matches!(self.state, LauncherState::GuiMode { .. }) || self.gui_session.is_none() {
             return;
         }
+        // A new GUI session starts with fresh rows.
+        self.pango_cache.borrow_mut().clear();
         // Commit the layout metatags as we enter GUI mode (loading frame).
         self.sticky_metatags = metatags;
         self.state = LauncherState::GuiMode {
@@ -1267,6 +1279,8 @@ impl Launcher {
         burst: crate::core::gui_protocol::GuiBurst,
         title: &str,
     ) {
+        // The burst installs new rows; drop memoized parses of old texts.
+        self.pango_cache.borrow_mut().clear();
         let mut prompt = None;
         let mut message = None;
         let mut no_custom = false;

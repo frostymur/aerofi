@@ -767,13 +767,7 @@ impl Launcher {
 
                                     let text_div = div().flex_1().text_color(name_color);
                                     let text_div = if markup_rows_val {
-                                        let (plain, highlights) =
-                                            crate::core::pango::parse_pango(&row.text);
-                                        let mut st = gpui::StyledText::new(plain);
-                                        if !highlights.is_empty() {
-                                            st = st.with_highlights(highlights);
-                                        }
-                                        text_div.child(st)
+                                        text_div.child(_this.markup_text(&row.text))
                                     } else if let Some(st) =
                                         _this.query_highlighted_text(&row.text, None)
                                     {
@@ -828,13 +822,7 @@ impl Launcher {
                                             .text_size(px(t.font.size * 0.82))
                                             .flex_shrink_0();
                                         let info_el = if markup_rows_val {
-                                            let (plain, highlights) =
-                                                crate::core::pango::parse_pango(info);
-                                            let mut st = gpui::StyledText::new(plain);
-                                            if !highlights.is_empty() {
-                                                st = st.with_highlights(highlights);
-                                            }
-                                            info_el.child(st)
+                                            info_el.child(_this.markup_text(info))
                                         } else {
                                             info_el.child(info.clone())
                                         };
@@ -893,13 +881,7 @@ impl Launcher {
 
                                     let text_div = div().flex_1().text_color(name_color);
                                     let text_div = if markup_rows_val {
-                                        let (plain, highlights) =
-                                            crate::core::pango::parse_pango(&row.text);
-                                        let mut st = gpui::StyledText::new(plain);
-                                        if !highlights.is_empty() {
-                                            st = st.with_highlights(highlights);
-                                        }
-                                        text_div.child(st)
+                                        text_div.child(_this.markup_text(&row.text))
                                     } else if let Some(st) =
                                         _this.query_highlighted_text(&row.text, None)
                                     {
@@ -954,13 +936,7 @@ impl Launcher {
                                             .text_size(px(t.font.size * 0.82))
                                             .flex_shrink_0();
                                         let info_el = if markup_rows_val {
-                                            let (plain, highlights) =
-                                                crate::core::pango::parse_pango(info);
-                                            let mut st = gpui::StyledText::new(plain);
-                                            if !highlights.is_empty() {
-                                                st = st.with_highlights(highlights);
-                                            }
-                                            info_el.child(st)
+                                            info_el.child(_this.markup_text(info))
                                         } else {
                                             info_el.child(info.clone())
                                         };
@@ -1243,12 +1219,7 @@ impl Launcher {
                 .line_clamp(1)
                 .overflow_hidden();
             let text_el = if markup_rows {
-                let (plain, highlights) = crate::core::pango::parse_pango(&row.text);
-                let mut st = gpui::StyledText::new(plain);
-                if !highlights.is_empty() {
-                    st = st.with_highlights(highlights);
-                }
-                text_el.child(st)
+                text_el.child(self.markup_text(&row.text))
             } else if let Some(st) = self.query_highlighted_text(&row.text, None) {
                 text_el.child(st)
             } else {
@@ -2155,6 +2126,28 @@ impl Launcher {
                 })
                 .collect(),
         )
+    }
+
+    /// Pango-parsed `StyledText` for a markup GUI row. The parse (a linear
+    /// scan with per-tag allocations) is memoized per row text, so redraws
+    /// and selection changes don't re-parse every visible row.
+    fn markup_text(&self, text: &str) -> gpui::StyledText {
+        let (plain, highlights) = {
+            let mut cache = self.pango_cache.borrow_mut();
+            match cache.get(text) {
+                Some(c) => (c.0.clone(), c.1.clone()),
+                None => {
+                    let v = crate::core::pango::parse_pango(text);
+                    cache.insert(gpui::SharedString::from(text), (v.0.clone(), v.1.clone()));
+                    v
+                }
+            }
+        };
+        let mut st = gpui::StyledText::new(plain);
+        if !highlights.is_empty() {
+            st = st.with_highlights(highlights);
+        }
+        st
     }
 
     /// A `StyledText` with the query match highlighted, or `None` when there
