@@ -106,6 +106,10 @@ pub struct Launcher {
     /// Pre-computed (font, size) for list rows/cells (the `[element].font`
     /// override). Reused by every visible row/cell each frame.
     pub(super) element_font_val: (gpui::Font, f32),
+    /// Pre-computed monospace family for code blocks / table cells (first
+    /// fallback containing "mono", else "SF Mono"). Derived from the theme,
+    /// recomputed on reload.
+    pub(super) mono_font: gpui::SharedString,
 }
 
 impl Launcher {
@@ -120,7 +124,7 @@ impl Launcher {
         let button_hotkeys = widget_registry.button_hotkeys();
         let base_count = all.len();
         let font_fallbacks = super::helpers::font_fallback_families(&theme.font.fallback);
-        let (root_font, inputbar_font, element_font_val) =
+        let (root_font, inputbar_font, element_font_val, mono_font) =
             Self::build_fonts(&theme, &font_fallbacks);
         Self {
             all,
@@ -152,6 +156,7 @@ impl Launcher {
             root_font,
             inputbar_font,
             element_font_val,
+            mono_font,
         }
     }
 
@@ -161,7 +166,7 @@ impl Launcher {
     fn build_fonts(
         theme: &ThemeConfig,
         font_fallbacks: &[String],
-    ) -> (Font, (Font, f32), (Font, f32)) {
+    ) -> (Font, (Font, f32), (Font, f32), gpui::SharedString) {
         let base_weight = super::helpers::base_weight(&theme.font.weight);
         let root_font = Font {
             family: theme.font.family.clone().into(),
@@ -182,7 +187,8 @@ impl Launcher {
             base_weight,
             font_fallbacks,
         );
-        (root_font, inputbar_font, element_font_val)
+        let mono_font = super::helpers::mono_family(theme);
+        (root_font, inputbar_font, element_font_val, mono_font)
     }
 
     /// Effective list columns: the sticky metatag override from the last
@@ -969,11 +975,12 @@ impl Launcher {
         self.button_hotkeys = self.widget_registry.button_hotkeys();
         self.theme = Arc::new(theme);
         self.font_fallbacks = super::helpers::font_fallback_families(&self.theme.font.fallback);
-        let (root_font, inputbar_font, element_font_val) =
+        let (root_font, inputbar_font, element_font_val, mono_font) =
             Self::build_fonts(self.theme.as_ref(), &self.font_fallbacks);
         self.root_font = root_font;
         self.inputbar_font = inputbar_font;
         self.element_font_val = element_font_val;
+        self.mono_font = mono_font;
         crate::sys::appkit::set_corner_radius(self.theme.window.corner_radius);
         // Defer centering to the next render() call so it fires *after*
         // window.resize() applies the new theme dimensions.

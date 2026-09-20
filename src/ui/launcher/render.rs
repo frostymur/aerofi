@@ -271,17 +271,6 @@ impl Launcher {
         parse_hex_color_alpha(hex).unwrap_or(0x000000FF)
     }
 
-    /// Mono font for code blocks: first fallback containing "Mono", else "SF Mono".
-    fn mono_font(t: &crate::core::theme::ThemeConfig) -> gpui::SharedString {
-        let fb = t.font.fallback.as_deref().unwrap_or_default();
-        let mono = fb
-            .iter()
-            .find(|f| f.to_ascii_lowercase().contains("mono"))
-            .map(|s| s.as_str())
-            .unwrap_or("SF Mono");
-        gpui::SharedString::from(mono.to_string())
-    }
-
     /// Current GUI-mode name (from `@aerofi.preset`), if in GUI mode.
     fn gui_layout(&self) -> Option<&str> {
         match &self.state {
@@ -1429,7 +1418,7 @@ impl Launcher {
             div()
                 .flex_1()
                 .text_size(px(t.font.size * 0.8))
-                .font_family(Self::mono_font(t))
+                .font_family(&self.mono_font)
                 .text_color(rgba(Self::color(&t.inputbar.placeholder_color)))
                 .child("(no output)")
                 .into_any()
@@ -1464,7 +1453,7 @@ impl Launcher {
         let t = &self.theme;
         let text_color = rgba(Self::color(&t.element.text_color));
         let dim_color = rgba(Self::color(&t.inputbar.placeholder_color));
-        let mono = Self::mono_font(t);
+        let mono = self.mono_font.clone();
 
         let base = gpui::TextStyle {
             font_size: px(t.font.size).into(),
@@ -1659,7 +1648,7 @@ impl Launcher {
                 },
             };
             if mark.kind == InlineKind::Code {
-                code_ranges.push((mark.range.clone(), Self::mono_font(t)));
+                code_ranges.push((mark.range.clone(), self.mono_font.clone()));
             }
             highlights.push((mark.range.clone(), style));
         }

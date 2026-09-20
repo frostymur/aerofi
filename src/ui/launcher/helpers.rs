@@ -86,6 +86,19 @@ pub(super) fn font_fallback_families(theme_fallbacks: &Option<Vec<String>>) -> V
     list
 }
 
+/// Mono font family for code blocks / table cells: the first fallback
+/// containing "mono" (case-insensitive), else "SF Mono". Computed once per
+/// theme load (see `Launcher::mono_font`) rather than per render.
+pub(super) fn mono_family(theme: &crate::core::theme::ThemeConfig) -> gpui::SharedString {
+    let fb = theme.font.fallback.as_deref().unwrap_or_default();
+    let mono = fb
+        .iter()
+        .find(|f| f.to_ascii_lowercase().contains("mono"))
+        .map(|s| s.as_str())
+        .unwrap_or("SF Mono");
+    gpui::SharedString::from(mono.to_string())
+}
+
 /// Resolve an element's font: the optional `FontOverride` (e.g.
 /// `[inputbar].font`) layered over the global `[font]` settings. Returns
 /// the GPUI font (family/weight/fallbacks) and the font size in points.
@@ -132,7 +145,33 @@ pub(super) fn is_primary_click(event: &gpui::ClickEvent) -> bool {
 
 /// Expand a leading `~` in a path to the user's home directory.
 /// Also resolves `./` and `../` relative to the `~/.config/aerofi/` directory.
+///
+/// Memoized per thread: the render path re-expands the same theme/widget
+/// paths on every frame, and each expansion costs a `dirs::home_dir()` env
+/// lookup plus allocations.
 pub(super) fn expand_tilde_path(path: &str) -> String {
+    TILDE_PATH_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if let Some(cached) = cache.get(path) {
+            return cached.clone();
+        }
+        let value = expand_tilde_path_uncached(path);
+        if cache.len() >= MAX_TILDE_CACHE {
+            cache.clear();
+        }
+        cache.insert(path.to_string(), value.clone());
+        value
+    })
+}
+
+const MAX_TILDE_CACHE: usize = 4096;
+
+thread_local! {
+    static TILDE_PATH_CACHE: std::cell::RefCell<std::collections::HashMap<String, String>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+fn expand_tilde_path_uncached(path: &str) -> String {
     if let Some(rest) = path.strip_prefix('~') {
         if let Some(home) = dirs::home_dir() {
             return format!("{}{rest}", home.display());
