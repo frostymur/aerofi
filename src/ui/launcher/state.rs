@@ -960,6 +960,9 @@ impl Launcher {
         self.app_config = config;
         self.base_count = targets.len();
         self.all = targets;
+        // Reconcile inline-script daemons with the new target set (scripts
+        // added/removed/re-intervalled by the reload).
+        crate::core::scheduler::reconcile_daemons(&self.all);
         self.search = SearchIndex::new(&self.app_config.aliases);
         self.plugin_manager = crate::core::plugin_manager::PluginManager::load_all();
         self.widget_registry = WidgetRegistry::from_theme(&theme.widgets);
