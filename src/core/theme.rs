@@ -956,10 +956,37 @@ pub fn load_theme(theme_name: &str) -> ThemeConfig {
 // Hex colour helpers
 // ---------------------------------------------------------------------------
 
+/// Cap for the parse caches: theme colours number in the tens; the only
+/// dynamic input is pango-markup colour values from script output, so a
+/// bounded cache (cleared wholesale when full) keeps memory flat.
+const MAX_HEX_CACHE: usize = 4096;
+
+thread_local! {
+    static HEX_ALPHA_CACHE: std::cell::RefCell<std::collections::HashMap<String, Option<u32>>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+    static HEX_CACHE: std::cell::RefCell<std::collections::HashMap<String, Option<u32>>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
 /// Parse a CSS-style hex colour (`"#1a1b26"`, `"7aa2f7"`, `"#fff"`) into
 /// a 24-bit RGB value suitable for GPUI's `rgb()`.  Returns `None` on
 /// malformed input.
 pub fn parse_hex_color_alpha(hex: &str) -> Option<u32> {
+    HEX_ALPHA_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if let Some(value) = cache.get(hex) {
+            return *value;
+        }
+        let value = parse_hex_color_alpha_uncached(hex);
+        if cache.len() >= MAX_HEX_CACHE {
+            cache.clear();
+        }
+        cache.insert(hex.to_string(), value);
+        value
+    })
+}
+
+fn parse_hex_color_alpha_uncached(hex: &str) -> Option<u32> {
     if hex == "transparent" {
         return Some(0x00000000);
     }
@@ -989,6 +1016,21 @@ pub fn parse_hex_color_alpha(hex: &str) -> Option<u32> {
 }
 
 pub fn parse_hex_color(hex: &str) -> Option<u32> {
+    HEX_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if let Some(value) = cache.get(hex) {
+            return *value;
+        }
+        let value = parse_hex_color_uncached(hex);
+        if cache.len() >= MAX_HEX_CACHE {
+            cache.clear();
+        }
+        cache.insert(hex.to_string(), value);
+        value
+    })
+}
+
+fn parse_hex_color_uncached(hex: &str) -> Option<u32> {
     let hex = hex.trim().trim_start_matches('#');
     let (r, g, b) = match hex.len() {
         3 => {
