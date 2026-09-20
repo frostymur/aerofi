@@ -35,10 +35,15 @@ for kv in "${fields[@]}"; do
   esac
 done
 
+# Lock uses the system Ctrl+Cmd+Q hotkey (instant lock screen, apps keep
+# running). Sending it via System Events needs the Accessibility permission
+# for aerofi (System Settings > Privacy & Security > Accessibility).
+# Restart/Shut Down need a NOPASSWD sudoers rule for /sbin/shutdown, e.g.:
+#   echo "<user> ALL=(root) NOPASSWD: /sbin/shutdown" | sudo tee /etc/sudoers.d/aerofi
 case "$choice" in
-  lock)     pmset displaysleepnow ;;
+  lock)     osascript -e 'tell application "System Events" to keystroke "q" using {command down, control down}' ;;
   sleep)    pmset sleepnow ;;
-  logout)   osascript -e 'tell application "loginwindow" to eject' ;;
+  logout)   osascript -e 'tell application "loginwindow" to «event aevtrlgo»' ;;
   restart)  sudo shutdown -r now ;;
   shutdown) sudo shutdown -h now ;;
 esac
