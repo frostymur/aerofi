@@ -64,11 +64,18 @@ pub enum MdBlock {
     /// `---` horizontal rule.
     Rule,
     /// A markdown table: header cells, one `rows` entry per body row, and a
-    /// per-column alignment.
+    /// per-column alignment. `cells` and `col_weights` are precomputed at
+    /// parse time so the renderer does no per-frame string work.
     Table {
         header: Vec<MdText>,
         rows: Vec<Vec<MdText>>,
         alignments: Vec<TableAlignment>,
+        /// Cell text with newlines replaced by spaces, row-major with the
+        /// header row first.
+        cells: Vec<Vec<String>>,
+        /// Per-column flex-grow weight: the widest cell in the column, in
+        /// chars (minimum 1).
+        col_weights: Vec<u32>,
     },
     /// Text outside any recognised block; shown as plain text.
     Plain(String),
@@ -313,10 +320,15 @@ pub fn parse(input: &str) -> Vec<MdBlock> {
                         if !table.rows.is_empty()
                             || table.header.as_ref().is_some_and(|h| !h.is_empty())
                         {
+                            let header = table.header.unwrap_or_default();
+                            let rows = table.rows;
+                            let (cells, col_weights) = table_cells_and_weights(&header, &rows);
                             st.blocks.push(MdBlock::Table {
-                                header: table.header.unwrap_or_default(),
-                                rows: table.rows,
+                                header,
+                                rows,
                                 alignments: table.alignments,
+                                cells,
+                                col_weights,
                             });
                         }
                         // `buf` only held this table's cells; nothing else
@@ -375,6 +387,31 @@ fn map_alignment(a: pulldown_cmark::Alignment) -> TableAlignment {
         pulldown_cmark::Alignment::Right => TableAlignment::Right,
         pulldown_cmark::Alignment::None | pulldown_cmark::Alignment::Left => TableAlignment::Left,
     }
+}
+
+/// Precompute the render-ready form of a table: newline-normalized cell
+/// strings (row-major, header first) and a per-column flex-grow weight
+/// (the widest cell in the column, in chars, minimum 1).
+fn table_cells_and_weights(
+    header: &[MdText],
+    rows: &[Vec<MdText>],
+) -> (Vec<Vec<String>>, Vec<u32>) {
+    let cells: Vec<Vec<String>> = std::iter::once(header)
+        .chain(rows.iter().map(|r| r.as_slice()))
+        .map(|row| row.iter().map(|c| c.text.replace('\n', " ")).collect())
+        .collect();
+    let col_count = cells.iter().map(|r| r.len()).max().unwrap_or(0);
+    let col_weights: Vec<u32> = (0..col_count)
+        .map(|c| {
+            cells
+                .iter()
+                .filter_map(|r| r.get(c))
+                .map(|s| s.chars().count() as u32)
+                .max()
+                .unwrap_or(1)
+        })
+        .collect();
+    (cells, col_weights)
 }
 
 /// Sort marks and clip overlaps so they satisfy the invariants of the
@@ -651,7 +688,13 @@ mod tests {
                         }
                     ]
                 ],
-                alignments: vec![TableAlignment::Left, TableAlignment::Right]
+                alignments: vec![TableAlignment::Left, TableAlignment::Right],
+                cells: vec![
+                    vec!["Name".into(), "Size".into()],
+                    vec!["a".into(), "1".into()],
+                    vec!["bb".into(), "22".into()],
+                ],
+                col_weights: vec![4, 4]
             }]
         );
     }
