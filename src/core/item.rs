@@ -814,8 +814,7 @@ echo "Theme switcher..."
     fn power_menu_example_parses_with_hide_on_exit() {
         let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let script_path = manifest_dir.join("examples/scripts/power-menu.sh");
-        let target =
-            Target::script_from_file(&script_path).expect("power-menu.sh should parse");
+        let target = Target::script_from_file(&script_path).expect("power-menu.sh should parse");
         let Target::Script { metatags, .. } = target else {
             panic!("Expected Target::Script");
         };

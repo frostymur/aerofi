@@ -2081,8 +2081,7 @@ impl Launcher {
         // Capture before clearing sticky_metatags below: a GUI script may
         // declare `@aerofi.hide_on_exit true` to make the launcher disappear
         // (returning focus to the previous app) once the script ends.
-        let hide_on_exit =
-            self.sticky_metatags.as_ref().and_then(|m| m.hide_on_exit) == Some(true);
+        let hide_on_exit = self.sticky_metatags.as_ref().and_then(|m| m.hide_on_exit) == Some(true);
 
         if let Some(session) = self.gui_session.take()
             && let Ok(mut s) = session.lock()
