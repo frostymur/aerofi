@@ -2,7 +2,10 @@
 //! handling, filtering, execution, configuration reload).
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use gpui::{Context, Font, ListAlignment, ListState, ScrollStrategy, UniformListScrollHandle, px};
 
@@ -68,6 +71,10 @@ pub struct Launcher {
     /// Active GUI-mode script session (stdin/stdout pipe to child).
     /// Wrapped in Arc<Mutex<>> so it can be shared with async tasks.
     pub(super) gui_session: Option<Arc<Mutex<GuiSession>>>,
+    /// Single pump thread serving live-search queries for the active GUI
+    /// session. Kept alive while the session runs; dropped on leave/hide,
+    /// which terminates the thread.
+    pub(super) gui_live_search: Option<LiveSearchPump>,
     /// Manager for dynamic `.dylib` plugins.
     pub(super) plugin_manager: crate::core::plugin_manager::PluginManager,
     /// Active plugin search task.
@@ -130,6 +137,7 @@ impl Launcher {
             preview_list: ListState::new(0, ListAlignment::Top, px(16.0)),
             gui_rows_scroll: UniformListScrollHandle::new(),
             full_output_blocks: Vec::new(),
+            gui_live_search: None,
             sticky_metatags: None,
             widget_registry,
             button_hotkeys,
@@ -629,6 +637,9 @@ impl Launcher {
         {
             s.kill();
         }
+        // Stop the live-search pump thread (dropping the sender makes its
+        // recv() return and the thread exits).
+        self.gui_live_search.take();
         // Best-effort: ask the allocator to munmap the session's freed
         // pages while we are hidden. Modern macOS often releases nothing
         // (see sys::memory); harmless either way.
@@ -1089,6 +1100,9 @@ impl Launcher {
         match GuiSession::spawn(&path, args, envs) {
             Ok(session) => {
                 let session = Arc::new(Mutex::new(session));
+                // A fresh session gets a fresh live-search pump (the old one
+                // is bound to the previous session's pipes).
+                self.gui_live_search.take();
                 self.gui_session = Some(session.clone());
 
                 // Read initial burst on a background thread, then update UI.
@@ -1209,10 +1223,12 @@ impl Launcher {
             }
             ReadResult::BurstThenExit(burst) => {
                 self.gui_apply_burst(burst, title);
-                // Script exited after this burst — mark session as done.
+                // Script exited after this burst — mark session as done and
+                // drop its live-search pump (a new session must not reuse it).
                 // The UI will stay showing the last rows but selecting will
                 // leave GUI mode.
                 self.gui_session = None;
+                self.gui_live_search.take();
             }
             ReadResult::Exited => {
                 // Script exited with no output — return to search.
@@ -1738,6 +1754,14 @@ impl Launcher {
     }
 
     /// Send a live search query update to the script's stdin.
+    /// Enqueue a live-search query on the session's single pump thread.
+    ///
+    /// Previously every keystroke spawned a thread that held the session
+    /// mutex for a full `read_burst` (up to 5 s); fast typing piled threads
+    /// up on the lock and results arrived tens of seconds late. Now one
+    /// pump thread per session coalesces keystrokes (only the newest query
+    /// is processed), sends it to the script, and drains output until the
+    /// script goes quiet.
     fn gui_send_live_search(&mut self, cx: &mut Context<Self>) {
         let LauncherState::GuiMode {
             query,
@@ -1764,34 +1788,148 @@ impl Launcher {
             *loading = true;
         }
 
-        let view = cx.entity();
-        let cx_async = cx.to_async();
-        let (tx, rx) = futures::channel::oneshot::channel();
+        // Start the pump lazily on the first live-search keystroke.
+        let pump = match self.gui_live_search.as_mut() {
+            Some(p) => p,
+            None => {
+                let pump = Self::start_live_search_pump(session, title.clone(), cx.entity(), cx);
+                self.gui_live_search = Some(pump);
+                self.gui_live_search.as_mut().expect("pump just started")
+            }
+        };
+        let query_generation = pump.latest_enqueued.fetch_add(1, Ordering::Relaxed) + 1;
+        let _ = pump.tx.send((query, query_generation));
+    }
+
+    /// Spawn the live-search pump thread for `session` and return its
+    /// control handle. The thread exits when the returned `LiveSearchPump`
+    /// is dropped (its sender half).
+    fn start_live_search_pump(
+        session: Arc<Mutex<GuiSession>>,
+        title: String,
+        view: gpui::Entity<Launcher>,
+        cx: &mut Context<Self>,
+    ) -> LiveSearchPump {
+        let latest_enqueued = Arc::new(AtomicU64::new(0));
+        let (query_tx, query_rx) = mpsc::channel::<(String, u64)>();
+        // The pump thread is a plain OS thread (it blocks on pipes), so it
+        // can't hold GPUI handles; finished results are handed to a
+        // GPUI-side task over this channel. Dropping `result_tx` (when the
+        // pump thread exits) ends the task.
+        let (mut result_tx, mut result_rx) = futures::channel::mpsc::channel::<LiveSearchApply>(16);
+
+        let pump_latest = latest_enqueued.clone();
         let _ = std::thread::Builder::new()
-            .name("aerofi-gui-search".to_string())
+            .name("aerofi-gui-live-search".to_string())
             .stack_size(256 * 1024)
             .spawn(move || {
-                let result = {
-                    let mut session = session.lock().unwrap();
-                    if session.send_query_change(&query).is_err() {
-                        ReadResult::Exited
-                    } else {
-                        session.read_burst(std::time::Duration::from_secs(5))
+                while let Ok((mut query, mut query_generation)) = query_rx.recv() {
+                    // Coalesce: if the user typed several keys while we
+                    // were busy, only the newest (query, generation) matters.
+                    while let Ok((later_query, later_generation)) = query_rx.try_recv() {
+                        query = later_query;
+                        query_generation = later_generation;
                     }
-                };
-                let _ = tx.send(result);
+
+                    let result = Self::send_and_drain(&session, &query);
+                    let stale = pump_latest.load(Ordering::Relaxed) != query_generation;
+                    let _ = result_tx.try_send(LiveSearchApply {
+                        result,
+                        title: title.clone(),
+                        session: session.clone(),
+                        stale,
+                    });
+                }
+                // Drop the channel end: the GPUI-side task sees EOF and ends.
             });
+
+        let cx_async = cx.to_async();
         cx.spawn(move |_, _: &mut gpui::AsyncApp| async move {
-            if let Ok(result) = rx.await {
+            while let Ok(apply) = result_rx.recv().await {
+                let LiveSearchApply {
+                    result,
+                    title,
+                    session,
+                    stale,
+                } = apply;
                 cx_async.update(|cx| {
                     view.update(cx, |launcher, cx| {
-                        launcher.gui_handle_read_result(result, &title);
-                        cx.notify();
+                        // Ignore results from a session that is no longer
+                        // active (left GUI mode, or a new session started)
+                        // and skip frames superseded by a newer query.
+                        let active = launcher
+                            .gui_session
+                            .as_ref()
+                            .is_some_and(|s| Arc::ptr_eq(s, &session));
+                        if active && !stale {
+                            if let Some(result) = result {
+                                launcher.gui_handle_read_result(result, &title);
+                            }
+                            if let LauncherState::GuiMode { loading, .. } = &mut launcher.state {
+                                *loading = false;
+                            }
+                            cx.notify();
+                        }
                     });
                 });
             }
         })
         .detach();
+
+        LiveSearchPump {
+            latest_enqueued,
+            tx: query_tx,
+        }
+    }
+
+    /// Send a live-search query to the script, then drain its output until
+    /// the script goes quiet. Returns `None` if the script produced nothing
+    /// within the first-line deadline (the UI stays on its current rows).
+    fn send_and_drain(session: &Mutex<GuiSession>, query: &str) -> Option<ReadResult> {
+        // Lock is held only for the stdin write itself.
+        {
+            let mut s = session
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if s.send_query_change(query).is_err() {
+                return Some(ReadResult::Exited);
+            }
+        }
+
+        // Drain in 100 ms chunks: each `read_burst` already swallows a
+        // complete burst (50 ms inter-line quiet), so normally one chunk
+        // suffices. `try_lock` keeps UI operations (row selection, events)
+        // from ever blocking on our read. The last non-empty burst is the
+        // script's final frame for this query.
+        let first_line_deadline = Instant::now() + Duration::from_secs(2);
+        let mut last: Option<ReadResult> = None;
+        loop {
+            let chunk = match session.try_lock() {
+                Ok(s) => s.read_burst(Duration::from_millis(100)),
+                Err(_) => {
+                    std::thread::sleep(Duration::from_millis(10));
+                    continue;
+                }
+            };
+            let quiet = matches!(
+                &chunk,
+                ReadResult::Burst(b) if b.rows.is_empty() && b.commands.is_empty()
+            );
+            if quiet {
+                if last.is_some() || Instant::now() >= first_line_deadline {
+                    break;
+                }
+                continue; // still waiting for the script's first line
+            }
+            if matches!(
+                chunk,
+                ReadResult::Exited | ReadResult::Error(_) | ReadResult::BurstThenExit(_)
+            ) {
+                return Some(chunk);
+            }
+            last = Some(chunk);
+        }
+        last
     }
 
     /// Re-filter GUI rows based on the current query.
@@ -1821,6 +1959,8 @@ impl Launcher {
         {
             s.kill();
         }
+        // Stop the live-search pump thread for this session.
+        self.gui_live_search.take();
         // Clear sticky_metatags so the GUI script's layout overrides (e.g.
         // `@aerofi.columns 1`) don't linger after the script exits.
         // Without this, a 4-column grid theme would render as a 1-column list
@@ -1852,4 +1992,29 @@ impl Launcher {
         crate::sys::appkit::set_window_size(t.window.width as f64, t.window.height as f64);
         reloaded
     }
+}
+
+/// Handle for the single live-search pump thread of an active GUI session.
+///
+/// Dropping the value (on `gui_leave` / `on_hide`) drops the sender half,
+/// which makes the pump thread's `recv()` return and the thread exit.
+pub(super) struct LiveSearchPump {
+    /// Generation of the newest enqueued query. The pump skips applying a
+    /// result once a newer query has been enqueued (the next loop
+    /// iteration, coalesced to the latest, renders the fresh result).
+    latest_enqueued: Arc<AtomicU64>,
+    /// Sender half: each live-search keystroke pushes (query, generation).
+    tx: mpsc::Sender<(String, u64)>,
+}
+
+/// One finished live-search round, handed from the pump thread to the
+/// GPUI-side task that applies it on the main thread.
+struct LiveSearchApply {
+    /// `None` if the script produced no output within the deadline.
+    result: Option<ReadResult>,
+    title: String,
+    /// The session this result belongs to; stale if no longer the active one.
+    session: Arc<Mutex<GuiSession>>,
+    /// `true` if a newer query was enqueued while this round was draining.
+    stale: bool,
 }
