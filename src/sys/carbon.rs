@@ -155,7 +155,7 @@ unsafe extern "C" fn hotkey_handler(
         } else if let Some(targets) = GLOBAL_TARGETS.get()
             && let Some(target) = targets.get((id.id - GLOBAL_BASE_ID) as usize)
         {
-            crate::core::executor::execute(target);
+            crate::ui::window::launch_global_target(target);
         }
     }
     noErr

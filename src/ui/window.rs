@@ -82,6 +82,50 @@ pub fn toggle() {
     }
 }
 
+/// Run a `[bindings.global]` target from its hotkey.
+///
+/// GUI-mode scripts need the launcher window for their two-way session, so
+/// they are opened as a proper GUI session (window shown + `StartGuiSession`)
+/// instead of being spawned detached with nowhere to display. Everything
+/// else runs detached via the executor, as before. Invoked by the global
+/// hotkey handler on the main thread.
+pub fn launch_global_target(target: &Target) {
+    let is_gui = matches!(
+        target,
+        Target::Script {
+            mode: crate::core::item::ScriptMode::Gui,
+            ..
+        }
+    );
+    if !is_gui {
+        crate::core::executor::execute(target);
+        return;
+    }
+    let Some(rr) = RENDER_REQUEST.with(|r| r.borrow().clone()) else {
+        crate::core::executor::execute(target);
+        return;
+    };
+    // Show the window first so the loading state is visible immediately,
+    // then start the session (same `perform_action` path as picking the
+    // script from the search list).
+    VISIBLE.store(true, Ordering::SeqCst);
+    notify_show();
+    appkit::show_application();
+    request_render();
+    let view = rr.view.clone();
+    let target = target.clone();
+    rr.app.update(|cx| {
+        view.update(cx, |launcher, cx| {
+            launcher.perform_action(
+                crate::ui::launcher::LauncherAction::StartGuiSession(target, Vec::new()),
+                false,
+                cx,
+            );
+            cx.notify();
+        });
+    });
+}
+
 /// Drop decoded GPU texture references held by the launcher so macOS can
 /// reclaim the memory while hidden.  Safe to call from any context that
 /// can reach the GPUI event loop (e.g. `view.update()`).
