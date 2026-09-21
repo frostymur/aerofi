@@ -157,16 +157,17 @@ pub fn set_window_size(width: f64, height: f64) {
     }
 }
 
-/// Synchronously set the NSWindow's frame to `width`×`height`, centred on
-/// its current screen (shifted by `x_offset`/`y_offset`), in a single
-/// `setFrame:` call.
+/// Synchronously set the window's *content* size to `width`×`height` and
+/// re-centre it on its current screen (shifted by `x_offset`/`y_offset`).
 ///
-/// `set_window_size` only calls `setContentSize:`, which keeps the window's
-/// bottom-left origin fixed — the window grows toward the top-right and then
-/// a follow-up `center_window` jumps it back to the middle. Two steps read as
-/// a laggy "resize on the go". Doing the resize and the re-centre atomically
-/// (one `setFrame:display:`) makes the window snap straight to its final size
-/// *and* position.
+/// Both calls run back to back on the main thread, so the compositor only
+/// ever sees the final size + position — no visible two-step "resize on the
+/// go" (resize anchored at the bottom-left, then a jump to the middle).
+///
+/// Uses `setContentSize:` rather than `setFrame:`: the launcher is a titled
+/// panel (`NSTitledWindowMask | NSFullSizeContentViewWindowMask`), so its
+/// frame is bigger than its content rect and `setFrame:` would undersize the
+/// content, clipping the last list row.
 ///
 /// Must be called on the main thread, outside of a draw pass.
 pub fn set_window_frame_centered(width: f64, height: f64, x_offset: f64, y_offset: f64) {
@@ -181,20 +182,26 @@ pub fn set_window_frame_centered(width: f64, height: f64, x_offset: f64, y_offse
         use objc2_foundation::{NSPoint, NSRect, NSSize};
 
         let ns_window = &*(ptr as *const NSWindow);
+        // 1. Content size (not frame) — see the doc comment.
+        let _: () = msg_send![ns_window, setContentSize: NSSize { width, height }];
+
+        // 2. Re-centre using the frame the resize just produced.
         let mut screen: *mut AnyObject = msg_send![ns_window, screen];
         if screen.is_null() {
             screen = msg_send![objc2::class!(NSScreen), mainScreen];
         }
         if screen.is_null() {
-            // No screen info: fall back to a resize without re-centering.
-            let _: () = msg_send![ns_window, setContentSize: NSSize { width, height }];
             return;
         }
         let screen_frame: NSRect = msg_send![screen, frame];
-        let new_x = screen_frame.origin.x + (screen_frame.size.width - width) / 2.0 + x_offset;
-        let new_y = screen_frame.origin.y + (screen_frame.size.height - height) / 2.0 + y_offset;
-        let frame = NSRect::new(NSPoint::new(new_x, new_y), NSSize { width, height });
-        let _: () = msg_send![ns_window, setFrame: frame, display: true];
+        let window_frame: NSRect = msg_send![ns_window, frame];
+        let new_x = screen_frame.origin.x
+            + (screen_frame.size.width - window_frame.size.width) / 2.0
+            + x_offset;
+        let new_y = screen_frame.origin.y
+            + (screen_frame.size.height - window_frame.size.height) / 2.0
+            + y_offset;
+        let _: () = msg_send![ns_window, setFrameOrigin: NSPoint::new(new_x, new_y)];
     }
 }
 
