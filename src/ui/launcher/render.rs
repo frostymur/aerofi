@@ -369,22 +369,27 @@ impl Launcher {
     /// as a laggy, animating resize. `setContentSize:` here (called from the
     /// burst handler, outside any draw pass) applies the size before that
     /// frame is drawn.
-    pub(super) fn gui_sync_window_size(&self) {
+    pub(super) fn gui_sync_window_size(&mut self) {
         let t = &self.theme;
         let width = self
             .sticky_metatags
             .as_ref()
             .and_then(|m| m.width)
             .unwrap_or(t.window.width);
+        let height = self.gui_fit_height();
         // Atomic resize + re-centre: a bare `setContentSize:` keeps the
         // window's bottom-left anchored and a later `center_window` jumps it
         // back, which reads as a laggy two-step "resize on the go".
         crate::sys::appkit::set_window_frame_centered(
             width as f64,
-            self.gui_fit_height() as f64,
+            height as f64,
             t.window.x_offset as f64,
             t.window.y_offset as f64,
         );
+        // Mark the size as already applied so `render()` skips its own async
+        // `window.resize()` + re-centre (otherwise the window would resize
+        // twice: once here, once there).
+        self.last_window_size = Some((width, height));
     }
 
     /// Render the input bar styled from `theme.inputbar`.
