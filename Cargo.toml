@@ -8,7 +8,7 @@ members = [
 # Shared version so `cargo release` renders {{version}} in the bump commit
 # message (without it the workspace commit template has no version variable).
 [workspace.package]
-version = "0.2.9"
+version = "0.2.10"
 
 [package]
 name = "aerofi"
