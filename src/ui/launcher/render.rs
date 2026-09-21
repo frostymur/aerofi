@@ -359,6 +359,34 @@ impl Launcher {
         (content + pad_v * 2.0 + gui_padding * 2.0 + 6.0).min(t.window.height)
     }
 
+    /// Pre-size the native window synchronously to the current GUI-mode
+    /// layout, mirroring the GUI-to-search pre-size in `gui_leave`.
+    ///
+    /// `render()` resizes the window via an async `window.resize()`, so
+    /// without this the first frame after entering GUI mode is laid out at
+    /// the new size while the native window is still at the old (search)
+    /// size — CoreAnimation stretches it until the resize lands, which reads
+    /// as a laggy, animating resize. `setContentSize:` here (called from the
+    /// burst handler, outside any draw pass) applies the size before that
+    /// frame is drawn.
+    pub(super) fn gui_sync_window_size(&self) {
+        let t = &self.theme;
+        let width = self
+            .sticky_metatags
+            .as_ref()
+            .and_then(|m| m.width)
+            .unwrap_or(t.window.width);
+        // Atomic resize + re-centre: a bare `setContentSize:` keeps the
+        // window's bottom-left anchored and a later `center_window` jumps it
+        // back, which reads as a laggy two-step "resize on the go".
+        crate::sys::appkit::set_window_frame_centered(
+            width as f64,
+            self.gui_fit_height() as f64,
+            t.window.x_offset as f64,
+            t.window.y_offset as f64,
+        );
+    }
+
     /// Render the input bar styled from `theme.inputbar`.
     pub(super) fn render_inputbar(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
         let t = &self.theme;

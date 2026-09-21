@@ -1325,6 +1325,9 @@ impl Launcher {
             markup_rows: false,
             layout,
         };
+        // Snap the native window to the (loading) GUI layout synchronously,
+        // for the same reason as in `gui_apply_burst`.
+        self.gui_sync_window_size();
         cx.notify();
     }
 
@@ -1492,6 +1495,9 @@ impl Launcher {
             markup_rows,
             layout,
         };
+        // Snap the native window to the new layout before the next frame is
+        // drawn, so entering GUI mode doesn't stretch/resize visibly.
+        self.gui_sync_window_size();
     }
 
     /// Handle keystrokes while in `LauncherState::GuiMode`.

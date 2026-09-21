@@ -157,6 +157,47 @@ pub fn set_window_size(width: f64, height: f64) {
     }
 }
 
+/// Synchronously set the NSWindow's frame to `width`×`height`, centred on
+/// its current screen (shifted by `x_offset`/`y_offset`), in a single
+/// `setFrame:` call.
+///
+/// `set_window_size` only calls `setContentSize:`, which keeps the window's
+/// bottom-left origin fixed — the window grows toward the top-right and then
+/// a follow-up `center_window` jumps it back to the middle. Two steps read as
+/// a laggy "resize on the go". Doing the resize and the re-centre atomically
+/// (one `setFrame:display:`) makes the window snap straight to its final size
+/// *and* position.
+///
+/// Must be called on the main thread, outside of a draw pass.
+pub fn set_window_frame_centered(width: f64, height: f64, x_offset: f64, y_offset: f64) {
+    let ptr = NS_WINDOW.load(Ordering::SeqCst);
+    if ptr.is_null() {
+        return;
+    }
+    unsafe {
+        use objc2::msg_send;
+        use objc2::runtime::AnyObject;
+        use objc2_app_kit::NSWindow;
+        use objc2_foundation::{NSPoint, NSRect, NSSize};
+
+        let ns_window = &*(ptr as *const NSWindow);
+        let mut screen: *mut AnyObject = msg_send![ns_window, screen];
+        if screen.is_null() {
+            screen = msg_send![objc2::class!(NSScreen), mainScreen];
+        }
+        if screen.is_null() {
+            // No screen info: fall back to a resize without re-centering.
+            let _: () = msg_send![ns_window, setContentSize: NSSize { width, height }];
+            return;
+        }
+        let screen_frame: NSRect = msg_send![screen, frame];
+        let new_x = screen_frame.origin.x + (screen_frame.size.width - width) / 2.0 + x_offset;
+        let new_y = screen_frame.origin.y + (screen_frame.size.height - height) / 2.0 + y_offset;
+        let frame = NSRect::new(NSPoint::new(new_x, new_y), NSSize { width, height });
+        let _: () = msg_send![ns_window, setFrame: frame, display: true];
+    }
+}
+
 /// Centre the window on the main screen, shifted by (`x_offset`,
 /// `y_offset`) points (positive = right/down), deferred via GCD so it
 /// fires after GPUI has finished processing the current frame (including
