@@ -19,6 +19,10 @@ use std::sync::OnceLock;
 /// format changes.  Stored as `VERSION` inside the icon directory.
 const CACHE_VERSION: u32 = 4; // v1 = 128×128, v2 = 64×64, v3 = 128×128, v4 = 96×96 (Lanczos3)
 
+/// Keep at most this many app icons on disk; the oldest are pruned so the
+/// cache can't grow without bound as apps are installed and removed.
+const ICON_MAX_FILES: usize = 1024;
+
 /// Lazily-created persistent cache directory: `~/.cache/aerofi/icons/`.
 fn icon_dir() -> &'static PathBuf {
     static DIR: OnceLock<PathBuf> = OnceLock::new();
@@ -77,7 +81,34 @@ pub fn cache_icon(name: &str, tiff_bytes: &[u8]) -> Option<PathBuf> {
         return Some(path);
     }
     fs::write(&path, tiff_bytes).ok()?;
+    prune_icons();
     Some(path)
+}
+
+/// Drop the oldest app icons when the cache directory exceeds
+/// [`ICON_MAX_FILES`] entries. Mirrors [`prune_thumbs`], but filters to
+/// `.tiff` files so the `VERSION` marker is never removed. A pruned icon is
+/// simply re-extracted on the next scan (a cache miss), so this is safe.
+fn prune_icons() {
+    let dir = icon_dir();
+    let mut entries: Vec<(std::time::SystemTime, PathBuf)> = match fs::read_dir(dir) {
+        Ok(rd) => rd
+            .flatten()
+            .filter(|e| e.path().extension().and_then(|x| x.to_str()) == Some("tiff"))
+            .filter_map(|e| {
+                let t = e.metadata().ok()?.modified().ok()?;
+                Some((t, e.path()))
+            })
+            .collect(),
+        Err(_) => return,
+    };
+    if entries.len() <= ICON_MAX_FILES {
+        return;
+    }
+    entries.sort_by_key(|e| e.0);
+    for (_, p) in entries.iter().take(entries.len() - ICON_MAX_FILES) {
+        let _ = fs::remove_file(p);
+    }
 }
 
 /// One uncached app awaiting icon processing: its identity (for applying
