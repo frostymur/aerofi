@@ -83,7 +83,7 @@ pub struct AerofiPlugin {
 
 #### Lifecycle Callbacks
 - **`init()`**: Called when the `.dylib` is loaded. Returns `true` if initialization succeeded.
-- **`destroy()`**: Called when aerofi exits or unloads the plugin. Cleans up any persistent resources.
+- **`destroy()`**: Called when aerofi exits or unloads the plugin, and also immediately if `init()` fails (it must be safe to call in that case too). Cleans up any persistent resources.
 - **`get_metadata()`**: Returns the plugin's name, description, and trigger prefix.
 - **`query(q)`**: Called whenever the user types after the trigger prefix. Allocates and returns `PluginResults`.
 - **`free_results(res)`**: Called by aerofi to deallocate the results previously returned by `query`.

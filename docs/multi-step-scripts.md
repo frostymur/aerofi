@@ -32,7 +32,7 @@ window closes:
   `stdin`/`stdout` piped). A background thread reads stdout line-by-line and
   forwards it; `send_event()` writes a user event to the script's stdin. `Drop`
   (and window hide) kills the child.
-- `src/ui/launcher/state.rs:1029` — `start_gui_session()` calls
+- `src/ui/launcher/state.rs:1214` — `start_gui_session()` calls
   `GuiSession::spawn()` and transitions the launcher into `GuiMode`.
 - `src/core/gui_protocol.rs` — parses what the script emits (control commands
   + rows) and formats what aerofi sends back (events).
@@ -305,8 +305,8 @@ in-process interactivity that process-chaining can't.
   event sender, EOF/kill).
 - `src/core/gui_protocol.rs` — the parser/formatter for commands, rows, and
   events.
-- `src/ui/launcher/state.rs` — `start_gui_session()` (`:1029`), event
-  construction (`:1594`), and the one-shot `ArgumentInput`/`Confirming`
+- `src/ui/launcher/state.rs` — `start_gui_session()` (`:1214`), event
+  construction (`:1884`), and the one-shot `ArgumentInput`/`Confirming`
   states.
 - `docs/scripts.md` — the complete protocol reference.
 - `examples/scripts/two-step.sh`, `theme_switcher.py`, `clipboard.py` —
