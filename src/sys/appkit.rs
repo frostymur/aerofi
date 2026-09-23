@@ -19,11 +19,12 @@ use std::sync::atomic::{AtomicPtr, Ordering};
 
 /// Raw pointer to the window's `NSWindow`, captured once after creation.
 ///
-/// Lifetime invariant: the launcher window is created once at startup and
-/// never destroyed for the rest of the process, so this pointer — and every
-/// in-flight GCD callback that dereferences it — is always valid. If a
-/// close/recreate capability is ever added, this must be cleared before the
-/// `NSWindow` is released.
+/// The pointer is kept alive by a process-lifetime `+1` reference taken in
+/// [`get_ns_window`]. The launcher window is created once and never
+/// destroyed, so holding that reference guarantees the pointer — and every
+/// in-flight GCD callback that dereferences it — can never dangle. (If a
+/// close/recreate capability is ever added, the retained reference would
+/// have to be released before the window goes away.)
 static NS_WINDOW: AtomicPtr<c_void> = AtomicPtr::new(std::ptr::null_mut());
 
 /// Resolve the `NSWindow` backing a GPUI window.
@@ -35,7 +36,12 @@ fn get_ns_window(window: &Window) -> Option<*mut c_void> {
     let ns_view_ptr = appkit.ns_view.as_ptr();
     let ns_view: Id<NSView> = unsafe { Id::retain(ns_view_ptr.cast()) }?;
     let ns_window: Id<NSWindow> = ns_view.window()?;
-    Some(&*ns_window as *const NSWindow as *mut c_void)
+    let ptr = &*ns_window as *const NSWindow as *mut c_void;
+    // Keep the NSWindow alive for the process lifetime so the raw pointer
+    // (and every GCD callback that dereferences it) can never dangle. The
+    // OS releases the extra reference at process exit.
+    std::mem::forget(ns_window);
+    Some(ptr)
 }
 
 /// Remember the `NSWindow` so we can re-focus it when showing.
