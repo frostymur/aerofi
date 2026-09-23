@@ -39,7 +39,7 @@ Compare to alternatives:
 
 | Feature | aerofi | Raycast | Alfred |
 |---------|--------|---------|--------|
-| Memory | ~45-70 MB | 250 MB | ~75 MB |
+| Memory | ~45-65 MB | 250 MB | ~75 MB |
 | Open Source | Yes | No | No |
 | Config as Code | Plain TOML (dotfiles) | GUI only | GUI only |
 | Declarative Widgets & Theme | TOML | — | — |
