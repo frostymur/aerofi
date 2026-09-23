@@ -61,8 +61,7 @@ Annotations are placed inside comments (`#`) at the top of your script:
 | `authorURL` | Author website URL | `@aerofi.authorURL https://github.com/...` |
 | `show_search` | Toggle search bar in GUI mode (default `true`) | `@aerofi.show_search false` |
 | `columns` | Override list column count (default `1`) | `@aerofi.columns 2` |
-| `preset` | Preset name from the theme's `[presets.*]` tables applied to the script's list (e.g. `list`, `grid`), overriding the default | `@aerofi.preset list` |
-| `width` | Override the launcher window width in points (esp. useful for GUI grids) | `@aerofi.width 520` |
+| `preset` | Preset name from the theme's `[presets.*]` tables applied to the script's list (e.g. `list`, `emoji`), overriding the default | `@aerofi.preset list` |
 
 ### Icons
 

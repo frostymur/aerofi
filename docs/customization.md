@@ -229,6 +229,7 @@ every theme, including the default one. Real emoji always render in color.
 ### Window & Frosted Glassmorphism
 ```toml
 [window]
+# Point values (default) or a screen-relative percentage, e.g. "50%".
 width = 720.0
 height = 480.0
 padding = 16.0
@@ -279,10 +280,16 @@ GUI-mode still needs an inset.
 ### Per-Mode Element Overrides (`[presets.*]`)
 
 Scripts declare a mode name via `# @aerofi.preset <name>`.
-Themes override `[element]` sizes per mode — unset fields inherit:
+Themes override `[element]` sizes per mode — unset fields inherit. A preset
+may also override the **window width** for that mode with `window_width`
+(points or `"XX%"`): the window grows/shrinks when the script's GUI opens
+and returns to the base width when it closes.
 
 ```toml
 # For a script with: # @aerofi.preset emoji
+[presets.emoji]
+window_width = 640.0
+
 [presets.emoji.element]
 padding = [4.0, 4.0]
 icon_size = 48.0
