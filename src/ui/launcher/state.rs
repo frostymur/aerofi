@@ -2129,8 +2129,19 @@ impl Launcher {
         // from ever blocking on our read. The last non-empty burst is the
         // script's final frame for this query.
         let first_line_deadline = Instant::now() + Duration::from_secs(2);
+        // Hard stop for the whole drain. A well-behaved script emits its
+        // frame and then blocks waiting for input, so the loop normally ends
+        // on the first quiet chunk. But a script that streams without ever
+        // going quiet would otherwise spin here forever, pinning this thread
+        // (and the session `Arc` it holds) — so if the session is later
+        // replaced, the old child would never be killed. Return the last
+        // frame we saw once this budget is exhausted.
+        let total_deadline = Instant::now() + Duration::from_secs(5);
         let mut last: Option<ReadResult> = None;
         loop {
+            if Instant::now() >= total_deadline {
+                break;
+            }
             let chunk = match session.try_lock() {
                 Ok(s) => s.read_burst(Duration::from_millis(100)),
                 Err(_) => {
