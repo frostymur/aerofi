@@ -83,6 +83,24 @@ pub struct Launcher {
     /// session. Kept alive while the session runs; dropped on leave/hide,
     /// which terminates the thread.
     pub(super) gui_live_search: Option<LiveSearchPump>,
+    /// Whether the active GUI session was launched from a hidden window (a
+    /// global hotkey) rather than from the visible search list. When true,
+    /// exiting the GUI hides the launcher instead of returning to the search
+    /// list — the user opened it as a standalone action, so there's no search
+    /// state to go back to.
+    pub(super) gui_launched_from_hidden: bool,
+    /// Set when a window-size transition begins (search ↔ GUI): the window
+    /// was dropped to alpha 0 and a `resize_window_deferred` was queued.
+    /// `render` clears the flag and restores full opacity once the frame's
+    /// viewport matches the target size — i.e. the deferred native resize
+    /// has landed and GPUI's `viewport_size` is up to date, so the frame is
+    /// painted in full and can be revealed.
+    pub(super) pending_reveal: bool,
+    /// How many frames we have waited for the viewport to catch up while
+    /// `pending_reveal` is set. Safety net: if the viewport never matches
+    /// (it should always match once the deferred resize lands), reveal
+    /// anyway so the window can never be left invisible.
+    pub(super) reveal_wait_frames: u32,
     /// Manager for dynamic `.dylib` plugins.
     pub(super) plugin_manager: crate::core::plugin_manager::PluginManager,
     /// Active plugin search task.
@@ -165,6 +183,9 @@ impl Launcher {
             full_output_blocks: Vec::new(),
             full_output_styled: Vec::new(),
             gui_live_search: None,
+            gui_launched_from_hidden: false,
+            pending_reveal: false,
+            reveal_wait_frames: 0,
             sticky_metatags: None,
             widget_registry,
             button_hotkeys,
@@ -680,6 +701,14 @@ impl Launcher {
         // Stop the live-search pump thread (dropping the sender makes its
         // recv() return and the thread exits).
         self.gui_live_search.take();
+        // Drop the last session's memoized Pango parses (see `gui_leave`).
+        self.pango_cache.borrow_mut().clear();
+        // Cancel any in-flight size transition: hiding during a pending
+        // reveal would otherwise leave the flag set across the hide/show
+        // cycle, and a stale safety-net timer could fire on a hidden window.
+        self.pending_reveal = false;
+        self.reveal_wait_frames = 0;
+        crate::sys::appkit::invalidate_reveal_safety_net();
         // Best-effort: ask the allocator to munmap the session's freed
         // pages while we are hidden. Modern macOS often releases nothing
         // (see sys::memory); harmless either way.
@@ -1325,10 +1354,57 @@ impl Launcher {
             markup_rows: false,
             layout,
         };
-        // Snap the native window to the (loading) GUI layout synchronously,
-        // for the same reason as in `gui_apply_burst`.
-        self.gui_sync_window_size();
         cx.notify();
+        // This only runs when we're not already in GuiMode, so it's always a
+        // search → GUI transition: prepare the window (resize + hide stale
+        // content) so the loading frame appears at its final size.
+        self.reveal_gui_transition();
+    }
+
+    /// Prepare the window for a search → GUI transition: resize it to the GUI
+    /// layout and hide the stale content (the search list, or a previous
+    /// frame) at alpha 0 until the first GUI render reveals it. This hides the
+    /// otherwise-visible "resize on the go" for both entry paths — a hotkey
+    /// launch (window hidden, so also shown here) and picking the script from
+    /// the search list (window already visible at the search size).
+    ///
+    /// Called from within an `App` update (we hold `self`), so it must not
+    /// re-enter the App: `on_show` and `show_window` run directly, without
+    /// `App::update`.
+    fn reveal_gui_transition(&mut self) {
+        let screen_h = crate::sys::appkit::screen_height();
+        let height = self.gui_fit_height(screen_h);
+        let screen_w = crate::sys::appkit::screen_width();
+        let width = self.gui_fit_width(screen_w);
+        let t = self.theme.clone();
+        let from_hidden = !crate::ui::window::is_visible();
+        // Hide the stale content *before* resizing, so the window vanishes
+        // instead of visibly shrinking from the search size to the GUI size.
+        // The resize itself is deferred to the main queue (see
+        // `resize_window_deferred` — it must not run inside this App update,
+        // or GPUI's resize callback fails to update the viewport); `render`
+        // restores opacity once the viewport matches the new size.
+        crate::sys::appkit::set_window_alpha(0.0);
+        self.pending_reveal = true;
+        self.reveal_wait_frames = 0;
+        crate::sys::appkit::arm_reveal_safety_net(120);
+        crate::sys::appkit::resize_window_deferred(
+            width as f64,
+            height as f64,
+            t.window.x_offset as f64,
+            t.window.y_offset as f64,
+        );
+        // If the window is hidden (the script was launched from a global
+        // hotkey while the app was hidden), show it now — still at alpha 0.
+        if from_hidden {
+            crate::core::scheduler::notify_visibility(true);
+            self.on_show();
+            crate::ui::window::show_window();
+        }
+        // Remember how we entered so `gui_leave` can decide whether to hide
+        // (launched from a hotkey) or return to the search list (launched from
+        // the visible search).
+        self.gui_launched_from_hidden = from_hidden;
     }
 
     /// Handle the read result from a GUI session burst.
@@ -1363,6 +1439,9 @@ impl Launcher {
         burst: crate::core::gui_protocol::GuiBurst,
         title: &str,
     ) {
+        // Whether we're updating an existing GUI session (live-search burst)
+        // or entering GUI mode for the first time (search → GUI transition).
+        let was_gui = matches!(self.state, LauncherState::GuiMode { .. });
         // The burst installs new rows; drop memoized parses of old texts.
         self.pango_cache.borrow_mut().clear();
         let mut prompt = None;
@@ -1411,6 +1490,15 @@ impl Launcher {
             toggled_indices = prev_toggled_indices.clone();
             markup_rows = *prev_markup_rows;
             layout = prev_layout.clone();
+        }
+
+        // Fall back to the script's `@aerofi.preset` (committed to
+        // `sticky_metatags` when the session starts). A fast script emits its
+        // first burst before the 120ms loading frame, so `show_gui_loading`
+        // — the only other place that seeds `layout` — never runs and the
+        // preset (element sizes, columns) would otherwise be dropped.
+        if layout.is_none() {
+            layout = self.sticky_metatags.as_ref().and_then(|m| m.layout.clone());
         }
 
         for cmd in &burst.commands {
@@ -1495,9 +1583,15 @@ impl Launcher {
             markup_rows,
             layout,
         };
-        // Snap the native window to the new layout before the next frame is
-        // drawn, so entering GUI mode doesn't stretch/resize visibly.
-        self.gui_sync_window_size();
+
+        // On a search → GUI transition (first burst), prepare the window so
+        // the resize is hidden and the first visible frame is the GUI — for
+        // both a hotkey launch (window hidden) and picking the script from the
+        // search list (window already visible at the search size). Live-search
+        // bursts (already in GuiMode) skip this to avoid an alpha flicker.
+        if !was_gui {
+            self.reveal_gui_transition();
+        }
     }
 
     /// Handle keystrokes while in `LauncherState::GuiMode`.
@@ -1656,7 +1750,7 @@ impl Launcher {
 
     /// Move the selection cursor within the filtered GUI rows.
     fn gui_move_selection(&mut self, delta: isize) {
-        let new_selected = if let LauncherState::GuiMode {
+        let (new_selected, row_count) = if let LauncherState::GuiMode {
             filtered_rows,
             selected,
             ..
@@ -1667,7 +1761,7 @@ impl Launcher {
             }
             let len = filtered_rows.len() as isize;
             *selected = (*selected as isize + delta).clamp(0, len - 1) as usize;
-            *selected
+            (*selected, filtered_rows.len())
         } else {
             return;
         };
@@ -1675,13 +1769,20 @@ impl Launcher {
         // In grid mode the list items are rows of `cols` cells, so convert
         // the flat selection index to the grid-row index first.
         let cols = self.gui_columns().max(1);
-        let item_ix = if cols > 1 {
-            new_selected / cols
-        } else {
-            new_selected
-        };
-        self.gui_rows_scroll
-            .scroll_to_item(item_ix, ScrollStrategy::Nearest);
+        let total_rows = row_count.div_ceil(cols);
+        // A single-row grid fills the (stretched) list exactly, so there is
+        // nothing to scroll — and `scroll_to_item` on it nags the list's
+        // scroll offset, making the row's centred content jitter on every
+        // selection change.
+        if total_rows > 1 {
+            let item_ix = if cols > 1 {
+                new_selected / cols
+            } else {
+                new_selected
+            };
+            self.gui_rows_scroll
+                .scroll_to_item(item_ix, ScrollStrategy::Nearest);
+        }
     }
 
     fn gui_jump_to_edge(&mut self, top: bool) {
@@ -2084,10 +2185,12 @@ impl Launcher {
     /// theme changed on disk (callers that also want a reload — e.g. the
     /// `Reload` GUI command — can skip their own to avoid a double re-index).
     fn gui_leave(&mut self) -> bool {
-        // Capture before clearing sticky_metatags below: a GUI script may
-        // declare `@aerofi.hide_on_exit true` to make the launcher disappear
-        // (returning focus to the previous app) once the script ends.
-        let hide_on_exit = self.sticky_metatags.as_ref().and_then(|m| m.hide_on_exit) == Some(true);
+        // A GUI session launched from a hidden window (a global hotkey) was
+        // opened as a standalone action, so there's no search list to return
+        // to — hide the launcher and return focus to the previous app.
+        // (Set by `reveal_gui_transition`, based on whether the window was
+        // visible when the session started.)
+        let hide_on_exit = self.gui_launched_from_hidden;
 
         if let Some(session) = self.gui_session.take()
             && let Ok(mut s) = session.lock()
@@ -2107,31 +2210,39 @@ impl Launcher {
             self.reload();
         }
         self.state = LauncherState::Search;
+        // The Pango cache is keyed by the session's row texts; drop it so the
+        // last session's parse results (and their text keys) don't stay
+        // resident until the next session happens to start.
+        self.pango_cache.borrow_mut().clear();
 
-        // Pre-size the window synchronously to the Search layout dimensions.
-        //
-        // `render()` resizes the window via an async `window.resize()` call.
-        // Between the state switch and the async resize landing, GPUI draws
-        // the new Search content at the old (small) GUI-mode window size.
-        // CoreAnimation then stretches that frame to the new (larger) window
-        // size until the next draw — producing a visible "stretched image"
-        // artifact most noticeable when a theme has a full-height artwork
-        // image on the left pane (e.g. graphite-mono).
-        //
-        // Calling `setContentSize:` here (in the keystroke/event handler,
-        // outside any draw pass) applies the resize synchronously so the
-        // very first Search frame is drawn at the correct size.  The later
-        // async `window.resize()` from `render()` becomes a harmless no-op
-        // (same size → early return in `set_frame_size`).
-        let t = &self.theme;
-        crate::sys::appkit::set_window_size(t.window.width as f64, t.window.height as f64);
-
-        // Fire-and-forget GUI script: hide the launcher and return focus to
+        // Fire-and-forget GUI launch: hide the launcher and return focus to
         // the previously active app instead of leaving the search list up.
         if hide_on_exit {
             self.on_hide();
             crate::ui::window::hide();
+            return reloaded;
         }
+
+        // Drop the window to invisible and defer the resize/re-center to the
+        // main queue (outside this App update — see `resize_window_deferred`,
+        // which must not run here or GPUI's viewport stays stale). `render`
+        // restores opacity once the viewport matches the search dimensions,
+        // so the size/position change is never visible.
+        let t = self.theme.clone();
+        let screen_w = crate::sys::appkit::screen_width();
+        let screen_h = crate::sys::appkit::screen_height();
+        crate::sys::appkit::set_window_alpha(0.0);
+        self.pending_reveal = true;
+        self.reveal_wait_frames = 0;
+        crate::sys::appkit::arm_reveal_safety_net(120);
+        let width = t.window.width.resolve(screen_w).min(screen_w);
+        let height = t.window.height.resolve(screen_h).min(screen_h);
+        crate::sys::appkit::resize_window_deferred(
+            width as f64,
+            height as f64,
+            t.window.x_offset as f64,
+            t.window.y_offset as f64,
+        );
 
         reloaded
     }

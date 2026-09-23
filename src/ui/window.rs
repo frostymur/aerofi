@@ -105,13 +105,11 @@ pub fn launch_global_target(target: &Target) {
         crate::core::executor::execute(target);
         return;
     };
-    // Show the window first so the loading state is visible immediately,
-    // then start the session (same `perform_action` path as picking the
-    // script from the search list).
-    VISIBLE.store(true, Ordering::SeqCst);
-    notify_show();
-    appkit::show_application();
-    request_render();
+    // Start the session first; the launcher shows the window once it has
+    // entered GUI mode and pre-sized it (see `show_for_gui`), so the first
+    // visible frame is already the GUI layout — not a flash of the search
+    // list at the search size that then visibly shrinks ("resize on the go").
+    // Same `perform_action` path as picking the script from the search list.
     let view = rr.view.clone();
     let target = target.clone();
     rr.app.update(|cx| {
@@ -124,6 +122,19 @@ pub fn launch_global_target(target: &Target) {
             cx.notify();
         });
     });
+}
+
+/// Show the launcher window (AppKit only: un-hide the app, mark visible).
+///
+/// Intended for a GUI session launched while hidden (global hotkey): the
+/// launcher calls this once it has entered GUI mode and pre-sized the hidden
+/// window, so the first visible frame is already the GUI layout. The caller
+/// already holds the launcher (inside an `App` update), so it runs
+/// `on_show` itself and notifies — this function must not re-enter
+/// `App::update`.
+pub fn show_window() {
+    VISIBLE.store(true, Ordering::SeqCst);
+    appkit::show_application();
 }
 
 /// Drop decoded GPU texture references held by the launcher so macOS can
@@ -173,9 +184,23 @@ pub fn create_launcher_window(
     app_config: AppConfig,
     history: History,
 ) -> Entity<Launcher> {
+    let screen_w = cx
+        .displays()
+        .first()
+        .map(|d| d.bounds().size.width.as_f32())
+        .unwrap_or(1920.0);
+    let screen_h = cx
+        .displays()
+        .first()
+        .map(|d| d.bounds().size.height.as_f32())
+        .unwrap_or(1080.0);
+
     let mut bounds = Bounds::centered(
         None,
-        size(px(theme.window.width), px(theme.window.height)),
+        size(
+            px(theme.window.width.resolve(screen_w)),
+            px(theme.window.height.resolve(screen_h)),
+        ),
         cx,
     );
     if theme.window.x_offset != 0.0 || theme.window.y_offset != 0.0 {

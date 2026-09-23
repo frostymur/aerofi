@@ -17,7 +17,7 @@ use super::types::{LauncherState, MdStyled};
 
 impl Render for Launcher {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let t = &self.theme;
+        let t = self.theme.clone();
 
         // Layout overrides come only from the last executed script
         // (sticky until the launcher hides); selection never applies them.
@@ -40,9 +40,20 @@ impl Render for Launcher {
         let pad_v = t.window.padding;
         let margin_bottom = t.inputbar.margin.get(2).copied().unwrap_or(8.0);
 
+        let screen_w = window
+            .display(cx)
+            .map(|d| d.bounds().size.width.as_f32())
+            .unwrap_or(1920.0);
+        let screen_h = window
+            .display(cx)
+            .map(|d| d.bounds().size.height.as_f32())
+            .unwrap_or(1080.0);
+
         let target_height = match &self.state {
-            LauncherState::RunningFull { .. } | LauncherState::FullOutput { .. } => t.window.height,
-            LauncherState::GuiMode { .. } => self.gui_fit_height(),
+            LauncherState::RunningFull { .. } | LauncherState::FullOutput { .. } => {
+                t.window.height.resolve(screen_h)
+            }
+            LauncherState::GuiMode { .. } => self.gui_fit_height(screen_h),
             LauncherState::Search
             | LauncherState::ArgumentInput { .. }
             | LauncherState::Confirming { .. } => {
@@ -52,23 +63,22 @@ impl Render for Launcher {
                             + t.element.icon_size;
                         let list_h = (self.filtered.len() as f32) * (item_h + t.listview.spacing);
                         let total = ib_height + margin_bottom + list_h + pad_v * 2.0;
-                        total.min(t.window.height)
+                        total.min(t.window.height.resolve(screen_h))
                     } else {
                         ib_height + margin_bottom + pad_v * 2.0
                     }
                 } else {
-                    t.window.height
+                    t.window.height.resolve(screen_h)
                 }
             }
         };
+
         let win_width = if matches!(&self.state, LauncherState::GuiMode { .. }) {
-            self.sticky_metatags
-                .as_ref()
-                .and_then(|m| m.width)
-                .unwrap_or(t.window.width)
+            self.gui_fit_width(screen_w)
         } else {
-            t.window.width
+            t.window.width.resolve(screen_w).min(screen_w)
         };
+
         // Only forward a resize (and the re-center it triggers) when the
         // size actually changed: GPUI's macOS `resize` unconditionally calls
         // `setContentSize_`, and re-centering moves the window via
@@ -85,6 +95,36 @@ impl Render for Launcher {
         if self.needs_center || size_changed {
             self.needs_center = false;
             crate::sys::appkit::center_window(t.window.x_offset as f64, t.window.y_offset as f64);
+        }
+        // Reveal the window once a size transition (search ↔ GUI) has fully
+        // landed: `pending_reveal` was set when the window was dropped to
+        // alpha 0 and a `resize_window_deferred` queued. The deferred resize
+        // updates GPUI's `viewport_size` (the root size every frame is laid
+        // out and painted with) only when it runs *between* App updates — so
+        // wait until the viewport actually matches the target before
+        // restoring opacity. Revealing earlier would show this frame painted
+        // at the stale viewport size: stale content in the uncovered region
+        // ("half the window doesn't render"). The frame counter is a safety
+        // net so the window can never be left invisible.
+        if self.pending_reveal {
+            let vp = window.viewport_size();
+            // Native window sizes snap to the device-pixel grid (an integer
+            // number of pixels at any scale), so compare in device pixels
+            // with a half-pixel tolerance instead of a fixed point value.
+            let sf = window.scale_factor();
+            let caught_up = (vp.width.as_f32() - win_width).abs() * sf <= 0.5
+                && (vp.height.as_f32() - target_height).abs() * sf <= 0.5;
+            if caught_up || self.reveal_wait_frames >= 8 {
+                self.pending_reveal = false;
+                self.reveal_wait_frames = 0;
+                // Cancel the safety-net timer: the window is revealed now,
+                // and a stray timer firing later would be a redundant
+                // (if harmless) no-op — invalidate for cleanliness.
+                crate::sys::appkit::invalidate_reveal_safety_net();
+                crate::sys::appkit::set_window_alpha(1.0);
+            } else {
+                self.reveal_wait_frames += 1;
+            }
         }
 
         // Keep the native blur layer in sync with the active theme: GPUI only
@@ -164,9 +204,18 @@ impl Render for Launcher {
         };
 
         // Wrap with background colour, padding, and optional background image.
+        //
+        // Size the root explicitly to the target window size rather than
+        // `size_full()`. GPUI captures `root_size` from `viewport_size` at the
+        // top of the draw pass, *before* `render()` runs — so on the first
+        // frame after a resize the viewport is still the previous size and a
+        // `size_full()` root would lay out (and clip) to that stale size. An
+        // explicit size makes the layout independent of the viewport; the
+        // native window is resized to match before it is shown.
         let opacity = t.window.background_opacity.unwrap_or(1.0);
         let mut root = div()
-            .size_full()
+            .w(px(win_width))
+            .h(px(target_height))
             .flex()
             .flex_col()
             .bg(rgba(Self::color(&t.window.background)))
@@ -222,7 +271,7 @@ impl Render for Launcher {
                                 .child(
                                     img(std::path::PathBuf::from(&resolved))
                                         .h_full()
-                                        .w(px(t.window.width * 0.4))
+                                        .w(px(t.window.width.resolve(screen_w) * 0.4))
                                         .object_fit(gpui::ObjectFit::Cover),
                                 )
                                 .child(content.flex_1()),
@@ -238,7 +287,7 @@ impl Render for Launcher {
                                 .child(
                                     img(std::path::PathBuf::from(&resolved))
                                         .h_full()
-                                        .w(px(t.window.width * 0.4))
+                                        .w(px(t.window.width.resolve(screen_w) * 0.4))
                                         .object_fit(gpui::ObjectFit::Cover),
                                 ),
                         );
@@ -294,12 +343,23 @@ impl Launcher {
         }
     }
 
+    /// Calculate the width for GUI mode, driven entirely by the theme or preset.
+    pub(super) fn gui_fit_width(&self, screen_w: f32) -> f32 {
+        let t = &self.theme;
+        self.gui_layout()
+            .and_then(|name| t.presets.get(name))
+            .and_then(|p| p.window_width)
+            .unwrap_or(t.window.width)
+            .resolve(screen_w)
+            .min(screen_w)
+    }
+
     /// Ideal window height for GUI mode: fit the actual content (input bar,
     /// message banner, and the list/grid) instead of always using the full
     /// theme window height, so short menus (e.g. a power menu) don't leave a
     /// large empty area below the content. Capped at the theme window height
     /// so long lists stay scrollable.
-    fn gui_fit_height(&self) -> f32 {
+    pub(super) fn gui_fit_height(&self, screen_h: f32) -> f32 {
         let t = &self.theme;
         let pad_v = t.window.padding;
         let gui_padding = t.gui.padding.unwrap_or(0.0);
@@ -317,7 +377,7 @@ impl Launcher {
             ..
         } = &self.state
         else {
-            return t.window.height;
+            return t.window.height.resolve(screen_h);
         };
 
         // Icon / padding metrics shared by list and grid rows.
@@ -356,40 +416,7 @@ impl Launcher {
         blocks.push(list_h);
 
         let content: f32 = blocks.iter().sum::<f32>() + spacing * (blocks.len() - 1) as f32;
-        (content + pad_v * 2.0 + gui_padding * 2.0 + 6.0).min(t.window.height)
-    }
-
-    /// Pre-size the native window synchronously to the current GUI-mode
-    /// layout, mirroring the GUI-to-search pre-size in `gui_leave`.
-    ///
-    /// `render()` resizes the window via an async `window.resize()`, so
-    /// without this the first frame after entering GUI mode is laid out at
-    /// the new size while the native window is still at the old (search)
-    /// size — CoreAnimation stretches it until the resize lands, which reads
-    /// as a laggy, animating resize. `setContentSize:` here (called from the
-    /// burst handler, outside any draw pass) applies the size before that
-    /// frame is drawn.
-    pub(super) fn gui_sync_window_size(&mut self) {
-        let t = &self.theme;
-        let width = self
-            .sticky_metatags
-            .as_ref()
-            .and_then(|m| m.width)
-            .unwrap_or(t.window.width);
-        let height = self.gui_fit_height();
-        // Atomic resize + re-centre: a bare `setContentSize:` keeps the
-        // window's bottom-left anchored and a later `center_window` jumps it
-        // back, which reads as a laggy two-step "resize on the go".
-        crate::sys::appkit::set_window_frame_centered(
-            width as f64,
-            height as f64,
-            t.window.x_offset as f64,
-            t.window.y_offset as f64,
-        );
-        // Mark the size as already applied so `render()` skips its own async
-        // `window.resize()` + re-centre (otherwise the window would resize
-        // twice: once here, once there).
-        self.last_window_size = Some((width, height));
+        (content + pad_v * 2.0 + gui_padding * 2.0 + 6.0).min(t.window.height.resolve(screen_h))
     }
 
     /// Render the input bar styled from `theme.inputbar`.

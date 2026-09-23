@@ -281,11 +281,64 @@ pub struct FontOverride {
 // Window
 // ---------------------------------------------------------------------------
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Dimension {
+    Points(f32),
+    Percent(f32),
+}
+
+impl Dimension {
+    pub fn resolve(&self, screen_size: f32) -> f32 {
+        let value = match self {
+            Dimension::Points(p) => *p,
+            Dimension::Percent(pct) => screen_size * (pct / 100.0),
+        };
+        // Defensive clamp: a malformed config value (negative, NaN, "0%")
+        // must not collapse the window to zero or below. `f32::max` is
+        // NaN-safe (returns the other operand).
+        value.max(1.0)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for Dimension {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct Visitor;
+        impl<'de> serde::de::Visitor<'de> for Visitor {
+            type Value = Dimension;
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a float or a string ending in '%'")
+            }
+            fn visit_f64<E: serde::de::Error>(self, v: f64) -> Result<Self::Value, E> {
+                Ok(Dimension::Points(v as f32))
+            }
+            fn visit_i64<E: serde::de::Error>(self, v: i64) -> Result<Self::Value, E> {
+                Ok(Dimension::Points(v as f32))
+            }
+            fn visit_u64<E: serde::de::Error>(self, v: u64) -> Result<Self::Value, E> {
+                Ok(Dimension::Points(v as f32))
+            }
+            fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<Self::Value, E> {
+                if let Some(s) = v.strip_suffix('%') {
+                    let val = s.parse::<f32>().map_err(serde::de::Error::custom)?;
+                    Ok(Dimension::Percent(val))
+                } else {
+                    let val = v.parse::<f32>().map_err(serde::de::Error::custom)?;
+                    Ok(Dimension::Points(val))
+                }
+            }
+        }
+        deserializer.deserialize_any(Visitor)
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct WindowConfig {
-    pub width: f32,
-    pub height: f32,
+    pub width: Dimension,
+    pub height: Dimension,
     pub padding: f32,
     /// Horizontal offset from screen centre (points). `0.0` = centred,
     /// negative = towards the left edge.
@@ -311,8 +364,8 @@ pub struct WindowConfig {
 impl Default for WindowConfig {
     fn default() -> Self {
         Self {
-            width: 760.0,
-            height: 480.0,
+            width: Dimension::Points(760.0),
+            height: Dimension::Points(480.0),
             padding: 16.0,
             x_offset: 0.0,
             y_offset: 0.0,
@@ -363,6 +416,7 @@ pub struct PresetElementOverride {
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct PresetConfig {
+    pub window_width: Option<Dimension>,
     pub element: PresetElementOverride,
 }
 
@@ -1193,8 +1247,8 @@ accent = "#7aa2f7"
         // Modular composition + a partial palette override (bg, surface2).
         let t = load_example_theme("tokyo-night-grid.toml");
         assert_eq!(t.name, "Tokyo Night Grid");
-        assert_eq!(t.window.width, 750.0);
-        assert_eq!(t.window.height, 440.0);
+        assert_eq!(t.window.width, Dimension::Points(750.0));
+        assert_eq!(t.window.height, Dimension::Points(440.0));
         assert_eq!(t.listview.columns, 4);
         // Rofi-ported grid: borderless tiles, 12px radius, 72px icons, 15px gap.
         assert_eq!(t.font.size, 15.0);
@@ -1216,7 +1270,7 @@ accent = "#7aa2f7"
         let t = load_example_theme("catppuccin-mocha.toml");
         assert_eq!(t.name, "Catppuccin Mocha");
         // Window is 20% wider than the default; normal (1:1) icon/text sizes.
-        assert_eq!(t.window.width, 912.0);
+        assert_eq!(t.window.width, Dimension::Points(912.0));
         assert_eq!(t.font.size, 15.0);
         assert_eq!(t.element.icon_size, 24.0);
         // No blur; $bg at 80% opacity (unblurred desktop shows through).
@@ -1831,8 +1885,8 @@ orientation = "horizontal"
             .try_into()
             .expect("merged theme should deserialize");
         theme.resolve_colors();
-        assert_eq!(theme.window.width, 680.0);
-        assert_eq!(theme.window.height, 450.0);
+        assert_eq!(theme.window.width, Dimension::Points(680.0));
+        assert_eq!(theme.window.height, Dimension::Points(450.0));
         // header-bar.toml defines 4 widgets (header_bar + 3 children).
         assert_eq!(theme.widgets.len(), 4);
         let registry = crate::core::widget::WidgetRegistry::from_theme(&theme.widgets);
