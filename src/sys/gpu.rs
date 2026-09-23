@@ -32,6 +32,16 @@ const HIDDEN_BUDGET: u64 = 16 * 1024 * 1024;
 
 static DEVICE: AtomicPtr<c_void> = AtomicPtr::new(core::ptr::null_mut());
 
+/// Release a Metal device reference taken via `MTLCreateSystemDefaultDevice`
+/// (Metal uses manual reference retention, so a `+1` is balanced by a
+/// `release`).
+unsafe fn release_device(dev: *mut c_void) {
+    use objc2::msg_send;
+    use objc2::runtime::AnyObject;
+    let obj = dev as *const AnyObject;
+    let _: *const AnyObject = msg_send![obj, release];
+}
+
 /// The process-wide default Metal device (the one GPUI renders with).
 fn device() -> Option<*mut c_void> {
     let mut dev = DEVICE.load(Ordering::Acquire);
@@ -40,13 +50,19 @@ fn device() -> Option<*mut c_void> {
         if dev.is_null() {
             return None;
         }
-        // Every racer obtains the same singleton; first write wins.
-        let _ = DEVICE.compare_exchange(
+        // Every racer obtains the same singleton; first write wins. If we
+        // lost the race, another thread already stored a device — release our
+        // redundant `+1` and use the winner's (the stored ref is kept for the
+        // process lifetime, as the device itself is).
+        if let Err(existing) = DEVICE.compare_exchange(
             core::ptr::null_mut(),
             dev,
             Ordering::AcqRel,
             Ordering::Acquire,
-        );
+        ) {
+            unsafe { release_device(dev) };
+            dev = existing;
+        }
     }
     (!dev.is_null()).then_some(dev)
 }
