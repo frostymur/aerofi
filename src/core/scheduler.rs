@@ -1,6 +1,7 @@
 use crate::core::item::{ScriptMode, Target};
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader, Write};
+use std::io::Write;
+use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::process::{ChildStdin, Command, Stdio};
 use std::sync::{Arc, LazyLock, Mutex};
@@ -413,21 +414,27 @@ fn spawn_daemon(stem: &str, path: &Path) -> Option<(u32, Arc<Mutex<Option<ChildS
 
     let path2 = path.to_path_buf();
     let stem2 = stem.to_string();
-    // macOS default thread stack = 8 MB. Our loop only does
-    // BufReader::lines() + channel send — 256 KB is plenty.
+    // macOS default thread stack = 8 MB. Our loop only does poll + read +
+    // channel send — 256 KB is plenty.
     let _ = std::thread::Builder::new()
         .stack_size(256 * 1024)
         .name(format!("aerofi-inline:{}", path_str))
         .spawn(move || {
-            let reader = BufReader::new(stdout);
-            let mut buf = Vec::<String>::new();
+            // Read the daemon's stdout with poll() rather than blocking on a
+            // BufReader, so the loop can also observe the wrapper bash
+            // exiting. Relying on pipe EOF alone would hang this thread if a
+            // background grandchild the script spawned keeps the pipe's write
+            // end open after the wrapper is killed — leaking the wrapper as a
+            // zombie (never reaped), this thread, and the registry entries.
+            let fd = stdout.as_raw_fd();
+            let mut read_buf = [0u8; 8192];
+            let mut line_acc: Vec<u8> = Vec::new();
+            let mut buf: Vec<String> = Vec::new();
+            let mut reaped = false;
 
-            for line in reader.lines() {
-                let line = match line {
-                    Ok(l) => l,
-                    Err(_) => break,
-                };
-
+            // Handle one complete line from the daemon stream. Returns `false`
+            // to stop reading (the dispatcher is gone).
+            let mut handle_line = |line: &str| -> bool {
                 if line.trim() == BOUNDARY {
                     let text = buf.join("\n");
                     let text = text.trim().to_string();
@@ -441,7 +448,7 @@ fn spawn_daemon(stem: &str, path: &Path) -> Option<(u32, Arc<Mutex<Option<ChildS
                                 .is_err()
                             {
                                 // Dispatcher gone — UI shut down.
-                                break;
+                                return false;
                             }
                         } else {
                             // Hidden: buffer the latest tick without waking
@@ -454,15 +461,93 @@ fn spawn_daemon(stem: &str, path: &Path) -> Option<(u32, Arc<Mutex<Option<ChildS
                         }
                     }
                 } else if buf.len() < 500 {
-                    buf.push(line);
+                    buf.push(line.to_string());
+                }
+                true
+            };
+
+            'read: loop {
+                // The wrapper exited: stop and reap it even if a grandchild
+                // still holds the pipe open.
+                if let Ok(Some(_)) = child.try_wait() {
+                    reaped = true;
+                    break;
+                }
+
+                let mut pollfd = libc::pollfd {
+                    fd,
+                    events: libc::POLLIN,
+                    revents: 0,
+                };
+                let rc = unsafe { libc::poll(&mut pollfd, 1, 200) };
+                if rc < 0 {
+                    if std::io::Error::last_os_error().raw_os_error() == Some(libc::EINTR) {
+                        continue;
+                    }
+                    break;
+                }
+                if rc == 0 {
+                    continue; // timeout — loop back to re-check the wrapper
+                }
+
+                let revents = pollfd.revents;
+                if revents & (libc::POLLERR | libc::POLLNVAL) != 0 {
+                    break;
+                }
+                if revents & (libc::POLLIN | libc::POLLHUP) == 0 {
+                    continue;
+                }
+
+                let mut eof = false;
+                loop {
+                    let n = unsafe { libc::read(fd, read_buf.as_mut_ptr().cast(), read_buf.len()) };
+                    if n > 0 {
+                        line_acc.extend_from_slice(&read_buf[..n as usize]);
+                        while let Some(pos) = line_acc.iter().position(|&b| b == b'\n') {
+                            let mut line_bytes: Vec<u8> = line_acc.drain(..=pos).collect();
+                            // Strip the trailing newline (and a preceding \r)
+                            // to match BufReader::lines().
+                            if line_bytes.last() == Some(&b'\n') {
+                                line_bytes.pop();
+                                if line_bytes.last() == Some(&b'\r') {
+                                    line_bytes.pop();
+                                }
+                            }
+                            let line = String::from_utf8_lossy(&line_bytes).into_owned();
+                            if !handle_line(&line) {
+                                break 'read;
+                            }
+                        }
+                    } else if n == 0 {
+                        eof = true;
+                        break;
+                    } else {
+                        let e = std::io::Error::last_os_error();
+                        if e.raw_os_error() == Some(libc::EINTR) {
+                            continue; // interrupted — retry the read
+                        }
+                        break;
+                    }
+                }
+                if eof {
+                    break;
                 }
             }
 
+            // Flush any trailing line that didn't end in a newline.
+            if !line_acc.is_empty() {
+                let line = String::from_utf8_lossy(&line_acc).into_owned();
+                let _ = handle_line(&line);
+            }
+
             // Exit cleanup: kill (no-op if already dead, e.g. a reload
-            // restarted us), reap the child, and drop the registry entries
-            // if they still point at us.
-            let _ = child.kill();
-            let _ = child.wait();
+            // restarted us) and reap the child if not already reaped via
+            // try_wait, then drop the registry entries if they still point
+            // at us.
+            if !reaped {
+                let _ = child.kill();
+                let _ = child.wait();
+            }
             crate::core::executor::unregister_script(pid);
             daemon_remove(&stem2, pid);
         });
