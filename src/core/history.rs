@@ -25,6 +25,9 @@ pub struct ExecutionRecord {
     pub timestamp: u64,
 }
 
+/// Maximum number of launch records kept, both in memory and on disk.
+const MAX_RECORDS: usize = 2000;
+
 /// Launch history backing the frecency ranking.
 pub struct History {
     records: Vec<ExecutionRecord>,
@@ -56,7 +59,7 @@ impl History {
             history.save();
             return history;
         }
-        let records = match fs::read_to_string(&path) {
+        let mut records = match fs::read_to_string(&path) {
             Ok(contents) => match serde_json::from_str::<Vec<ExecutionRecord>>(&contents) {
                 Ok(records) => records,
                 Err(err) => {
@@ -75,6 +78,13 @@ impl History {
                 Vec::new()
             }
         };
+        // Enforce the same cap on load as on append, so a hand-edited or
+        // foreign-written file can't bloat memory at startup. Records are
+        // chronological (newest last), so keep the tail.
+        if records.len() > MAX_RECORDS {
+            let drop_count = records.len() - MAX_RECORDS;
+            records.drain(0..drop_count);
+        }
         Self {
             records,
             path,
@@ -89,9 +99,9 @@ impl History {
             target_identifier: SharedString::from(target_identifier),
             timestamp: now_secs(),
         });
-        if self.records.len() > 2000 {
+        if self.records.len() > MAX_RECORDS {
             // drain keeps the existing allocation; split_off would throw it away.
-            let drop_count = self.records.len() - 2000;
+            let drop_count = self.records.len() - MAX_RECORDS;
             self.records.drain(0..drop_count);
         }
         *self.frecency_cache.borrow_mut() = None;
@@ -132,6 +142,12 @@ impl History {
 
     /// Persist the current records to `path` (best effort: failures are
     /// reported to stderr and never fatal — the daemon must not crash).
+    ///
+    /// The write is atomic: serialize to a temp file in the same directory,
+    /// then `rename` it into place. `rename` is atomic on the same
+    /// filesystem, so a crash mid-write can't leave a half-written
+    /// `history.json` that the next load would read as empty (a plain
+    /// `fs::write` truncates in place and has that failure mode).
     fn save(&self) {
         if let Some(parent) = self.path.parent()
             && let Err(err) = fs::create_dir_all(parent)
@@ -142,16 +158,32 @@ impl History {
             );
             return;
         }
-        match serde_json::to_string_pretty(&self.records) {
-            Ok(json) => {
-                if let Err(err) = fs::write(&self.path, json) {
-                    eprintln!(
-                        "aerofi: warning: failed to write {}: {err}",
-                        self.path.display()
-                    );
-                }
+        let json = match serde_json::to_string_pretty(&self.records) {
+            Ok(json) => json,
+            Err(err) => {
+                eprintln!("aerofi: warning: failed to serialize history: {err}");
+                return;
             }
-            Err(err) => eprintln!("aerofi: warning: failed to serialize history: {err}"),
+        };
+        let name = self
+            .path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("history.json");
+        let tmp = self
+            .path
+            .with_file_name(format!("{name}.tmp-{}", std::process::id()));
+        if let Err(err) = fs::write(&tmp, json) {
+            eprintln!("aerofi: warning: failed to write {}: {err}", tmp.display());
+            let _ = fs::remove_file(&tmp);
+            return;
+        }
+        if let Err(err) = fs::rename(&tmp, &self.path) {
+            eprintln!(
+                "aerofi: warning: failed to move {} into place: {err}",
+                tmp.display()
+            );
+            let _ = fs::remove_file(&tmp);
         }
     }
 }
