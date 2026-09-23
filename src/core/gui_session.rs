@@ -31,6 +31,21 @@ enum LineEvent {
     Error(String),
 }
 
+/// Maximum bytes a single stdout line may occupy before the reader stops.
+/// A protocol row is short; a multi-MiB "line" is a pathological script that
+/// would otherwise allocate a giant `String` and flood the channel.
+const MAX_LINE_BYTES: usize = 1024 * 1024;
+
+/// Maximum total bytes accumulated for a single burst. Bounds the in-memory
+/// `lines` buffer so a script that streams without flushing cannot OOM the
+/// launcher; once crossed the burst is returned early.
+const MAX_BURST_BYTES: usize = 4 * 1024 * 1024;
+
+/// Depth of the stdout line channel. A bounded channel gives backpressure:
+/// when the consumer isn't draining, the reader thread blocks (and the
+/// child's pipe fills) instead of the channel growing without bound.
+const MAX_CHANNEL_LINES: usize = 4096;
+
 /// Check if a stdout line represents an explicit frame flush command.
 fn is_flush_line(line: &str) -> bool {
     let trimmed = line.trim_end_matches(['\r', '\n']);
@@ -59,17 +74,26 @@ impl GuiSession {
         let stdin = child.stdin.take().expect("stdin was piped");
         let stdout = child.stdout.take().expect("stdout was piped");
 
-        let (tx, rx) = mpsc::channel();
+        let (tx, rx) = mpsc::sync_channel(MAX_CHANNEL_LINES);
         // Background thread reads stdout line by line and sends events.
         // The reader loop only does BufReader::lines() + a channel send —
         // the default 8 MB stack reservation is unnecessary.
-        std::thread::Builder::new()
+        let spawned = std::thread::Builder::new()
             .name("aerofi-gui-stdout".to_string())
             .stack_size(256 * 1024)
             .spawn(move || {
                 Self::stdout_reader_thread(stdout, tx);
-            })
-            .expect("failed to spawn stdout reader thread");
+            });
+        if let Err(e) = spawned {
+            // Couldn't start the stdout reader (e.g. OOM). Kill the child so
+            // it doesn't run untracked and unkillable, then report the
+            // failure instead of panicking out of the UI path.
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(std::io::Error::other(format!(
+                "failed to spawn stdout reader thread: {e}"
+            )));
+        }
 
         let session = Self {
             child,
@@ -84,11 +108,21 @@ impl GuiSession {
 
     /// The background thread that reads stdout lines and sends them
     /// to the main thread via the channel.
-    fn stdout_reader_thread(stdout: ChildStdout, tx: mpsc::Sender<LineEvent>) {
+    ///
+    /// The channel is bounded, so `tx.send` blocks (backpressure) when the
+    /// consumer isn't draining — this is what keeps memory bounded even if a
+    /// script streams faster than we read.
+    fn stdout_reader_thread(stdout: ChildStdout, tx: mpsc::SyncSender<LineEvent>) {
         let reader = BufReader::new(stdout);
         for line_result in reader.lines() {
             match line_result {
                 Ok(line) => {
+                    if line.len() > MAX_LINE_BYTES {
+                        // A pathologically long "line" — stop reading rather
+                        // than allocate a giant buffer. The consumer observes
+                        // the channel close and treats the session as exited.
+                        return;
+                    }
                     if tx.send(LineEvent::Line(line)).is_err() {
                         // Receiver dropped — session was killed.
                         return;
@@ -114,11 +148,13 @@ impl GuiSession {
     /// zero artificial timeout delay.
     pub fn read_burst(&self, timeout: Duration) -> ReadResult {
         let mut lines = Vec::new();
+        let mut burst_bytes = 0usize;
 
         // First line: block for up to `timeout`.
         match self.line_rx.recv_timeout(timeout) {
             Ok(LineEvent::Line(line)) => {
                 let is_flush = is_flush_line(&line);
+                burst_bytes += line.len();
                 lines.push(line);
                 if is_flush {
                     return ReadResult::Burst(GuiBurst::from_lines(&lines));
@@ -139,8 +175,12 @@ impl GuiSession {
             match self.line_rx.recv_timeout(inter_line) {
                 Ok(LineEvent::Line(line)) => {
                     let is_flush = is_flush_line(&line);
+                    burst_bytes += line.len();
                     lines.push(line);
-                    if is_flush {
+                    // A well-behaved script flushes each frame; if it keeps
+                    // streaming past the cap, return what we have so the
+                    // in-memory burst stays bounded.
+                    if is_flush || burst_bytes > MAX_BURST_BYTES {
                         break;
                     }
                 }
@@ -338,7 +378,7 @@ mod tests {
         let _ = std::fs::remove_file(&result_file);
         std::fs::write(
             &script,
-            &format!(
+            format!(
                 "#!/bin/bash\n\
                  printf '\\0no-custom\\x1ftrue\\n'\n\
                  printf 'Lock\\0icon\\x1fX\\0id\\x1flock\\n'\n\

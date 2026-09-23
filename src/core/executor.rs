@@ -124,6 +124,17 @@ pub fn unregister_script(pid: u32) {
     lock_scripts().remove(&pid);
 }
 
+/// RAII guard that unregisters a script when dropped, so the registry entry
+/// is cleaned up on every return path — including panics and early `?`
+/// returns that would otherwise skip an explicit `unregister_script`.
+struct ScriptGuard(u32);
+
+impl Drop for ScriptGuard {
+    fn drop(&mut self) {
+        unregister_script(self.0);
+    }
+}
+
 /// SIGKILL a single script's process group.
 fn kill_script_group(pid: u32) {
     unsafe { libc::kill(-(pid as libc::c_int), libc::SIGKILL) };
@@ -214,6 +225,8 @@ pub fn run_bounded(
 
     let script_pid = child.id();
     register_script(script_pid);
+    // Unregister on every return path (including panics/early returns).
+    let _guard = ScriptGuard(script_pid);
     let stdout = child.stdout.take().expect("stdout is piped");
     let stderr = child.stderr.take().expect("stderr is piped");
 
@@ -224,16 +237,28 @@ pub fn run_bounded(
         // The drain loop only does bounded reads — the default 8 MB stack
         // reservation is unnecessary.
         .stack_size(256 * 1024)
-        .spawn(move || read_tail_bounded(stderr, MAX_STDERR))
-        .expect("failed to spawn stderr drain thread");
+        .spawn(move || read_tail_bounded(stderr, MAX_STDERR));
+    let stderr_thread = match stderr_thread {
+        Ok(h) => h,
+        Err(e) => {
+            // Can't drain stderr concurrently (thread spawn failed, e.g.
+            // OOM). Kill the child so it can't deadlock on a full pipe, then
+            // bail — the guard unregisters the entry and the wait reaps it.
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(std::io::Error::other(format!(
+                "failed to spawn stderr drain thread: {e}"
+            )));
+        }
+    };
 
     let read_result = read_capped(stdout, stdout_cap);
-    let stderr = stderr_thread.join().expect("stderr drain thread panicked");
+    // A panicking drain thread yields no stderr text; still reap below.
+    let stderr = stderr_thread.join().unwrap_or_default();
     use std::os::unix::process::ExitStatusExt;
     let status = child
         .wait()
         .unwrap_or_else(|_| std::process::ExitStatus::from_raw(1));
-    unregister_script(script_pid);
     let (head, tail, total, truncated) = read_result?;
 
     let mut stdout = String::from_utf8_lossy(&head).into_owned();
@@ -410,13 +435,21 @@ pub fn execute(target: &Target) {
                 let name = target.name().to_string();
                 let script_pid = child.id();
                 register_script(script_pid);
-                let _ = std::thread::Builder::new()
+                let spawned = std::thread::Builder::new()
                     .name(format!("aerofi-reap:{name}"))
                     .stack_size(128 * 1024)
                     .spawn(move || {
                         let _ = child.wait();
                         unregister_script(script_pid);
                     });
+                if let Err(e) = spawned {
+                    // Reap thread couldn't start (e.g. OOM): the child was
+                    // dropped with the closure (it becomes a zombie, reaped at
+                    // process exit). Clean up the registry entry now rather
+                    // than leaking it.
+                    eprintln!("aerofi: failed to spawn reap thread for {name}: {e}");
+                    unregister_script(script_pid);
+                }
             }
             Err(e) => eprintln!("aerofi: failed to run {}: {e}", target.name()),
         },
