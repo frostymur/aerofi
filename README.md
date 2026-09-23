@@ -8,7 +8,7 @@
 [![CI](https://img.shields.io/github/actions/workflow/status/frostymur/aerofi/ci.yml?branch=main&style=flat-square&label=ci)](https://github.com/frostymur/aerofi/actions)
 [![Platform](https://img.shields.io/badge/platform-macOS%2013%2B-lightgrey?style=flat-square&logo=apple)](https://apple.com)
 [![Language](https://img.shields.io/badge/language-Rust%202024-orange?style=flat-square&logo=rust)](https://www.rust-lang.org)
-[![Memory](https://img.shields.io/badge/memory-~40MB%20RSS-brightgreen?style=flat-square)](ARCHITECTURE.md)
+[![Memory](https://img.shields.io/badge/memory-~45MB%20RSS-brightgreen?style=flat-square)](ARCHITECTURE.md)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 
 <br />
