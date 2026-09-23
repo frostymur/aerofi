@@ -625,9 +625,7 @@ impl Launcher {
                             std::thread::Builder::new()
                                 .name("aerofi-plugin-search".into())
                                 .spawn(move || {
-                                    let results = plugin_clone.query(&remainder_str);
-                                    let mut parsed = plugin_clone.parse_results(&results);
-                                    plugin_clone.free_results(results);
+                                    let mut parsed = plugin_clone.query_parsed(&remainder_str);
                                     // Swap full-resolution image paths for
                                     // bounded thumbnails before the rows hit
                                     // the renderer (first use decodes here,
@@ -653,9 +651,7 @@ impl Launcher {
                     },
                 ));
             } else {
-                let results = plugin.query(&remainder);
-                let parsed = plugin.parse_results(&results);
-                plugin.free_results(results);
+                let parsed = plugin.query_parsed(&remainder);
                 self.all.extend(parsed);
 
                 // For plugins, we don't fuzzy sort. We show exactly what the plugin returned in order.

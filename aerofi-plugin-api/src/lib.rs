@@ -22,6 +22,7 @@ pub struct PluginItem {
 
 /// A list of results returned by a plugin query.
 #[repr(C)]
+#[derive(Copy, Clone)]
 pub struct PluginResults {
     /// Pointer to the array of items.
     pub items: *const PluginItem,
