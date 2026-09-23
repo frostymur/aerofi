@@ -258,27 +258,37 @@ fn keycode_for(key: &str) -> Option<u32> {
 /// thread. A conflicting global combo is skipped with a warning; a failed
 /// toggle registration is an error.
 pub fn install(toggle_combo: &str, globals: Vec<GlobalBinding>) -> Result<(), String> {
-    if HANDLER_REF.load(Ordering::SeqCst).is_null() {
-        let event_types = [EventTypeSpec {
-            event_class: k_event_class_keyboard,
-            event_kind: k_event_hot_key_pressed,
-        }];
-        let mut handler_ref: EventHandlerRef = core::ptr::null_mut();
-        let status = unsafe {
-            InstallEventHandler(
-                GetApplicationEventTarget(),
-                hotkey_handler,
-                event_types.len() as ItemCount,
-                event_types.as_ptr(),
-                core::ptr::null_mut(),
-                &mut handler_ref,
-            )
-        };
-        if status != noErr {
-            return Err(format!("InstallEventHandler failed with OSStatus {status}"));
-        }
-        HANDLER_REF.store(handler_ref, Ordering::SeqCst);
+    // Hotkeys and the event handler live for the process lifetime and are
+    // installed exactly once. A second call would re-register the same
+    // `EventHotKeyID`s (replacing — and dangling — the old refs), overwrite
+    // `GLOBAL_HOTKEY_REFS` without freeing the previous `Vec` (a leak), and
+    // leave the handler dispatching new ids to a stale `GLOBAL_TARGETS` map
+    // (its `OnceLock` would silently keep the first set). So a reinstall is
+    // a no-op.
+    if !HANDLER_REF.load(Ordering::SeqCst).is_null() {
+        eprintln!("aerofi: warning: hotkeys already installed; ignoring duplicate install()");
+        return Ok(());
     }
+
+    let event_types = [EventTypeSpec {
+        event_class: k_event_class_keyboard,
+        event_kind: k_event_hot_key_pressed,
+    }];
+    let mut handler_ref: EventHandlerRef = core::ptr::null_mut();
+    let status = unsafe {
+        InstallEventHandler(
+            GetApplicationEventTarget(),
+            hotkey_handler,
+            event_types.len() as ItemCount,
+            event_types.as_ptr(),
+            core::ptr::null_mut(),
+            &mut handler_ref,
+        )
+    };
+    if status != noErr {
+        return Err(format!("InstallEventHandler failed with OSStatus {status}"));
+    }
+    HANDLER_REF.store(handler_ref, Ordering::SeqCst);
 
     // Index order matches hotkey ids (GLOBAL_BASE_ID + i), including combos
     // that end up unregistered: their ids simply never fire.
