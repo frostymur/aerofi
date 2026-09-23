@@ -21,10 +21,10 @@ A warm, vintage retro-groove theme designed for optimal contrast and eye comfort
 - **Text**: Warm off-white (`#ebdbb2`)
 
 ### 3. Tokyo Night Grid (`tokyo-night-grid.toml`)
-A compact 4-column icon tile grid layout styled with the Tokyo Night palette.
+A 4-column icon tile grid search layout styled with the Tokyo Night palette.
 
-- **Layout**: 4-column compact grid with large 36px application icons
-- **Window**: Compact 520x360 footprint
+- **Layout**: 4-column tile grid with large 72pt icons
+- **Window**: 750x440 footprint
 
 ---
 

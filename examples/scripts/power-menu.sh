@@ -8,8 +8,6 @@
 # @aerofi.show_search false
 # @aerofi.columns 5
 # @aerofi.preset power
-# @aerofi.width 680
-# @aerofi.hide_on_exit true
 
 # Each row: <label>\0icon\x1f<glyph>\0id\x1f<id>
 # The glyph lives in the icon field (rendered large); the label is the text.
@@ -43,8 +41,7 @@ done
 #   echo "<user> ALL=(root) NOPASSWD: /sbin/shutdown" | sudo tee /etc/sudoers.d/aerofi
 #
 # Command output is sent to /dev/null so it never becomes a GUI row (e.g.
-# `pmset sleepnow` prints "Sleeping now..."). The @aerofi.hide_on_exit tag
-# above makes the launcher disappear once the script exits.
+# `pmset sleepnow` prints "Sleeping now...").
 case "$choice" in
   lock)     osascript -e 'tell application "System Events" to keystroke "q" using {command down, control down}' >/dev/null 2>&1 ;;
   sleep)    pmset sleepnow >/dev/null 2>&1 ;;

@@ -48,8 +48,8 @@ fallback = ["SF Pro", "SF Mono", "Helvetica Neue", "Arial"]
 # [window] - Native macOS Window Frame & Glassmorphism
 # ------------------------------------------------------------------------------
 [window]
-# Dimensions in points.
-# Type: Float (f32)
+# Dimensions in points, or a screen-relative percentage string (e.g. "50%").
+# Type: Float (f32) or String ("XX%")
 width = 720.0
 height = 480.0
 
@@ -111,7 +111,11 @@ y_offset = 0.0
 # ------------------------------------------------------------------------------
 # Scripts declare a mode name via `# @aerofi.preset <name>`.
 # Unset fields inherit from [element].
+# A preset may also override the window width for that mode via `window_width`
+# (points or "XX%"); the window resizes when the script's GUI opens/closes.
 #
+# [presets.emoji]
+# window_width = 640.0
 # [presets.emoji.element]
 # padding = [4.0, 4.0]
 # icon_size = 48.0

@@ -7,11 +7,17 @@ imports = [
     "layouts/gruvbox-compact.toml",
 ]
 
-[presets.grid.element]
+[presets.emoji]
+window_width = 620.0
+
+[presets.emoji.element]
 columns = 8
-icon_size = 72.0
-padding = [10.0, 20.0]
+icon_size = 40.0
+padding = [10.0, 16.0]
 corner_radius = 12.0
+
+[presets.power]
+window_width = 680.0
 
 [presets.power.element]
 # Bigger tiles for the power menu (few items, 2 columns).
