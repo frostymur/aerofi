@@ -26,9 +26,9 @@
 
 <div align="center">
 <video src="https://github.com/user-attachments/assets/5b45a96a-a9df-49fa-84af-f32730426196" autoplay loop muted playsinline width="820"></video>
-  <p><em>Recorded demo showing instant search, theming with custom theme_switcher script, and native file search plugin:</em></p>
+  <p><em>Recorded demo showing instant search, theming with custom theme_switcher script, and native file search plugin</em></p>
 </div>
-
+ 
 ---
 
 ## Why aerofi?
@@ -39,7 +39,7 @@ Compare to alternatives:
 
 | Feature | aerofi | Raycast | Alfred |
 |---------|--------|---------|--------|
-| Memory | ~40 MB | 250 MB | ~75 MB |
+| Memory | ~45-70 MB | 250 MB | ~75 MB |
 | Open Source | Yes | No | No |
 | Config as Code | Plain TOML (dotfiles) | GUI only | GUI only |
 | Declarative Widgets & Theme | TOML | — | — |
