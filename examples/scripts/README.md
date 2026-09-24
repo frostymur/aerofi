@@ -14,6 +14,7 @@ Clean, minimal examples demonstrating all 6 aerofi script execution modes:
 | **[`compact.sh`](compact.sh)** | `compact` | Progress updates | Floating toast shows a running indicator, then the script's final output line. |
 | **[`inline.sh`](inline.sh)** | `inline` | Subtitle widget in list | Prints status directly into launcher row subtitle; auto-refreshes via `@aerofi.refreshTime`. |
 | **[`full-output.sh`](full-output.sh)** | `fullOutput` | Rich Markdown reader | Renders formatted Markdown (headings, code blocks, lists, blockquotes). |
+| **[`argument-prompt.sh`](argument-prompt.sh)** | `fullOutput` | Argument Prompt | Demonstrates how to use `@aerofi.argument*` tags (text, dropdowns, optional args) to prompt the user before execution. |
 | **[`pipe.sh`](pipe.sh)** | `pipe` | Clipboard pipe | Captures stdout and automatically copies it to the macOS clipboard. |
 | **[`rofi.sh`](rofi.sh)** | `rofi` | Interactive UI | Bidirectional Rofi-compatible IPC session over stdin/stdout with live Pango markup. |
 
