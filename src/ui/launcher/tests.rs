@@ -320,8 +320,8 @@ fn deferred(l: &Launcher) -> Option<(usize, ScrollStrategy)> {
         .map(|d| (d.item_index, d.strategy))
 }
 
-fn gui_deferred(l: &Launcher) -> Option<(usize, ScrollStrategy)> {
-    l.gui_rows_scroll
+fn rofi_deferred(l: &Launcher) -> Option<(usize, ScrollStrategy)> {
+    l.rofi_rows_scroll
         .0
         .borrow()
         .deferred_scroll_to_item
@@ -341,18 +341,18 @@ fn arrow_key_defers_scroll_to_selected_item() {
 }
 
 #[test]
-fn gui_arrow_key_defers_scroll_to_selected_row() {
+fn rofi_arrow_key_defers_scroll_to_selected_row() {
     let mut l = Launcher::new(
         Vec::new(),
         ThemeConfig::default(),
         AppConfig::default(),
         History::test_new(PathBuf::new(), Vec::new()),
     );
-    l.state = LauncherState::GuiMode {
+    l.state = LauncherState::RofiMode {
         title: "Clipboard".to_string(),
         rows: std::sync::Arc::new(
             (0..5)
-                .map(|i| crate::core::gui_protocol::GuiRow::new(format!("item {i}")))
+                .map(|i| crate::core::rofi_protocol::RofiRow::new(format!("item {i}")))
                 .collect(),
         ),
         filtered_rows: (0..5).collect(),
@@ -379,9 +379,9 @@ fn gui_arrow_key_defers_scroll_to_selected_row() {
     }
 
     assert_eq!(
-        gui_deferred(&l),
+        rofi_deferred(&l),
         Some((4, ScrollStrategy::Nearest)),
-        "GUI arrow key must scroll the rows list to the selected row"
+        "Rofi arrow key must scroll the rows list to the selected row"
     );
 }
 

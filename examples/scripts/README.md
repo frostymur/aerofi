@@ -15,13 +15,13 @@ Clean, minimal examples demonstrating all 6 aerofi script execution modes:
 | **[`inline.sh`](inline.sh)** | `inline` | Subtitle widget in list | Prints status directly into launcher row subtitle; auto-refreshes via `@aerofi.refreshTime`. |
 | **[`full-output.sh`](full-output.sh)** | `fullOutput` | Rich Markdown reader | Renders formatted Markdown (headings, code blocks, lists, blockquotes). |
 | **[`pipe.sh`](pipe.sh)** | `pipe` | Clipboard pipe | Captures stdout and automatically copies it to the macOS clipboard. |
-| **[`gui.sh`](gui.sh)** | `gui` | Interactive UI | Bidirectional Rofi-compatible IPC session over stdin/stdout with live Pango markup. |
+| **[`rofi.sh`](rofi.sh)** | `rofi` | Interactive UI | Bidirectional Rofi-compatible IPC session over stdin/stdout with live Pango markup. |
 
 ---
 
-## Interactive GUI Examples
+## Interactive Rofi Examples
 
-Richer multi-purpose `gui`-mode apps, beyond the minimal [`gui.sh`](gui.sh) mode demo:
+Richer multi-purpose `rofi`-mode apps, beyond the minimal [`rofi.sh`](rofi.sh) mode demo:
 
 | Script | Description |
 |---|---|
@@ -34,7 +34,7 @@ Richer multi-purpose `gui`-mode apps, beyond the minimal [`gui.sh`](gui.sh) mode
 
 ## Theme Switcher (`theme_switcher.py`)
 
-An interactive theme previewer and switcher for aerofi using the bidirectional `gui` protocol and native `@aerofi.*` metadata tags.
+An interactive theme previewer and switcher for aerofi using the bidirectional `rofi` protocol and native `@aerofi.*` metadata tags.
 
 ### Highlights
 - **Live Color Swatches**: Renders each palette (bg / surface / text / accent) as colour swatches via Pango markup, with `$alias` references resolved from the theme's `[colors]` table.
@@ -51,7 +51,7 @@ chmod +x ~/.config/aerofi/scripts/theme_switcher.py
 
 ## Clipboard History Manager (`clipboard.py`)
 
-A glamorous, fully functional clipboard history manager for aerofi powered by the [`clipy`](https://crates.io/crates/clipy) minimal clipboard history CLI, the [clippy suite](https://github.com/neilberkman/clippy) for image support (`brew install clippy`), and aerofi's interactive `gui` mode.
+A glamorous, fully functional clipboard history manager for aerofi powered by the [`clipy`](https://crates.io/crates/clipy) minimal clipboard history CLI, the [clippy suite](https://github.com/neilberkman/clippy) for image support (`brew install clippy`), and aerofi's interactive `rofi` mode.
 
 ### Highlights & Aesthetics
 
@@ -94,7 +94,7 @@ chmod +x ~/.config/aerofi/scripts/clipboard.py
 
 1. Press your aerofi hotkey (default: `Option+Space` or configured hotkey).
 2. Type `Clipboard History` or `clipboard`.
-3. Press `Enter` to open the GUI manager!
+3. Press `Enter` to open the Rofi manager!
 
 ---
 
@@ -110,11 +110,11 @@ chmod +x ~/.config/aerofi/scripts/clipboard.py
 
 ---
 
-### aerofi GUI Protocol Details
+### aerofi Rofi Protocol Details
 
-The clipboard manager demonstrates several powerful features of the aerofi GUI protocol:
+The clipboard manager demonstrates several powerful features of the aerofi Rofi protocol:
 
-- `# @raycast.mode gui`: Instructs aerofi to maintain an open bidirectional process pipeline (`stdin`/`stdout`).
+- `# @raycast.mode rofi`: Instructs aerofi to maintain an open bidirectional process pipeline (`stdin`/`stdout`).
 - `\0prompt\x1f<text>`: Customizes the search bar placeholder text.
 - `\0markup-rows\x1ftrue`: Enables inline Pango markup parsing for rich text and colors in list rows.
 - `\0multi-select\x1ftrue`: Enables multi-item selection with checkboxes via `Tab`.

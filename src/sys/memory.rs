@@ -1,7 +1,7 @@
 //! Best-effort heap pressure relief.
 //!
 //! Rust's default allocator is system malloc, which keeps freed pages for
-//! reuse: a busy session (theme switches, GUI scripts, re-indexing) leaves
+//! reuse: a busy session (theme switches, Rofi scripts, re-indexing) leaves
 //! an RSS high-water mark in place while the launcher sits idle.
 //! `malloc_zone_pressure_relief` (macOS 10.7+, symbol resolved at runtime)
 //! asks malloc to munmap some of its free memory back to the kernel.

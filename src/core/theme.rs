@@ -382,13 +382,13 @@ impl Default for WindowConfig {
 }
 
 // ---------------------------------------------------------------------------
-// GUI mode
+// Script view
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
-pub struct GuiConfig {
-    /// Extra padding around GUI-mode content (script output, theme switcher).
+pub struct ScriptViewConfig {
+    /// Extra padding around the full-window script view (script output, theme switcher).
     /// Adds to the existing `[window].padding`. Default: 0.
     pub padding: Option<f32>,
 }
@@ -397,7 +397,7 @@ pub struct GuiConfig {
 // Per-mode element overrides
 // ---------------------------------------------------------------------------
 
-/// Optional element overrides for a specific GUI-mode (identified by
+/// Optional element overrides for a specific Rofi-mode (identified by
 /// `@aerofi.preset` in the script). Unset fields inherit from `[element]`.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
@@ -412,7 +412,7 @@ pub struct PresetElementOverride {
     pub columns: Option<usize>,
 }
 
-/// Config for a single GUI-mode (e.g. `[presets.emoji]`).
+/// Config for a single Rofi-mode (e.g. `[presets.emoji]`).
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct PresetConfig {
@@ -747,7 +747,7 @@ pub struct ThemeConfig {
     pub author: Option<String>,
     pub font: FontConfig,
     pub window: WindowConfig,
-    pub gui: GuiConfig,
+    pub script_view: ScriptViewConfig,
     pub presets: PresetsConfig,
     pub mainbox: ContainerConfig,
     pub banner: Option<BannerConfig>,
@@ -775,7 +775,7 @@ impl Default for ThemeConfig {
             author: Some("aerofi".to_string()),
             font: FontConfig::default(),
             window: WindowConfig::default(),
-            gui: GuiConfig::default(),
+            script_view: ScriptViewConfig::default(),
             presets: PresetsConfig::default(),
             mainbox: ContainerConfig::default(),
             banner: None,
@@ -1969,11 +1969,11 @@ weight = 700
     }
 
     #[test]
-    fn gui_padding_deserializes() {
-        let theme: ThemeConfig = toml::from_str("[gui]\npadding = 12.0").unwrap();
-        assert_eq!(theme.gui.padding, Some(12.0));
+    fn script_view_padding_deserializes() {
+        let theme: ThemeConfig = toml::from_str("[script_view]\npadding = 12.0").unwrap();
+        assert_eq!(theme.script_view.padding, Some(12.0));
         let theme: ThemeConfig = toml::from_str("").unwrap();
-        assert_eq!(theme.gui.padding, None);
+        assert_eq!(theme.script_view.padding, None);
     }
 
     #[test]

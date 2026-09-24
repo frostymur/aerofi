@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 
 # @aerofi.schemaVersion 1
-# @aerofi.title GUI Mode Example
-# @aerofi.mode gui
+# @aerofi.title Rofi Mode Example
+# @aerofi.mode rofi
 # @aerofi.packageName Examples
 # @aerofi.icon 
-# @aerofi.description Interactive two-way Rofi-compatible GUI protocol example
+# @aerofi.description Interactive two-way Rofi protocol example
 # @aerofi.show_search true
 # @aerofi.columns 1
 
-# GUI mode creates an interactive two-way communication session over stdin/stdout.
+# Rofi mode creates an interactive two-way communication session over stdin/stdout.
 # Output control commands starting with \0 to configure the UI.
 
 printf "\0prompt\x1fSelect an option…\n"

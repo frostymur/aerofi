@@ -53,7 +53,7 @@ impl Render for Launcher {
             LauncherState::RunningFull { .. } | LauncherState::FullOutput { .. } => {
                 t.window.height.resolve(screen_h)
             }
-            LauncherState::GuiMode { .. } => self.gui_fit_height(screen_h),
+            LauncherState::RofiMode { .. } => self.rofi_fit_height(screen_h),
             LauncherState::Search
             | LauncherState::ArgumentInput { .. }
             | LauncherState::Confirming { .. } => {
@@ -73,8 +73,8 @@ impl Render for Launcher {
             }
         };
 
-        let win_width = if matches!(&self.state, LauncherState::GuiMode { .. }) {
-            self.gui_fit_width(screen_w)
+        let win_width = if matches!(&self.state, LauncherState::RofiMode { .. }) {
+            self.rofi_fit_width(screen_w)
         } else {
             t.window.width.resolve(screen_w).min(screen_w)
         };
@@ -96,7 +96,7 @@ impl Render for Launcher {
             self.needs_center = false;
             crate::sys::appkit::center_window(t.window.x_offset as f64, t.window.y_offset as f64);
         }
-        // Reveal the window once a size transition (search ↔ GUI) has fully
+        // Reveal the window once a size transition (search ↔ Rofi) has fully
         // landed: `pending_reveal` was set when the window was dropped to
         // alpha 0 and a `resize_window_deferred` queued. The deferred resize
         // updates GPUI's `viewport_size` (the root size every frame is laid
@@ -145,8 +145,8 @@ impl Render for Launcher {
             self.render_full_output(cx, title)
         } else if let LauncherState::RunningFull { title } = &self.state {
             self.render_full_output_running(title)
-        } else if matches!(&self.state, LauncherState::GuiMode { .. }) {
-            self.render_gui_mode(cx)
+        } else if matches!(&self.state, LauncherState::RofiMode { .. }) {
+            self.render_rofi_mode(cx)
         } else {
             let is_vertical = t.mainbox.orientation == "vertical";
             let mainbox_gap = t.mainbox.gap.unwrap_or(t.listview.spacing);
@@ -240,13 +240,13 @@ impl Render for Launcher {
 
         // Full-page views (full output, running) need breathing room even in
         // zero-padding split layouts, so pad them up to the default window
-        // padding plus the theme's `[gui]` padding.
+        // padding plus the theme's `[script_view]` padding.
         let is_full_page = matches!(
             &self.state,
             LauncherState::FullOutput { .. } | LauncherState::RunningFull { .. }
         );
         let content_padding = if is_full_page {
-            (t.window.padding + t.gui.padding.unwrap_or(0.0)).max(16.0)
+            (t.window.padding + t.script_view.padding.unwrap_or(0.0)).max(16.0)
         } else {
             t.window.padding
         };
@@ -320,22 +320,22 @@ impl Launcher {
         parse_hex_color_alpha(hex).unwrap_or(0x000000FF)
     }
 
-    /// Current GUI-mode name (from `@aerofi.preset`), if in GUI mode.
-    fn gui_layout(&self) -> Option<&str> {
+    /// Current Rofi-mode name (from `@aerofi.preset`), if in Rofi mode.
+    fn rofi_layout(&self) -> Option<&str> {
         match &self.state {
-            LauncherState::GuiMode { layout, .. } => layout.as_deref(),
+            LauncherState::RofiMode { layout, .. } => layout.as_deref(),
             _ => None,
         }
     }
 
-    /// Effective column count for GUI mode: the script's runtime `\0columns`
+    /// Effective column count for Rofi mode: the script's runtime `\0columns`
     /// (which inherits the `@aerofi.columns` metatag) wins, otherwise the
     /// preset's `columns`, otherwise 1.
-    fn gui_effective_columns(&self) -> usize {
-        if self.gui_columns() > 1 {
-            self.gui_columns()
+    fn rofi_effective_columns(&self) -> usize {
+        if self.rofi_columns() > 1 {
+            self.rofi_columns()
         } else {
-            self.gui_layout()
+            self.rofi_layout()
                 .and_then(|name| self.theme.presets.get(name))
                 .and_then(|m| m.element.columns)
                 .unwrap_or(1)
@@ -343,10 +343,10 @@ impl Launcher {
         }
     }
 
-    /// Calculate the width for GUI mode, driven entirely by the theme or preset.
-    pub(super) fn gui_fit_width(&self, screen_w: f32) -> f32 {
+    /// Calculate the width for Rofi mode, driven entirely by the theme or preset.
+    pub(super) fn rofi_fit_width(&self, screen_w: f32) -> f32 {
         let t = &self.theme;
-        self.gui_layout()
+        self.rofi_layout()
             .and_then(|name| t.presets.get(name))
             .and_then(|p| p.window_width)
             .unwrap_or(t.window.width)
@@ -354,15 +354,15 @@ impl Launcher {
             .min(screen_w)
     }
 
-    /// Ideal window height for GUI mode: fit the actual content (input bar,
+    /// Ideal window height for Rofi mode: fit the actual content (input bar,
     /// message banner, and the list/grid) instead of always using the full
     /// theme window height, so short menus (e.g. a power menu) don't leave a
     /// large empty area below the content. Capped at the theme window height
     /// so long lists stay scrollable.
-    pub(super) fn gui_fit_height(&self, screen_h: f32) -> f32 {
+    pub(super) fn rofi_fit_height(&self, screen_h: f32) -> f32 {
         let t = &self.theme;
         let pad_v = t.window.padding;
-        let gui_padding = t.gui.padding.unwrap_or(0.0);
+        let script_view_padding = t.script_view.padding.unwrap_or(0.0);
         let spacing = t.listview.spacing;
 
         let show_search = self
@@ -371,7 +371,7 @@ impl Launcher {
             .and_then(|m| m.show_search)
             .unwrap_or(true);
 
-        let LauncherState::GuiMode {
+        let LauncherState::RofiMode {
             filtered_rows,
             message,
             ..
@@ -383,7 +383,7 @@ impl Launcher {
         // Icon / padding metrics shared by list and grid rows.
         let el = &t.element;
         let mode_el = self
-            .gui_layout()
+            .rofi_layout()
             .and_then(|name| t.presets.get(name))
             .map(|m| &m.element);
         let icon_size = mode_el.and_then(|m| m.icon_size).unwrap_or(el.icon_size);
@@ -404,7 +404,7 @@ impl Launcher {
         }
 
         let n = filtered_rows.len().max(1);
-        let cols = self.gui_effective_columns();
+        let cols = self.rofi_effective_columns();
         let list_h = if cols > 1 {
             let rows = n.div_ceil(cols);
             let cell_h = pad_v_el * 2.0 + icon_size + el.icon_gap + text_h + border * 2.0;
@@ -416,7 +416,8 @@ impl Launcher {
         blocks.push(list_h);
 
         let content: f32 = blocks.iter().sum::<f32>() + spacing * (blocks.len() - 1) as f32;
-        (content + pad_v * 2.0 + gui_padding * 2.0 + 6.0).min(t.window.height.resolve(screen_h))
+        (content + pad_v * 2.0 + script_view_padding * 2.0 + 6.0)
+            .min(t.window.height.resolve(screen_h))
     }
 
     /// Render the input bar styled from `theme.inputbar`.
@@ -537,14 +538,14 @@ impl Launcher {
             .into_any()
     }
 
-    /// Render the interactive GUI-mode view: input bar with custom prompt,
+    /// Render the interactive Rofi-mode view: input bar with custom prompt,
     /// optional status message, and a scrollable list of script-provided rows.
-    fn render_gui_mode(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+    fn render_rofi_mode(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
         let t = &self.theme;
         let ib = &t.inputbar;
         let el = &t.element;
 
-        let LauncherState::GuiMode {
+        let LauncherState::RofiMode {
             title,
             rows,
             filtered_rows,
@@ -564,13 +565,13 @@ impl Launcher {
             return div().into_any();
         };
 
-        let gui_padding = t.gui.padding.unwrap_or(0.0);
+        let script_view_padding = t.script_view.padding.unwrap_or(0.0);
         let mut container = div()
             .flex_1()
             .flex()
             .flex_col()
             .gap(px(t.listview.spacing))
-            .p(px(gui_padding));
+            .p(px(script_view_padding));
 
         // ── Input bar with optional prompt override and loading badge ───
         let placeholder = prompt.as_deref().unwrap_or(title.as_str());
@@ -684,7 +685,7 @@ impl Launcher {
             );
         } else if !filtered_rows.is_empty() {
             let mode_el = self
-                .gui_layout()
+                .rofi_layout()
                 .and_then(|name| t.presets.get(name))
                 .map(|m| &m.element);
             let pad_h = mode_el
@@ -694,27 +695,27 @@ impl Launcher {
                 .and_then(|m| m.padding.as_deref().and_then(|p| p.first().copied()))
                 .unwrap_or_else(|| el.padding.first().copied().unwrap_or(8.0));
             let icon_size = px(mode_el.and_then(|m| m.icon_size).unwrap_or(el.icon_size));
-            let gui_radius = mode_el
+            let rofi_radius = mode_el
                 .and_then(|m| m.corner_radius)
                 .unwrap_or(el.corner_radius);
             let desc_color = rgba(Self::color(
                 el.description_color.as_deref().unwrap_or(&el.text_color),
             ));
 
-            let cols = self.gui_effective_columns();
+            let cols = self.rofi_effective_columns();
             if cols > 1 {
                 // Grid mode: virtualized rows of `cols` cells each.
                 let total_rows = filtered_rows.len().div_ceil(cols);
                 let list = uniform_list(
-                    "gui_rows",
+                    "rofi_rows",
                     total_rows,
                     cx.processor(move |this, range: std::ops::Range<usize>, _window, _cx| {
                         range
-                            .map(|row_ix| this.render_gui_grid_row(row_ix, cols, _cx))
+                            .map(|row_ix| this.render_rofi_grid_row(row_ix, cols, _cx))
                             .collect()
                     }),
                 )
-                .track_scroll(&self.gui_rows_scroll)
+                .track_scroll(&self.rofi_rows_scroll)
                 .flex_1()
                 .w_full();
                 list_container = list_container.child(list);
@@ -728,7 +729,7 @@ impl Launcher {
                 let markup_rows_val = *markup_rows;
 
                 let list = uniform_list(
-                    "gui_rows",
+                    "rofi_rows",
                     filtered_clone.len(),
                     cx.processor(move |_this, range: std::ops::Range<usize>, _window, _cx| {
                         let t = &_this.theme;
@@ -780,7 +781,7 @@ impl Launcher {
                                 };
 
                                 if is_selectable {
-                                    let id = format!("gui-row-{vis_ix}");
+                                    let id = format!("rofi-row-{vis_ix}");
                                     let mut row_div = div()
                                         .id(id)
                                         .flex()
@@ -789,7 +790,7 @@ impl Launcher {
                                         .w_full()
                                         .px(px(pad_h))
                                         .py(px(effective_pad_v))
-                                        .rounded(px(gui_radius))
+                                        .rounded(px(rofi_radius))
                                         .bg(row_bg)
                                         .cursor(CursorStyle::PointingHand);
 
@@ -820,7 +821,7 @@ impl Launcher {
                                     }
 
                                     if el.show_icons {
-                                        row_div = row_div.child(Self::render_gui_row_icon(
+                                        row_div = row_div.child(Self::render_rofi_row_icon(
                                             icon_size, &row.icon, name_color,
                                         ));
                                     }
@@ -892,12 +893,13 @@ impl Launcher {
                                     row_div
                                         .on_click(_cx.listener(move |this, event, _window, cx| {
                                             if is_primary_click(event) {
-                                                if let LauncherState::GuiMode { selected, .. } =
-                                                    &mut this.state
+                                                if let LauncherState::RofiMode {
+                                                    selected, ..
+                                                } = &mut this.state
                                                 {
                                                     *selected = vis_ix;
                                                 }
-                                                this.gui_select_row(cx);
+                                                this.rofi_select_row(cx);
                                                 cx.notify();
                                             }
                                         }))
@@ -910,7 +912,7 @@ impl Launcher {
                                         .w_full()
                                         .px(px(pad_h))
                                         .py(px(pad_v_el))
-                                        .rounded(px(gui_radius))
+                                        .rounded(px(rofi_radius))
                                         .bg(row_bg);
 
                                     if is_disabled {
@@ -934,7 +936,7 @@ impl Launcher {
                                     }
 
                                     if el.show_icons {
-                                        row_div = row_div.child(Self::render_gui_row_icon(
+                                        row_div = row_div.child(Self::render_rofi_row_icon(
                                             icon_size, &row.icon, name_color,
                                         ));
                                     }
@@ -1011,7 +1013,7 @@ impl Launcher {
                 )
                 .flex_1()
                 .w_full()
-                .track_scroll(&self.gui_rows_scroll);
+                .track_scroll(&self.rofi_rows_scroll);
 
                 list_container = list_container.child(list);
             }
@@ -1021,7 +1023,7 @@ impl Launcher {
             let preview_panel = gpui::list(
                 self.preview_list.clone(),
                 cx.processor(move |this: &mut Launcher, ix: usize, _window, _cx| {
-                    if let LauncherState::GuiMode {
+                    if let LauncherState::RofiMode {
                         preview_blocks: Some(b),
                         preview_styled,
                         ..
@@ -1066,9 +1068,9 @@ impl Launcher {
         container.into_any()
     }
 
-    /// Render the icon element for a GUI-mode row. Glyph icons use the
+    /// Render the icon element for a Rofi-mode row. Glyph icons use the
     /// row's foreground colour so they stay readable on selection.
-    fn render_gui_row_icon(
+    fn render_rofi_row_icon(
         icon_size: gpui::Pixels,
         icon: &Option<String>,
         icon_color: gpui::Rgba,
@@ -1113,8 +1115,8 @@ impl Launcher {
         }
     }
 
-    /// Render one row of GUI-mode grid cells (used when columns > 1).
-    fn render_gui_grid_row(
+    /// Render one row of Rofi-mode grid cells (used when columns > 1).
+    fn render_rofi_grid_row(
         &self,
         row_ix: usize,
         cols: usize,
@@ -1122,7 +1124,7 @@ impl Launcher {
     ) -> gpui::AnyElement {
         let t = &self.theme;
         let spacing = px(t.listview.spacing);
-        let total = if let LauncherState::GuiMode { filtered_rows, .. } = &self.state {
+        let total = if let LauncherState::RofiMode { filtered_rows, .. } = &self.state {
             filtered_rows.len()
         } else {
             return div().into_any();
@@ -1140,7 +1142,7 @@ impl Launcher {
                 div()
                     .flex_1()
                     .overflow_hidden()
-                    .child(self.render_gui_grid_cell(vis_ix, cx)),
+                    .child(self.render_rofi_grid_cell(vis_ix, cx)),
             );
         }
         // Pad incomplete last row to keep column alignment.
@@ -1150,12 +1152,12 @@ impl Launcher {
         row.into_any()
     }
 
-    /// Render a single GUI-mode grid cell: icon on top, row text below.
-    fn render_gui_grid_cell(&self, vis_ix: usize, cx: &mut Context<Self>) -> gpui::AnyElement {
+    /// Render a single Rofi-mode grid cell: icon on top, row text below.
+    fn render_rofi_grid_cell(&self, vis_ix: usize, cx: &mut Context<Self>) -> gpui::AnyElement {
         let t = &self.theme;
         let el = &t.element;
         let mode_el = self
-            .gui_layout()
+            .rofi_layout()
             .and_then(|name| t.presets.get(name))
             .map(|m| &m.element);
         let icon_size = px(mode_el.and_then(|m| m.icon_size).unwrap_or(el.icon_size));
@@ -1165,12 +1167,12 @@ impl Launcher {
         let pad_v = mode_el
             .and_then(|m| m.padding.as_deref().and_then(|p| p.first().copied()))
             .unwrap_or_else(|| el.padding.first().copied().unwrap_or(8.0));
-        let gui_radius = mode_el
+        let rofi_radius = mode_el
             .and_then(|m| m.corner_radius)
             .unwrap_or(el.corner_radius);
 
         let (row, is_selected, is_active, is_urgent, is_disabled, is_toggled, markup_rows) =
-            if let LauncherState::GuiMode {
+            if let LauncherState::RofiMode {
                 rows,
                 filtered_rows,
                 selected,
@@ -1241,7 +1243,7 @@ impl Launcher {
         };
 
         let mut cell = div()
-            .id(format!("gui-cell-{vis_ix}"))
+            .id(format!("rofi-cell-{vis_ix}"))
             .flex()
             .flex_col()
             .items_center()
@@ -1250,7 +1252,7 @@ impl Launcher {
             .w_full()
             .px(px(pad_h))
             .py(px(effective_pad_v))
-            .rounded(px(gui_radius))
+            .rounded(px(rofi_radius))
             .bg(row_bg);
 
         if is_selected {
@@ -1271,7 +1273,7 @@ impl Launcher {
         }
 
         if el.show_icons {
-            cell = cell.child(Self::render_gui_row_icon(icon_size, &row.icon, name_color));
+            cell = cell.child(Self::render_rofi_row_icon(icon_size, &row.icon, name_color));
         }
 
         if !row.text.is_empty() {
@@ -1296,10 +1298,10 @@ impl Launcher {
         if is_selectable {
             cell = cell.on_click(cx.listener(move |this, event, _window, cx| {
                 if is_primary_click(event) {
-                    if let LauncherState::GuiMode { selected, .. } = &mut this.state {
+                    if let LauncherState::RofiMode { selected, .. } = &mut this.state {
                         *selected = vis_ix;
                     }
-                    this.gui_select_row(cx);
+                    this.rofi_select_row(cx);
                     cx.notify();
                 }
             }));
@@ -2240,7 +2242,7 @@ impl Launcher {
         )
     }
 
-    /// Pango-parsed `StyledText` for a markup GUI row. The parse (a linear
+    /// Pango-parsed `StyledText` for a markup Rofi row. The parse (a linear
     /// scan with per-tag allocations) is memoized per row text, so redraws
     /// and selection changes don't re-parse every visible row.
     fn markup_text(&self, text: &str) -> gpui::StyledText {

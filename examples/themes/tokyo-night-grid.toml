@@ -30,7 +30,7 @@ padding = [14.0, 20.0]
 corner_radius = 14.0
 
 [presets.list.element]
-# Compact single-column rows for GUI scripts that render as a list inside
+# Compact single-column rows for Rofi scripts that render as a list inside
 # the grid theme (overrides the grid's 72pt icon / 20pt padding).
 columns = 1
 icon_size = 16.0

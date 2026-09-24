@@ -6,7 +6,7 @@ Index of the aerofi docs. Start here, then jump to the page you need.
 
 | Page | What it covers |
 |---|---|
-| [scripts.md](./scripts.md) | Scripting reference: all six execution modes, `@aerofi.*` / `@raycast.*` metatags, and the complete interactive **GUI wire protocol** (control commands, row fields, events). |
+| [scripts.md](./scripts.md) | Scripting reference: all six execution modes, `@aerofi.*` / `@raycast.*` metatags, and the complete interactive **Rofi wire protocol** (control commands, row fields, events). |
 | [customization.md](./customization.md) | Configuration schema, `config.toml`, and the declarative **theming / widgets** system. |
 
 ## Guides
@@ -18,6 +18,6 @@ Index of the aerofi docs. Start here, then jump to the page you need.
 
 ## Companion examples
 
-- [`examples/scripts/`](../examples/scripts/) — ready-to-run scripts for every mode, including the GUI examples linked from [multi-step-scripts.md](./multi-step-scripts.md).
+- [`examples/scripts/`](../examples/scripts/) — ready-to-run scripts for every mode, including the Rofi examples linked from [multi-step-scripts.md](./multi-step-scripts.md).
 - [`examples/themes/`](../examples/themes/) — theme, color-palette, and layout examples.
 - [`examples/plugins/`](../examples/plugins/) — two reference plugins (Web Search, Spotlight File Search).

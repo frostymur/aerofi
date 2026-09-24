@@ -65,7 +65,7 @@ extra_apps = []
 # are skipped with a warning.
 
 [custom_keys]
-# Bind combinations to emit custom action events (retv: 10..28) in gui mode.
+# Bind combinations to emit custom action events (retv: 10..28) in rofi mode.
 # e.g. "kb-custom-1" = "alt+1"
 "#;
 
@@ -150,7 +150,7 @@ pub struct BindingsConfig {
     pub launcher: HashMap<String, String>,
     /// System-wide global hotkeys (combo -> target name).
     pub global: HashMap<String, String>,
-    /// Custom hotkeys for GUI scripts (kb-custom-N -> combo).
+    /// Custom hotkeys for Rofi scripts (kb-custom-N -> combo).
     pub custom: HashMap<String, String>,
 }
 

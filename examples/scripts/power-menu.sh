@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # @aerofi.schemaVersion 1
 # @aerofi.title Power Menu
-# @aerofi.mode gui
+# @aerofi.mode rofi
 # @aerofi.icon ⏻
 # @aerofi.packageName System
 # @aerofi.description Sleep, lock, log out, restart, or shut down
@@ -40,7 +40,7 @@ done
 # Restart/Shut Down need a NOPASSWD sudoers rule for /sbin/shutdown, e.g.:
 #   echo "<user> ALL=(root) NOPASSWD: /sbin/shutdown" | sudo tee /etc/sudoers.d/aerofi
 #
-# Command output is sent to /dev/null so it never becomes a GUI row (e.g.
+# Command output is sent to /dev/null so it never becomes a rofi row (e.g.
 # `pmset sleepnow` prints "Sleeping now...").
 case "$choice" in
   lock)     osascript -e 'tell application "System Events" to keystroke "q" using {command down, control down}' >/dev/null 2>&1 ;;

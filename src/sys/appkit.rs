@@ -145,7 +145,7 @@ thread_local! {
 
 /// Synchronously set the NSWindow's content size.
 ///
-/// Used during state transitions (e.g. exiting a GUI script) to resize the
+/// Used during state transitions (e.g. exiting a Rofi script) to resize the
 /// window *before* the next render pass.  Without this, the async
 /// `window.resize()` in `render()` leaves a one-frame gap where the old
 /// content gets scaled by CoreAnimation to the new window size, producing
@@ -156,10 +156,10 @@ thread_local! {
 /// an event handler, not from `render()`).
 /// Set the window's opacity (0.0 = invisible, 1.0 = fully visible).
 ///
-/// Used to reveal a freshly shown GUI window only once its content has been
+/// Used to reveal a freshly shown Rofi window only once its content has been
 /// drawn: the window is shown at alpha 0 (so the stale search frame it still
 /// holds is not visible, squished to the new size) and brought to alpha 1 on
-/// the first GUI render.
+/// the first Rofi render.
 pub fn set_window_alpha(alpha: f64) {
     let ptr = NS_WINDOW.load(Ordering::SeqCst);
     if ptr.is_null() {

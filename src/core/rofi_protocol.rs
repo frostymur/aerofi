@@ -1,6 +1,6 @@
-//! Rofi-compatible GUI script protocol parser.
+//! Rofi script protocol parser.
 //!
-//! Scripts running in `gui` mode communicate with aerofi through
+//! Scripts running in `rofi` mode communicate with aerofi through
 //! structured stdout lines.  Control commands start with `\0` and use
 //! `\x1f` (ASCII unit-separator) to delimit key/value pairs.  Data rows
 //! are plain text optionally followed by `\0`-delimited metadata fields.
@@ -24,7 +24,7 @@
 
 /// A parsed control command from a line starting with `\0`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum GuiCommand {
+pub enum RofiCommand {
     /// Explicit frame marker indicating the end of a burst/frame.
     Flush,
     /// Override the input bar placeholder text.
@@ -61,7 +61,7 @@ pub enum GuiCommand {
 
 /// A single selectable (or non-selectable) row entry.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct GuiRow {
+pub struct RofiRow {
     /// Visible display text (the part before any `\0` field).
     pub text: String,
     /// Unique identifier for this item (for robust selection identification).
@@ -82,8 +82,8 @@ pub struct GuiRow {
     pub disabled: bool,
 }
 
-impl GuiRow {
-    /// Create a new plain GUI row with default attributes.
+impl RofiRow {
+    /// Create a new plain Rofi row with default attributes.
     #[cfg(test)]
     pub fn new(text: impl Into<String>) -> Self {
         Self {
@@ -102,18 +102,18 @@ impl GuiRow {
 
 /// The result of parsing a single stdout line.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum GuiLineResult {
+pub enum RofiLineResult {
     /// A control command (line started with `\0` and matched a known key).
-    Command(GuiCommand),
+    Command(RofiCommand),
     /// A data row (possibly with metadata fields).
-    Row(GuiRow),
+    Row(RofiRow),
     /// An empty or whitespace-only line — skip.
     Empty,
 }
 
-/// An event sent to a GUI script's stdin.
+/// An event sent to a Rofi script's stdin.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum GuiEvent {
+pub enum RofiEvent {
     /// Selection of a row
     Select {
         key: String,
@@ -148,11 +148,11 @@ pub enum GuiEvent {
     Change { query: String },
 }
 
-impl GuiEvent {
-    /// Format event according to the structured aerofi GUI event protocol.
+impl RofiEvent {
+    /// Format event according to the structured aerofi Rofi event protocol.
     pub fn to_event_line(&self) -> String {
         match self {
-            GuiEvent::Select {
+            RofiEvent::Select {
                 key,
                 index,
                 id,
@@ -172,7 +172,7 @@ impl GuiEvent {
                     "\0event\x1fselect\x1fkey:{key}\x1findex:{index}\x1fid:{id}\x1ftext:{text}\x1fretv:{retv}\x1fids:{ids_str}\x1ftexts:{texts_str}{data_str}"
                 )
             }
-            GuiEvent::Action {
+            RofiEvent::Action {
                 key,
                 index,
                 id,
@@ -192,7 +192,7 @@ impl GuiEvent {
                     "\0event\x1faction\x1fkey:{key}\x1findex:{index}\x1fid:{id}\x1ftext:{text}\x1fretv:{retv}\x1fids:{ids_str}\x1ftexts:{texts_str}{data_str}"
                 )
             }
-            GuiEvent::Custom {
+            RofiEvent::Custom {
                 key,
                 text,
                 retv,
@@ -204,7 +204,7 @@ impl GuiEvent {
                     .unwrap_or_default();
                 format!("\0event\x1fcustom\x1fkey:{key}\x1ftext:{text}\x1fretv:{retv}{data_str}")
             }
-            GuiEvent::Change { query } => {
+            RofiEvent::Change { query } => {
                 format!("\0change\x1f{query}")
             }
         }
@@ -214,61 +214,61 @@ impl GuiEvent {
     #[cfg(test)]
     pub fn to_pipe_line(&self) -> String {
         match self {
-            GuiEvent::Select {
+            RofiEvent::Select {
                 index, id, text, ..
             }
-            | GuiEvent::Action {
+            | RofiEvent::Action {
                 index, id, text, ..
             } => {
                 format!("{text}\x1f{id}\x1f{index}")
             }
-            GuiEvent::Custom { text, .. } => text.clone(),
-            GuiEvent::Change { query } => format!("\0change\x1f{query}"),
+            RofiEvent::Custom { text, .. } => text.clone(),
+            RofiEvent::Change { query } => format!("\0change\x1f{query}"),
         }
     }
 }
 
 /// A "burst" of output: all commands and rows from one read cycle.
 #[derive(Debug, Clone, Default)]
-pub struct GuiBurst {
+pub struct RofiBurst {
     /// Control commands received in this burst.
-    pub commands: Vec<GuiCommand>,
+    pub commands: Vec<RofiCommand>,
     /// Data rows received in this burst.
-    pub rows: Vec<GuiRow>,
+    pub rows: Vec<RofiRow>,
 }
 
-/// Parse a single line from a GUI script's stdout.
+/// Parse a single line from a Rofi script's stdout.
 ///
 /// Lines starting with `\0` are control commands; all others are data rows.
-/// Empty/whitespace-only lines are `GuiLineResult::Empty`.
+/// Empty/whitespace-only lines are `RofiLineResult::Empty`.
 /// Parse one protocol line. A line may carry several `\0`-separated
 /// command fields (scripts sometimes forget the newline between two
 /// commands), so a command line yields one result per parseable field;
 /// a data row always yields exactly one `Row` result.
-pub fn parse_gui_line(line: &str) -> Vec<GuiLineResult> {
+pub fn parse_rofi_line(line: &str) -> Vec<RofiLineResult> {
     let trimmed = line.trim_end_matches('\n').trim_end_matches('\r');
     if trimmed.is_empty() {
-        return vec![GuiLineResult::Empty];
+        return vec![RofiLineResult::Empty];
     }
 
     // Control command line: the line starts with \0 and at least one
     // \0-separated field is a known command key.
     if let Some(rest) = trimmed.strip_prefix('\0') {
-        let commands: Vec<GuiCommand> = rest.split('\0').filter_map(try_parse_command).collect();
+        let commands: Vec<RofiCommand> = rest.split('\0').filter_map(try_parse_command).collect();
         if !commands.is_empty() {
-            return commands.into_iter().map(GuiLineResult::Command).collect();
+            return commands.into_iter().map(RofiLineResult::Command).collect();
         }
     }
     // If the \0-prefixed line doesn't match a known command, treat the
     // whole line (including the leading \0) as a row — the \0 might be
     // part of field separators for a row with an empty display text.
-    vec![GuiLineResult::Row(parse_row(trimmed))]
+    vec![RofiLineResult::Row(parse_row(trimmed))]
 }
 
 /// Try to parse a known control command from text after a leading `\0`.
-fn try_parse_command(rest: &str) -> Option<GuiCommand> {
+fn try_parse_command(rest: &str) -> Option<RofiCommand> {
     if rest == "flush" {
-        return Some(GuiCommand::Flush);
+        return Some(RofiCommand::Flush);
     }
     let (key, value) = if let Some(pair) = rest.split_once('\x1f') {
         pair
@@ -279,35 +279,35 @@ fn try_parse_command(rest: &str) -> Option<GuiCommand> {
     let value = value.trim();
 
     match key {
-        "flush" => Some(GuiCommand::Flush),
-        "prompt" => Some(GuiCommand::SetPrompt(value.to_string())),
-        "message" => Some(GuiCommand::SetMessage(value.to_string())),
-        "markup-rows" if value.eq_ignore_ascii_case("true") => Some(GuiCommand::EnableMarkup),
-        "no-custom" => Some(GuiCommand::NoCustom(value.eq_ignore_ascii_case("true"))),
-        "keep-selection" => Some(GuiCommand::KeepSelection(value.to_string())),
-        "columns" => value.parse::<usize>().ok().map(GuiCommand::SetColumns),
-        "loading" => Some(GuiCommand::SetLoading(value.eq_ignore_ascii_case("true"))),
-        "live-search" => Some(GuiCommand::LiveSearch(value.eq_ignore_ascii_case("true"))),
+        "flush" => Some(RofiCommand::Flush),
+        "prompt" => Some(RofiCommand::SetPrompt(value.to_string())),
+        "message" => Some(RofiCommand::SetMessage(value.to_string())),
+        "markup-rows" if value.eq_ignore_ascii_case("true") => Some(RofiCommand::EnableMarkup),
+        "no-custom" => Some(RofiCommand::NoCustom(value.eq_ignore_ascii_case("true"))),
+        "keep-selection" => Some(RofiCommand::KeepSelection(value.to_string())),
+        "columns" => value.parse::<usize>().ok().map(RofiCommand::SetColumns),
+        "loading" => Some(RofiCommand::SetLoading(value.eq_ignore_ascii_case("true"))),
+        "live-search" => Some(RofiCommand::LiveSearch(value.eq_ignore_ascii_case("true"))),
         "active" => {
             let indices = value
                 .split(',')
                 .filter_map(|s| s.trim().parse::<usize>().ok())
                 .collect();
-            Some(GuiCommand::SetActiveIndices(indices))
+            Some(RofiCommand::SetActiveIndices(indices))
         }
-        "data" => Some(GuiCommand::SetData(value.to_string())),
-        "preview" => Some(GuiCommand::PreviewText(value.to_string())),
-        "preview-file" => Some(GuiCommand::PreviewFile(value.to_string())),
-        "multi-select" => Some(GuiCommand::MultiSelect(value.eq_ignore_ascii_case("true"))),
-        "markup-rows" => Some(GuiCommand::MarkupRows(value.eq_ignore_ascii_case("true"))),
-        "reload" => Some(GuiCommand::Reload),
+        "data" => Some(RofiCommand::SetData(value.to_string())),
+        "preview" => Some(RofiCommand::PreviewText(value.to_string())),
+        "preview-file" => Some(RofiCommand::PreviewFile(value.to_string())),
+        "multi-select" => Some(RofiCommand::MultiSelect(value.eq_ignore_ascii_case("true"))),
+        "markup-rows" => Some(RofiCommand::MarkupRows(value.eq_ignore_ascii_case("true"))),
+        "reload" => Some(RofiCommand::Reload),
         _ => None,
     }
 }
 
 /// Parse a data row: the display text is everything before the first `\0`;
 /// subsequent `\0key\x1fvalue` pairs are metadata fields.
-fn parse_row(line: &str) -> GuiRow {
+fn parse_row(line: &str) -> RofiRow {
     let mut parts = line.split('\0');
     let text = parts.next().unwrap_or("").to_string();
 
@@ -338,7 +338,7 @@ fn parse_row(line: &str) -> GuiRow {
         }
     }
 
-    GuiRow {
+    RofiRow {
         text,
         id,
         icon,
@@ -351,16 +351,16 @@ fn parse_row(line: &str) -> GuiRow {
     }
 }
 
-impl GuiBurst {
+impl RofiBurst {
     /// Apply parsed lines to this burst.
     pub fn from_lines(lines: &[String]) -> Self {
         let mut burst = Self::default();
         for line in lines {
-            for result in parse_gui_line(line) {
+            for result in parse_rofi_line(line) {
                 match result {
-                    GuiLineResult::Command(cmd) => burst.commands.push(cmd),
-                    GuiLineResult::Row(row) => burst.rows.push(row),
-                    GuiLineResult::Empty => {}
+                    RofiLineResult::Command(cmd) => burst.commands.push(cmd),
+                    RofiLineResult::Row(row) => burst.rows.push(row),
+                    RofiLineResult::Empty => {}
                 }
             }
         }
@@ -373,8 +373,8 @@ mod tests {
     use super::*;
 
     /// Assert the line yields exactly one result and return it.
-    fn one(line: &str) -> GuiLineResult {
-        let mut v = super::parse_gui_line(line);
+    fn one(line: &str) -> RofiLineResult {
+        let mut v = super::parse_rofi_line(line);
         assert_eq!(v.len(), 1, "expected exactly one result, got: {v:?}");
         v.pop().unwrap()
     }
@@ -384,7 +384,7 @@ mod tests {
         let result = one("\0prompt\x1fSelect WiFi Network");
         assert_eq!(
             result,
-            GuiLineResult::Command(GuiCommand::SetPrompt("Select WiFi Network".to_string()))
+            RofiLineResult::Command(RofiCommand::SetPrompt("Select WiFi Network".to_string()))
         );
     }
 
@@ -393,25 +393,25 @@ mod tests {
         let result = one("\0message\x1fScanning...");
         assert_eq!(
             result,
-            GuiLineResult::Command(GuiCommand::SetMessage("Scanning...".to_string()))
+            RofiLineResult::Command(RofiCommand::SetMessage("Scanning...".to_string()))
         );
     }
 
     #[test]
     fn parses_markup_rows_command() {
         let result = one("\0markup-rows\x1ftrue");
-        assert_eq!(result, GuiLineResult::Command(GuiCommand::EnableMarkup));
+        assert_eq!(result, RofiLineResult::Command(RofiCommand::EnableMarkup));
     }
 
     #[test]
     fn parses_no_custom_command() {
         assert_eq!(
             one("\0no-custom\x1ftrue"),
-            GuiLineResult::Command(GuiCommand::NoCustom(true))
+            RofiLineResult::Command(RofiCommand::NoCustom(true))
         );
         assert_eq!(
             one("\0no-custom\x1ffalse"),
-            GuiLineResult::Command(GuiCommand::NoCustom(false))
+            RofiLineResult::Command(RofiCommand::NoCustom(false))
         );
     }
 
@@ -420,14 +420,14 @@ mod tests {
         let result = one("\0keep-selection\x1fNetwork A");
         assert_eq!(
             result,
-            GuiLineResult::Command(GuiCommand::KeepSelection("Network A".to_string()))
+            RofiLineResult::Command(RofiCommand::KeepSelection("Network A".to_string()))
         );
     }
 
     #[test]
     fn parses_columns_command() {
         let result = one("\0columns\x1f3");
-        assert_eq!(result, GuiLineResult::Command(GuiCommand::SetColumns(3)));
+        assert_eq!(result, RofiLineResult::Command(RofiCommand::SetColumns(3)));
     }
 
     #[test]
@@ -437,14 +437,14 @@ mod tests {
         // \0columns is not a valid row prefix either — but our parser
         // treats it as a row with text = "" and a field "columns\x1fabc"
         // which is unknown. The row text will be empty.
-        assert!(matches!(result, GuiLineResult::Row(_)));
+        assert!(matches!(result, RofiLineResult::Row(_)));
     }
 
     #[test]
     fn parses_unknown_command_as_row() {
         let result = one("\0unknown-cmd\x1fvalue");
         // Unknown \0-prefixed line becomes a row.
-        assert!(matches!(result, GuiLineResult::Row(_)));
+        assert!(matches!(result, RofiLineResult::Row(_)));
     }
 
     #[test]
@@ -452,7 +452,7 @@ mod tests {
         let result = one("Firefox");
         assert_eq!(
             result,
-            GuiLineResult::Row(GuiRow {
+            RofiLineResult::Row(RofiRow {
                 text: "Firefox".to_string(),
                 id: None,
                 icon: None,
@@ -471,7 +471,7 @@ mod tests {
         let result = one("Home Network\0icon\x1f📶");
         assert_eq!(
             result,
-            GuiLineResult::Row(GuiRow {
+            RofiLineResult::Row(RofiRow {
                 text: "Home Network".to_string(),
                 id: None,
                 icon: Some("📶".to_string()),
@@ -492,7 +492,7 @@ mod tests {
         );
         assert_eq!(
             result,
-            GuiLineResult::Row(GuiRow {
+            RofiLineResult::Row(RofiRow {
                 text: "Network A".to_string(),
                 id: Some("net_a".to_string()),
                 icon: Some("📶".to_string()),
@@ -511,7 +511,7 @@ mod tests {
         let result = one("Item\0info\x1fActive");
         assert_eq!(
             result,
-            GuiLineResult::Row(GuiRow {
+            RofiLineResult::Row(RofiRow {
                 text: "Item".to_string(),
                 id: None,
                 icon: None,
@@ -530,7 +530,7 @@ mod tests {
         let result = one("Item\0nonselectable\x1ffalse");
         assert_eq!(
             result,
-            GuiLineResult::Row(GuiRow {
+            RofiLineResult::Row(RofiRow {
                 text: "Item".to_string(),
                 id: None,
                 icon: None,
@@ -546,13 +546,13 @@ mod tests {
 
     #[test]
     fn empty_line_returns_empty() {
-        assert_eq!(parse_gui_line(""), vec![GuiLineResult::Empty]);
-        assert_eq!(parse_gui_line("\n"), vec![GuiLineResult::Empty]);
-        assert_eq!(parse_gui_line("\r\n"), vec![GuiLineResult::Empty]);
+        assert_eq!(parse_rofi_line(""), vec![RofiLineResult::Empty]);
+        assert_eq!(parse_rofi_line("\n"), vec![RofiLineResult::Empty]);
+        assert_eq!(parse_rofi_line("\r\n"), vec![RofiLineResult::Empty]);
     }
 
     #[test]
-    fn gui_burst_from_lines() {
+    fn rofi_burst_from_lines() {
         let lines = vec![
             "\0prompt\x1fPick one".to_string(),
             "Item A\0icon\x1f🅰️".to_string(),
@@ -561,18 +561,18 @@ mod tests {
             "\0message\x1fHello".to_string(),
             "\0flush".to_string(),
         ];
-        let burst = GuiBurst::from_lines(&lines);
+        let burst = RofiBurst::from_lines(&lines);
         assert_eq!(burst.commands.len(), 3);
         assert_eq!(burst.rows.len(), 2);
         assert_eq!(
             burst.commands[0],
-            GuiCommand::SetPrompt("Pick one".to_string())
+            RofiCommand::SetPrompt("Pick one".to_string())
         );
         assert_eq!(
             burst.commands[1],
-            GuiCommand::SetMessage("Hello".to_string())
+            RofiCommand::SetMessage("Hello".to_string())
         );
-        assert_eq!(burst.commands[2], GuiCommand::Flush);
+        assert_eq!(burst.commands[2], RofiCommand::Flush);
         assert_eq!(burst.rows[0].text, "Item A");
         assert_eq!(burst.rows[1].text, "Item B");
         assert_eq!(burst.rows[1].info, Some("new".to_string()));
@@ -583,7 +583,7 @@ mod tests {
         let result = one("Test\0custom_field\x1fvalue\0icon\x1f🔥");
         assert_eq!(
             result,
-            GuiLineResult::Row(GuiRow {
+            RofiLineResult::Row(RofiRow {
                 text: "Test".to_string(),
                 id: None,
                 icon: Some("🔥".to_string()),
@@ -599,32 +599,32 @@ mod tests {
 
     #[test]
     fn parses_flush_loading_live_search_and_active() {
-        assert_eq!(one("\0flush"), GuiLineResult::Command(GuiCommand::Flush));
+        assert_eq!(one("\0flush"), RofiLineResult::Command(RofiCommand::Flush));
         assert_eq!(
             one("\0flush\x1ftrue"),
-            GuiLineResult::Command(GuiCommand::Flush)
+            RofiLineResult::Command(RofiCommand::Flush)
         );
         assert_eq!(
             one("\0loading\x1ftrue"),
-            GuiLineResult::Command(GuiCommand::SetLoading(true))
+            RofiLineResult::Command(RofiCommand::SetLoading(true))
         );
         assert_eq!(
             one("\0loading\x1ffalse"),
-            GuiLineResult::Command(GuiCommand::SetLoading(false))
+            RofiLineResult::Command(RofiCommand::SetLoading(false))
         );
         assert_eq!(
             one("\0live-search\x1ftrue"),
-            GuiLineResult::Command(GuiCommand::LiveSearch(true))
+            RofiLineResult::Command(RofiCommand::LiveSearch(true))
         );
         assert_eq!(
             one("\0active\x1f0,2,5"),
-            GuiLineResult::Command(GuiCommand::SetActiveIndices(vec![0, 2, 5]))
+            RofiLineResult::Command(RofiCommand::SetActiveIndices(vec![0, 2, 5]))
         );
     }
 
     #[test]
-    fn formats_gui_events() {
-        let select_ev = GuiEvent::Select {
+    fn formats_rofi_events() {
+        let select_ev = RofiEvent::Select {
             key: "enter".to_string(),
             index: 2,
             id: "wifi_home".to_string(),
@@ -640,7 +640,7 @@ mod tests {
         );
         assert_eq!(select_ev.to_pipe_line(), "Home Network\x1fwifi_home\x1f2");
 
-        let action_ev = GuiEvent::Action {
+        let action_ev = RofiEvent::Action {
             key: "ctrl+d".to_string(),
             index: 2,
             id: "wifi_home".to_string(),
@@ -655,7 +655,7 @@ mod tests {
             "\0event\x1faction\x1fkey:ctrl+d\x1findex:2\x1fid:wifi_home\x1ftext:Home Network\x1fretv:12\x1fids:wifi_home\x1ftexts:Home Network"
         );
 
-        let custom_ev = GuiEvent::Custom {
+        let custom_ev = RofiEvent::Custom {
             key: "enter".to_string(),
             text: "my_typed_custom_input".to_string(),
             retv: 2,
@@ -667,28 +667,33 @@ mod tests {
         );
         assert_eq!(custom_ev.to_pipe_line(), "my_typed_custom_input");
 
-        let change_ev = GuiEvent::Change {
+        let change_ev = RofiEvent::Change {
             query: "query text".to_string(),
         };
         assert_eq!(change_ev.to_event_line(), "\0change\x1fquery text");
 
         assert_eq!(
             one("\0reload\x1ftrue"),
-            GuiLineResult::Command(GuiCommand::Reload)
+            RofiLineResult::Command(RofiCommand::Reload)
         );
-        assert_eq!(one("\0reload"), GuiLineResult::Command(GuiCommand::Reload));
+        assert_eq!(
+            one("\0reload"),
+            RofiLineResult::Command(RofiCommand::Reload)
+        );
     }
 
     #[test]
     fn multiple_commands_on_one_line() {
         // A script that forgets the newline between two commands emits
         // both on one line: both must be parsed, value must not leak.
-        let results = parse_gui_line("\0prompt\x1fSearch emojis\u{2026}\0columns\x1f8");
+        let results = parse_rofi_line("\0prompt\x1fSearch emojis\u{2026}\0columns\x1f8");
         assert_eq!(
             results,
             vec![
-                GuiLineResult::Command(GuiCommand::SetPrompt("Search emojis\u{2026}".to_string())),
-                GuiLineResult::Command(GuiCommand::SetColumns(8))
+                RofiLineResult::Command(RofiCommand::SetPrompt(
+                    "Search emojis\u{2026}".to_string()
+                )),
+                RofiLineResult::Command(RofiCommand::SetColumns(8))
             ]
         );
     }

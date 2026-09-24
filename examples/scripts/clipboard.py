@@ -2,7 +2,7 @@
 """
 # @aerofi.schemaVersion 1
 # @aerofi.title Clipboard History
-# @aerofi.mode gui
+# @aerofi.mode rofi
 # @aerofi.icon 
 # @aerofi.packageName System
 # @aerofi.description Search and manage your clipboard history
@@ -10,7 +10,7 @@
 # @aerofi.columns 1
 # @aerofi.preset list
 
-Clipboard history manager for aerofi's interactive gui mode.
+Clipboard history manager for aerofi's interactive rofi mode.
 Powered by the clipy daemon (https://crates.io/crates/clipy) with a
 pbcopy/pbpaste fallback. Enter copies, Tab multi-selects, Ctrl+D deletes.
 Images are captured from the pasteboard on demand via the clippy suite

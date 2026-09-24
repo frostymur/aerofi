@@ -2,8 +2,8 @@
 
 use std::sync::Arc;
 
-use crate::core::gui_protocol::GuiRow;
 use crate::core::item::Target;
+use crate::core::rofi_protocol::RofiRow;
 
 /// Action to take after a keystroke is handled.
 #[derive(Debug, Clone, PartialEq)]
@@ -24,8 +24,8 @@ pub enum LauncherAction {
         path: std::sync::Arc<std::path::Path>,
         output: Option<gpui::SharedString>,
     },
-    /// Start a GUI-mode interactive script session.
-    StartGuiSession(Target, Vec<String>),
+    /// Start a Rofi-mode interactive script session.
+    StartRofiSession(Target, Vec<String>),
     /// Activate a dynamic plugin item.
     ActivatePlugin {
         plugin_name: String,
@@ -67,15 +67,15 @@ pub enum LauncherState {
         target: Target,
         args_values: Vec<String>,
     },
-    /// A GUI-mode script is running interactively: the launcher shows the
+    /// A Rofi-mode script is running interactively: the launcher shows the
     /// script's rows and relays selections back to the script's stdin.
-    GuiMode {
+    RofiMode {
         /// Title of the script (from `@raycast.title`).
         title: String,
         /// All rows in the current step. Shared via `Arc` so the per-frame
         /// list closures can clone it cheaply (atomic bump) instead of
         /// deep-cloning every row's string fields.
-        rows: Arc<Vec<GuiRow>>,
+        rows: Arc<Vec<RofiRow>>,
         /// Indices into `rows` after fuzzy filtering.
         filtered_rows: Vec<usize>,
         /// Override for the input bar placeholder (from `\0prompt`).

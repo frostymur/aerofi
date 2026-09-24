@@ -17,7 +17,7 @@
 [Installation](#installation) •
 [Key Features](#key-features) •
 [Widgets & Theming](#declarative-widgets--theming) •
-[Interactive Scripts](#interactive-gui-scripts--ipc) •
+[Interactive Scripts](#interactive-rofi-scripts--ipc) •
 [Shortcuts](#default-shortcuts)
 
 </div>
@@ -33,7 +33,7 @@
 
 ## Why aerofi?
 
-**aerofi** is a lightweight, open-source macOS application launcher and extensible productivity tool designed as a fast Spotlight and Raycast alternative. Built in Rust with GPU acceleration (GPUI), it brings fast application launching, a declarative widget & theming engine, six script execution modes (including an interactive stdin/stdout GUI mode), and full Raycast script command compatibility to macOS.
+**aerofi** is a lightweight, open-source macOS application launcher and extensible productivity tool designed as a fast Spotlight and Raycast alternative. Built in Rust with GPU acceleration (GPUI), it brings fast application launching, a declarative widget & theming engine, six script execution modes (including an interactive stdin/stdout Rofi mode), and full Raycast script command compatibility to macOS.
 
 Compare to alternatives:
 
@@ -105,7 +105,7 @@ cargo build --release
 - 🔑 Zero-friction Carbon hotkey (no Accessibility permissions required)
 
 **Flexibility & Customization**
-- 6 execution modes: `silent`, `compact`, `inline`, `fullOutput`, `pipe`, and interactive `gui`
+- 6 execution modes: `silent`, `compact`, `inline`, `fullOutput`, `pipe`, and interactive `rofi`
 - 🧩 Declarative widget engine (custom headers, footers, action buttons, status pills)
 - 🎨 Deep TOML theming (frosted glass blur, fonts, `$palette` tokens, custom layouts)
 - 🔌 [Native C ABI plugins](docs/plugins.md) (Rust, C, C++, Swift)
@@ -163,9 +163,9 @@ Themes support modular splitting via `imports = ["colors/...", "layouts/..."]` t
 
 ---
 
-## Interactive GUI Scripts & IPC
+## Interactive Rofi Scripts & IPC
 
-Turn any Bash, Python, Node.js, or Swift script into a dynamic macOS mini-app with `@aerofi.mode gui`:
+Turn any Bash, Python, Node.js, or Swift script into a dynamic macOS mini-app with `@aerofi.mode rofi`:
 
 - **Bidirectional Streaming**: Your script outputs items via `stdout` and receives keyboard events (`Enter`, `Tab`, `Ctrl+D`, custom keys) via `stdin` in real-time.
 - **Pango Markup Formatting**: Full support for rich colors, bold text, and badges (`<span foreground="#7aa2f7" weight="bold">Title</span>`).
@@ -175,7 +175,7 @@ Turn any Bash, Python, Node.js, or Swift script into a dynamic macOS mini-app wi
 ```bash
 #!/usr/bin/env bash
 # @aerofi.title Theme Switcher
-# @aerofi.mode gui
+# @aerofi.mode rofi
 # @aerofi.icon 🎨
 
 echo -e "\0prompt\x1fSelect a theme:\n\0markup-rows\x1ftrue\n\0flush"
@@ -188,21 +188,21 @@ echo -e "<b>Gruvbox Dark</b>\0icon\x1femoji:🌲\0info\x1fCommunity"
 Real-world scripts available in [`examples/scripts/`](examples/scripts/):
 
 - **[`clipboard.py`](examples/scripts/clipboard.py)** — Interactive clipboard manager with syntax highlighting, multi-select (`Tab`), and item deletion (`Ctrl+D`)
-- **[`theme_switcher.py`](examples/scripts/theme_switcher.py)** — Interactive GUI theme previewer with live swatches and instant config updating
+- **[`theme_switcher.py`](examples/scripts/theme_switcher.py)** — Interactive Rofi theme previewer with live swatches and instant config updating
 - **[`full-output.sh`](examples/scripts/full-output.sh)** — Markdown viewer rendering formatted GitHub Flavored Markdown inside the launcher
 - **[`compact.sh`](examples/scripts/compact.sh)** — Progress tracking with non-blocking floating toast status indicators
 - **[`silent.sh`](examples/scripts/silent.sh)** — Background automation with completion notification toasts
 
 Copy any script to `~/.config/aerofi/scripts/` to use it immediately.
 
-> Read the [Scripting & GUI Protocol Guide](docs/scripts.md) and the [Multi-Step Guide](docs/multi-step-scripts.md), and check out [`examples/scripts/`](examples/scripts/) for working implementations.
+> Read the [Scripting & Rofi Protocol Guide](docs/scripts.md) and the [Multi-Step Guide](docs/multi-step-scripts.md), and check out [`examples/scripts/`](examples/scripts/) for working implementations.
 
 ---
 
 ## For rofi Users
 
 aerofi is inspired by rofi's Unix philosophy but built specifically for macOS:
-- Same stdin/stdout piping model (`gui` mode = rofi-compatible)
+- Same stdin/stdout piping model (`rofi` mode = rofi-compatible)
 - Native macOS experience (no X11 layers)
 - GPUI rendering (120 FPS, Metal acceleration)
 - Modern scripting ecosystem (Raycast compatibility)
@@ -221,8 +221,8 @@ You can port rofi scripts to aerofi with minimal changes.
 | `Shift+Enter` | Launcher | Open a new instance of a running app (`open -n`) |
 | `Cmd+R` | Launcher | Reload configuration and rescan sources |
 | `Escape` | Launcher | Close aerofi window / Clear search |
-| `Tab` | GUI Mode | Toggle multi-selection checkbox |
-| `Ctrl+D` | GUI Mode | Secondary action (e.g. delete item) |
+| `Tab` | Rofi Mode | Toggle multi-selection checkbox |
+| `Ctrl+D` | Rofi Mode | Secondary action (e.g. delete item) |
 
 **Launching applications.** `Enter` (or clicking a row) activates an app that is
 already running, matching macOS `open`. Press `Shift+Enter` to force a new
@@ -233,7 +233,7 @@ second window. Apps that enforce a single instance may ignore `Shift+Enter`.
 
 ## Getting Help
 
-- **Documentation**: [docs/](./docs/README.md) — config schema, scripting & GUI protocol, multi-step guides, and plugin development
+- **Documentation**: [docs/](./docs/README.md) — config schema, scripting & Rofi protocol, multi-step guides, and plugin development
 - **Examples**: [examples/scripts/](./examples/scripts/) for working scripts
 - **Issues**: [GitHub Issues](https://github.com/frostymur/aerofi/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/frostymur/aerofi/discussions)

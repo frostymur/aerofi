@@ -8,7 +8,7 @@
 //! Supported Raycast annotations:
 //! - `# @raycast.schemaVersion <version>` -> schema version (e.g. 1)
 //! - `# @raycast.title <name>` -> display name
-//! - `# @raycast.mode <mode>`  -> `silent` | `fullOutput` | `compact` | `inline` | `pipe` | `gui`
+//! - `# @raycast.mode <mode>`  -> `silent` | `fullOutput` | `compact` | `inline` | `pipe` | `rofi`
 //! - `# @raycast.packageName <pkg>` -> script package/group name
 //! - `# @raycast.icon <icon>`  -> emoji or icon path/identifier
 //! - `# @raycast.iconDark <icon>` -> dark mode icon path/identifier
@@ -34,7 +34,7 @@ pub enum ScriptMode {
     Compact,
     Inline,
     Pipe,
-    Gui,
+    Rofi,
 }
 
 impl ScriptMode {
@@ -47,7 +47,7 @@ impl ScriptMode {
             Self::Compact => "compact",
             Self::Inline => "inline",
             Self::Pipe => "pipe",
-            Self::Gui => "gui",
+            Self::Rofi => "rofi",
         }
     }
 
@@ -58,7 +58,7 @@ impl ScriptMode {
             "compact" => Self::Compact,
             "inline" => Self::Inline,
             "pipe" => Self::Pipe,
-            "gui" => Self::Gui,
+            "rofi" => Self::Rofi,
             _ => Self::FullOutput,
         }
     }
@@ -694,7 +694,7 @@ echo "Running script..."
             r#"#!/usr/bin/env bash
 # @aerofi.schemaVersion 1
 # @aerofi.title Theme Switcher
-# @aerofi.mode gui
+# @aerofi.mode rofi
 # @aerofi.packageName aerofi Utilities
 # @aerofi.icon 🎨
 # @aerofi.iconDark 🎭
@@ -727,12 +727,12 @@ echo "Theme switcher..."
         };
 
         assert_eq!(name.as_ref(), "Theme Switcher");
-        assert_eq!(mode, ScriptMode::Gui);
+        assert_eq!(mode, ScriptMode::Rofi);
         assert_eq!(icon.as_deref(), Some("🎨"));
 
         assert_eq!(metadata.schema_version, Some(1));
         assert_eq!(metadata.title.as_deref(), Some("Theme Switcher"));
-        assert_eq!(metadata.mode, Some(ScriptMode::Gui));
+        assert_eq!(metadata.mode, Some(ScriptMode::Rofi));
         assert_eq!(metadata.package_name.as_deref(), Some("aerofi Utilities"));
         assert_eq!(metadata.icon.as_deref(), Some("🎨"));
         assert_eq!(metadata.icon_dark.as_deref(), Some("🎭"));
@@ -789,7 +789,7 @@ echo "Theme switcher..."
         };
 
         assert_eq!(name.as_ref(), "Theme Switcher");
-        assert_eq!(mode, ScriptMode::Gui);
+        assert_eq!(mode, ScriptMode::Rofi);
         assert_eq!(icon.as_deref(), Some("\u{f1fc}"));
         assert_eq!(metadata.package_name.as_deref(), Some("aerofi"));
     }
@@ -811,7 +811,7 @@ echo "Theme switcher..."
         };
 
         assert_eq!(name.as_ref(), "Clipboard History");
-        assert_eq!(mode, ScriptMode::Gui);
+        assert_eq!(mode, ScriptMode::Rofi);
         assert_eq!(icon.as_deref(), Some("\u{f0ea}"));
         assert_eq!(metadata.package_name.as_deref(), Some("System"));
     }
@@ -825,7 +825,7 @@ echo "Theme switcher..."
             ("inline.sh", ScriptMode::Inline),
             ("full-output.sh", ScriptMode::FullOutput),
             ("pipe.sh", ScriptMode::Pipe),
-            ("gui.sh", ScriptMode::Gui),
+            ("rofi.sh", ScriptMode::Rofi),
         ];
 
         for (filename, expected_mode) in scripts {

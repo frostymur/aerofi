@@ -25,7 +25,7 @@ This mode renders formatted **Markdown** directly inside the aerofi window.
 |---|---|---|---|
 | `mode` | String | `fullOutput` | Script execution behavior |
 | `refreshTime` | String | `None` | Auto-refresh interval (e.g. `5m`) |
-| `show_search` | Boolean | `true` | Show search bar in GUI mode |
+| `show_search` | Boolean | `true` | Show search bar in Rofi mode |
 
 ```json
 {

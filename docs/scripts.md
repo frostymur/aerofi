@@ -1,4 +1,4 @@
-# aerofi Scripting & GUI Protocol Guide
+# aerofi Scripting & Rofi Protocol Guide
 
 aerofi features an extensible script execution engine. You can write scripts in any programming or scripting language—**Bash, Zsh, Python, Node.js, Ruby, Swift, or compiled Rust**—and execute them directly from your keyboard.
 
@@ -59,7 +59,7 @@ Annotations are placed inside comments (`#`) at the top of your script:
 | `description` | Script description | `@aerofi.description Interactive theme preview` |
 | `author` | Author name | `@aerofi.author Your Name` |
 | `authorURL` | Author website URL | `@aerofi.authorURL https://github.com/...` |
-| `show_search` | Toggle search bar in GUI mode (default `true`) | `@aerofi.show_search false` |
+| `show_search` | Toggle search bar in Rofi mode (default `true`) | `@aerofi.show_search false` |
 | `columns` | Override list column count (default `1`) | `@aerofi.columns 2` |
 | `preset` | Preset name from the theme's `[presets.*]` tables applied to the script's list (e.g. `list`, `emoji`), overriding the default | `@aerofi.preset list` |
 
@@ -121,17 +121,17 @@ Executes the command, captures its stdout, and immediately copies the result to 
 - **Ideal for**: UUID generators, password generators, timestamp formatters, base64 encoders.
 - **Output cap**: up to 8 MiB of stdout is copied; beyond that the copy is truncated with a visible note (an 8 MiB clipboard payload is already far past any sane use).
 
-### 6. `gui`
-Enables aerofi's **two-way interactive GUI mode**. Maintains a persistent, bidirectional process pipeline (`stdin`/`stdout`) between aerofi and your script, turning aerofi into a custom interactive UI (like Rofi or dmenu, but with rich styling).
-- **Example Script**: [examples/scripts/gui.sh](../examples/scripts/gui.sh)
+### 6. `rofi`
+Enables aerofi's **two-way interactive Rofi mode**. Maintains a persistent, bidirectional process pipeline (`stdin`/`stdout`) between aerofi and your script, turning aerofi into a custom interactive UI (like Rofi or dmenu, but with rich styling).
+- **Example Script**: [examples/scripts/rofi.sh](../examples/scripts/rofi.sh)
 - **Comprehensive Examples**: [theme_switcher.py](../examples/scripts/theme_switcher.py), [clipboard.py](../examples/scripts/clipboard.py)
 - **Multi-Step Guide**: [multi-step-scripts.md](./multi-step-scripts.md) — building interactive chains, the event loop pattern, and how this compares to Rofi
 
 ---
 
-## Interactive GUI Mode Protocol
+## Interactive Rofi Mode Protocol
 
-When `@raycast.mode gui` is specified, aerofi treats your script as an interactive UI session.
+When `@raycast.mode rofi` is specified, aerofi treats your script as an interactive UI session.
 
 ### Bidirectional Flow
 

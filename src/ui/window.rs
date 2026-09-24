@@ -84,20 +84,20 @@ pub fn toggle() {
 
 /// Run a `[bindings.global]` target from its hotkey.
 ///
-/// GUI-mode scripts need the launcher window for their two-way session, so
-/// they are opened as a proper GUI session (window shown + `StartGuiSession`)
+/// Rofi-mode scripts need the launcher window for their two-way session, so
+/// they are opened as a proper Rofi session (window shown + `StartRofiSession`)
 /// instead of being spawned detached with nowhere to display. Everything
 /// else runs detached via the executor, as before. Invoked by the global
 /// hotkey handler on the main thread.
 pub fn launch_global_target(target: &Target) {
-    let is_gui = matches!(
+    let is_rofi = matches!(
         target,
         Target::Script {
-            mode: crate::core::item::ScriptMode::Gui,
+            mode: crate::core::item::ScriptMode::Rofi,
             ..
         }
     );
-    if !is_gui {
+    if !is_rofi {
         crate::core::executor::execute(target);
         return;
     }
@@ -106,8 +106,8 @@ pub fn launch_global_target(target: &Target) {
         return;
     };
     // Start the session first; the launcher shows the window once it has
-    // entered GUI mode and pre-sized it (see `show_for_gui`), so the first
-    // visible frame is already the GUI layout — not a flash of the search
+    // entered Rofi mode and pre-sized it (see `show_for_rofi`), so the first
+    // visible frame is already the Rofi layout — not a flash of the search
     // list at the search size that then visibly shrinks ("resize on the go").
     // Same `perform_action` path as picking the script from the search list.
     let view = rr.view.clone();
@@ -115,7 +115,7 @@ pub fn launch_global_target(target: &Target) {
     rr.app.update(|cx| {
         view.update(cx, |launcher, cx| {
             launcher.perform_action(
-                crate::ui::launcher::LauncherAction::StartGuiSession(target, Vec::new()),
+                crate::ui::launcher::LauncherAction::StartRofiSession(target, Vec::new()),
                 false,
                 cx,
             );
@@ -126,9 +126,9 @@ pub fn launch_global_target(target: &Target) {
 
 /// Show the launcher window (AppKit only: un-hide the app, mark visible).
 ///
-/// Intended for a GUI session launched while hidden (global hotkey): the
-/// launcher calls this once it has entered GUI mode and pre-sized the hidden
-/// window, so the first visible frame is already the GUI layout. The caller
+/// Intended for a Rofi session launched while hidden (global hotkey): the
+/// launcher calls this once it has entered Rofi mode and pre-sized the hidden
+/// window, so the first visible frame is already the Rofi layout. The caller
 /// already holds the launcher (inside an `App` update), so it runs
 /// `on_show` itself and notifies — this function must not re-enter
 /// `App::update`.

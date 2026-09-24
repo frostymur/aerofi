@@ -1,7 +1,7 @@
-//! Async I/O wrapper for a running GUI-mode script process.
+//! Async I/O wrapper for a running Rofi-mode script process.
 //!
-//! A `GuiSession` owns a child process whose stdout emits
-//! [`GuiBurst`](crate::core::gui_protocol::GuiBurst) frames and whose
+//! A `RofiSession` owns a child process whose stdout emits
+//! [`RofiBurst`](crate::core::rofi_protocol::RofiBurst) frames and whose
 //! stdin receives selected row text.  The child stays alive across
 //! multiple interaction rounds (wizard steps).
 
@@ -11,10 +11,10 @@ use std::process::{Child, ChildStdin, ChildStdout, Stdio};
 use std::sync::mpsc;
 use std::time::Duration;
 
-use crate::core::gui_protocol::{GuiBurst, GuiRow};
+use crate::core::rofi_protocol::{RofiBurst, RofiRow};
 
-/// A live GUI script session backed by a child process.
-pub struct GuiSession {
+/// A live Rofi script session backed by a child process.
+pub struct RofiSession {
     child: Child,
     stdin: ChildStdin,
     /// Receiver for lines produced by the background stdout reader thread.
@@ -52,8 +52,8 @@ fn is_flush_line(line: &str) -> bool {
     trimmed == "\0flush" || trimmed.starts_with("\0flush\x1f")
 }
 
-impl GuiSession {
-    /// Spawn a GUI-mode script and return the session handle.
+impl RofiSession {
+    /// Spawn a Rofi-mode script and return the session handle.
     ///
     /// The script is started with `stdin = piped`, `stdout = piped`,
     /// `stderr = piped` (stderr is discarded for now — a future version
@@ -79,7 +79,7 @@ impl GuiSession {
         // The reader loop only does BufReader::lines() + a channel send —
         // the default 8 MB stack reservation is unnecessary.
         let spawned = std::thread::Builder::new()
-            .name("aerofi-gui-stdout".to_string())
+            .name("aerofi-rofi-stdout".to_string())
             .stack_size(256 * 1024)
             .spawn(move || {
                 Self::stdout_reader_thread(stdout, tx);
@@ -100,7 +100,7 @@ impl GuiSession {
             stdin,
             line_rx: rx,
         };
-        // GUI sessions are killed on hide, but a quit that skips the
+        // Rofi sessions are killed on hide, but a quit that skips the
         // window still needs the script tree cleaned up.
         crate::core::executor::register_script(session.child.id());
         Ok(session)
@@ -157,13 +157,13 @@ impl GuiSession {
                 burst_bytes += line.len();
                 lines.push(line);
                 if is_flush {
-                    return ReadResult::Burst(GuiBurst::from_lines(&lines));
+                    return ReadResult::Burst(RofiBurst::from_lines(&lines));
                 }
             }
             Ok(LineEvent::Eof) => return ReadResult::Exited,
             Ok(LineEvent::Error(e)) => return ReadResult::Error(e),
             Err(mpsc::RecvTimeoutError::Timeout) => {
-                return ReadResult::Burst(GuiBurst::default());
+                return ReadResult::Burst(RofiBurst::default());
             }
             Err(mpsc::RecvTimeoutError::Disconnected) => return ReadResult::Exited,
         }
@@ -186,7 +186,7 @@ impl GuiSession {
                 }
                 Ok(LineEvent::Eof) => {
                     // Process the lines we have, then signal exit.
-                    let burst = GuiBurst::from_lines(&lines);
+                    let burst = RofiBurst::from_lines(&lines);
                     return if burst.rows.is_empty() && burst.commands.is_empty() {
                         ReadResult::Exited
                     } else {
@@ -200,13 +200,13 @@ impl GuiSession {
             }
         }
 
-        ReadResult::Burst(GuiBurst::from_lines(&lines))
+        ReadResult::Burst(RofiBurst::from_lines(&lines))
     }
 
-    /// Write a structured GUI event to the script's stdin.
+    /// Write a structured Rofi event to the script's stdin.
     pub fn send_event(
         &mut self,
-        event: &crate::core::gui_protocol::GuiEvent,
+        event: &crate::core::rofi_protocol::RofiEvent,
     ) -> std::io::Result<()> {
         writeln!(self.stdin, "{}", event.to_event_line())?;
         self.stdin.flush()
@@ -238,7 +238,7 @@ impl GuiSession {
     }
 }
 
-impl Drop for GuiSession {
+impl Drop for RofiSession {
     fn drop(&mut self) {
         self.kill();
     }
@@ -248,17 +248,17 @@ impl Drop for GuiSession {
 #[derive(Debug)]
 pub enum ReadResult {
     /// A burst of commands and rows was received.
-    Burst(GuiBurst),
+    Burst(RofiBurst),
     /// A burst was received but EOF followed immediately.
-    BurstThenExit(GuiBurst),
+    BurstThenExit(RofiBurst),
     /// The script exited (EOF on stdout, no data).
     Exited,
     /// An I/O error occurred.
     Error(String),
 }
 
-/// Convenience: filter GUI rows by fuzzy matching on `text` and `meta`.
-pub fn filter_gui_rows(rows: &[GuiRow], query: &str) -> Vec<usize> {
+/// Convenience: filter Rofi rows by fuzzy matching on `text` and `meta`.
+pub fn filter_rofi_rows(rows: &[RofiRow], query: &str) -> Vec<usize> {
     if query.is_empty() {
         return (0..rows.len()).collect();
     }
@@ -283,35 +283,35 @@ mod tests {
     use super::*;
 
     #[test]
-    fn filter_gui_rows_empty_query() {
-        let rows = vec![GuiRow::new("A"), GuiRow::new("B")];
-        assert_eq!(filter_gui_rows(&rows, ""), vec![0, 1]);
+    fn filter_rofi_rows_empty_query() {
+        let rows = vec![RofiRow::new("A"), RofiRow::new("B")];
+        assert_eq!(filter_rofi_rows(&rows, ""), vec![0, 1]);
     }
 
     #[test]
-    fn filter_gui_rows_by_text() {
+    fn filter_rofi_rows_by_text() {
         let rows = vec![
-            GuiRow::new("Firefox"),
-            GuiRow::new("Chrome"),
-            GuiRow::new("Safari"),
+            RofiRow::new("Firefox"),
+            RofiRow::new("Chrome"),
+            RofiRow::new("Safari"),
         ];
-        assert_eq!(filter_gui_rows(&rows, "fire"), vec![0]);
-        assert_eq!(filter_gui_rows(&rows, "chr"), vec![1]);
+        assert_eq!(filter_rofi_rows(&rows, "fire"), vec![0]);
+        assert_eq!(filter_rofi_rows(&rows, "chr"), vec![1]);
     }
 
     #[test]
-    fn filter_gui_rows_by_meta() {
-        let mut row_a = GuiRow::new("Item A");
+    fn filter_rofi_rows_by_meta() {
+        let mut row_a = RofiRow::new("Item A");
         row_a.meta = Some("secret keyword".into());
-        let rows = vec![row_a, GuiRow::new("Item B")];
-        assert_eq!(filter_gui_rows(&rows, "secret"), vec![0]);
+        let rows = vec![row_a, RofiRow::new("Item B")];
+        assert_eq!(filter_rofi_rows(&rows, "secret"), vec![0]);
     }
 
     #[test]
-    fn filter_gui_rows_case_insensitive() {
-        let rows = vec![GuiRow::new("Hello World")];
-        assert_eq!(filter_gui_rows(&rows, "HELLO"), vec![0]);
-        assert_eq!(filter_gui_rows(&rows, "hello"), vec![0]);
+    fn filter_rofi_rows_case_insensitive() {
+        let rows = vec![RofiRow::new("Hello World")];
+        assert_eq!(filter_rofi_rows(&rows, "HELLO"), vec![0]);
+        assert_eq!(filter_rofi_rows(&rows, "hello"), vec![0]);
     }
 
     #[test]
@@ -329,7 +329,7 @@ mod tests {
         let _lock = crate::core::executor::SCRIPT_PROCESS_LOCK.lock().unwrap();
         // Spawn a simple echo script that outputs protocol lines and exits.
         let dir = std::env::temp_dir();
-        let script = dir.join(format!("aerofi_gui_test_{}.sh", std::process::id()));
+        let script = dir.join(format!("aerofi_rofi_test_{}.sh", std::process::id()));
         std::fs::write(
             &script,
             "#!/bin/bash\nprintf '\\0prompt\\x1fTest Prompt\\n'\nprintf 'Item One\\0icon\\x1f🔥\\n'\nprintf 'Item Two\\0info\\x1fNew\\n'\n",
@@ -343,7 +343,8 @@ mod tests {
             std::fs::set_permissions(&script, perms).unwrap();
         }
 
-        let session = GuiSession::spawn(&script, vec![], std::collections::HashMap::new()).unwrap();
+        let session =
+            RofiSession::spawn(&script, vec![], std::collections::HashMap::new()).unwrap();
         let result = session.read_burst(Duration::from_secs(5));
 
         let burst = match result {
@@ -354,7 +355,7 @@ mod tests {
         assert_eq!(burst.commands.len(), 1);
         assert_eq!(
             burst.commands[0],
-            crate::core::gui_protocol::GuiCommand::SetPrompt("Test Prompt".to_string())
+            crate::core::rofi_protocol::RofiCommand::SetPrompt("Test Prompt".to_string())
         );
         assert_eq!(burst.rows.len(), 2);
         assert_eq!(burst.rows[0].text, "Item One");
@@ -373,8 +374,8 @@ mod tests {
         // send_event path delivers the structured event to the script.
         let dir = std::env::temp_dir();
         let pid = std::process::id();
-        let script = dir.join(format!("aerofi_gui_send_test_{pid}.sh"));
-        let result_file = dir.join(format!("aerofi_gui_send_test_{pid}.out"));
+        let script = dir.join(format!("aerofi_rofi_send_test_{pid}.sh"));
+        let result_file = dir.join(format!("aerofi_rofi_send_test_{pid}.out"));
         let _ = std::fs::remove_file(&result_file);
         std::fs::write(
             &script,
@@ -405,7 +406,7 @@ mod tests {
         }
 
         let mut session =
-            GuiSession::spawn(&script, vec![], std::collections::HashMap::new()).unwrap();
+            RofiSession::spawn(&script, vec![], std::collections::HashMap::new()).unwrap();
         let result = session.read_burst(Duration::from_secs(5));
         let burst = match result {
             ReadResult::Burst(b) | ReadResult::BurstThenExit(b) => b,
@@ -415,7 +416,7 @@ mod tests {
         assert_eq!(burst.rows[0].id.as_deref(), Some("lock"));
 
         // Send a Select for row 0 ("lock") and confirm the script received it.
-        let event = crate::core::gui_protocol::GuiEvent::Select {
+        let event = crate::core::rofi_protocol::RofiEvent::Select {
             key: "enter".to_string(),
             index: 0,
             id: "lock".to_string(),
@@ -458,7 +459,7 @@ mod tests {
         }
 
         let mut session =
-            GuiSession::spawn(&script, vec![], std::collections::HashMap::new()).unwrap();
+            RofiSession::spawn(&script, vec![], std::collections::HashMap::new()).unwrap();
         let result = session.read_burst(Duration::from_secs(5));
         let burst = match result {
             ReadResult::Burst(b) => b,

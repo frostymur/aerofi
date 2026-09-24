@@ -2,7 +2,7 @@
 """
 # @aerofi.schemaVersion 1
 # @aerofi.title Quick Links
-# @aerofi.mode gui
+# @aerofi.mode rofi
 # @aerofi.icon 
 # @aerofi.packageName Productivity
 # @aerofi.description Your quick links — type a URL to add a new one

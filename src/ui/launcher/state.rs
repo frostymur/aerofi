@@ -10,10 +10,10 @@ use std::time::{Duration, Instant};
 use gpui::{Context, Font, ListAlignment, ListState, ScrollStrategy, UniformListScrollHandle, px};
 
 use crate::core::config::AppConfig;
-use crate::core::gui_protocol::GuiCommand;
-use crate::core::gui_session::{self, GuiSession, ReadResult};
 use crate::core::history::History;
 use crate::core::item::{BuiltinAction, ScriptMetatags, ScriptMode, Target};
+use crate::core::rofi_protocol::RofiCommand;
+use crate::core::rofi_session::{self, ReadResult, RofiSession};
 use crate::core::search::SearchIndex;
 use crate::core::theme::ThemeConfig;
 use crate::core::widget::WidgetRegistry;
@@ -21,7 +21,7 @@ use crate::core::widget::WidgetRegistry;
 use super::helpers::combo_matches;
 use super::types::{LauncherAction, LauncherState, MdStyled};
 
-/// Pango parse result for a GUI row: the plain text plus the highlight
+/// Pango parse result for a Rofi row: the plain text plus the highlight
 /// style for each markup span.
 type PangoParse = (String, Vec<(std::ops::Range<usize>, gpui::HighlightStyle)>);
 
@@ -53,12 +53,12 @@ pub struct Launcher {
     pub(super) state: LauncherState,
     /// List state for fullOutput mode (variable-height markdown blocks).
     pub(super) full_output_list: ListState,
-    /// List state for the GUI-mode markdown preview panel (variable-height
+    /// List state for the Rofi-mode markdown preview panel (variable-height
     /// blocks, kept separate so its scroll position is independent).
     pub(super) preview_list: ListState,
-    /// Scroll state for the GUI-mode rows list (kept separate from the
+    /// Scroll state for the Rofi-mode rows list (kept separate from the
     /// search list so each mode's scroll position is independent).
-    pub(super) gui_rows_scroll: UniformListScrollHandle,
+    pub(super) rofi_rows_scroll: UniformListScrollHandle,
     /// Parsed markdown blocks of the current full-output result (empty
     /// while not showing one; cleared on hide to release the memory).
     pub(super) full_output_blocks: Vec<crate::core::markdown::MdBlock>,
@@ -76,20 +76,20 @@ pub struct Launcher {
     /// Hotkey bindings from button widgets: maps combo string (e.g. "cmd+r")
     /// to the button's action string. Rebuilt on config reload.
     pub(super) button_hotkeys: HashMap<String, (String, bool)>,
-    /// Active GUI-mode script session (stdin/stdout pipe to child).
+    /// Active Rofi-mode script session (stdin/stdout pipe to child).
     /// Wrapped in Arc<Mutex<>> so it can be shared with async tasks.
-    pub(super) gui_session: Option<Arc<Mutex<GuiSession>>>,
-    /// Single pump thread serving live-search queries for the active GUI
+    pub(super) rofi_session: Option<Arc<Mutex<RofiSession>>>,
+    /// Single pump thread serving live-search queries for the active Rofi
     /// session. Kept alive while the session runs; dropped on leave/hide,
     /// which terminates the thread.
-    pub(super) gui_live_search: Option<LiveSearchPump>,
-    /// Whether the active GUI session was launched from a hidden window (a
+    pub(super) rofi_live_search: Option<LiveSearchPump>,
+    /// Whether the active Rofi session was launched from a hidden window (a
     /// global hotkey) rather than from the visible search list. When true,
-    /// exiting the GUI hides the launcher instead of returning to the search
+    /// exiting the Rofi hides the launcher instead of returning to the search
     /// list — the user opened it as a standalone action, so there's no search
     /// state to go back to.
-    pub(super) gui_launched_from_hidden: bool,
-    /// Set when a window-size transition begins (search ↔ GUI): the window
+    pub(super) rofi_launched_from_hidden: bool,
+    /// Set when a window-size transition begins (search ↔ Rofi): the window
     /// was dropped to alpha 0 and a `resize_window_deferred` was queued.
     /// `render` clears the flag and restores full opacity once the frame's
     /// viewport matches the target size — i.e. the deferred native resize
@@ -145,7 +145,7 @@ pub struct Launcher {
     pub(super) highlight_cache: std::cell::RefCell<
         std::collections::HashMap<gpui::SharedString, Vec<std::ops::Range<usize>>>,
     >,
-    /// Pango markup parse results memoized per GUI row text. Cleared
+    /// Pango markup parse results memoized per Rofi row text. Cleared
     /// whenever a new burst installs new rows, since the parse output
     /// depends only on the row text.
     pub(super) pango_cache:
@@ -179,17 +179,17 @@ impl Launcher {
             state: LauncherState::Search,
             full_output_list: ListState::new(0, ListAlignment::Top, px(16.0)),
             preview_list: ListState::new(0, ListAlignment::Top, px(16.0)),
-            gui_rows_scroll: UniformListScrollHandle::new(),
+            rofi_rows_scroll: UniformListScrollHandle::new(),
             full_output_blocks: Vec::new(),
             full_output_styled: Vec::new(),
-            gui_live_search: None,
-            gui_launched_from_hidden: false,
+            rofi_live_search: None,
+            rofi_launched_from_hidden: false,
             pending_reveal: false,
             reveal_wait_frames: 0,
             sticky_metatags: None,
             widget_registry,
             button_hotkeys,
-            gui_session: None,
+            rofi_session: None,
             plugin_manager: crate::core::plugin_manager::PluginManager::load_all(),
             plugin_search_task: None,
             icon_task: None,
@@ -266,10 +266,10 @@ impl Launcher {
             return LauncherAction::None;
         }
 
-        // GUI-mode interactive script: handle keystrokes within the
+        // Rofi-mode interactive script: handle keystrokes within the
         // script-driven list.
-        if matches!(&self.state, LauncherState::GuiMode { .. }) {
-            return self.handle_gui_mode_keystroke(ks, cx);
+        if matches!(&self.state, LauncherState::RofiMode { .. }) {
+            return self.handle_rofi_mode_keystroke(ks, cx);
         }
 
         // A configured key-combo shortcut (e.g. "cmd+r") runs its target
@@ -688,16 +688,16 @@ impl Launcher {
             self.full_output_styled.clear();
             self.full_output_list.reset(0);
         }
-        // Kill any active GUI session.
-        if let Some(session) = self.gui_session.take()
+        // Kill any active Rofi session.
+        if let Some(session) = self.rofi_session.take()
             && let Ok(mut s) = session.lock()
         {
             s.kill();
         }
         // Stop the live-search pump thread (dropping the sender makes its
         // recv() return and the thread exits).
-        self.gui_live_search.take();
-        // Drop the last session's memoized Pango parses (see `gui_leave`).
+        self.rofi_live_search.take();
+        // Drop the last session's memoized Pango parses (see `rofi_leave`).
         self.pango_cache.borrow_mut().clear();
         // Cancel any in-flight size transition: hiding during a pending
         // reveal would otherwise leave the flag set across the hide/show
@@ -842,7 +842,7 @@ impl Launcher {
                     }
                     ScriptMode::Compact => LauncherAction::ExecuteScript(item.clone(), args),
                     ScriptMode::Inline => LauncherAction::ExecuteScript(item.clone(), args),
-                    ScriptMode::Gui => LauncherAction::StartGuiSession(item.clone(), args),
+                    ScriptMode::Rofi => LauncherAction::StartRofiSession(item.clone(), args),
                 }
             }
             Target::Builtin { .. } | Target::App { .. } => LauncherAction::None,
@@ -905,8 +905,8 @@ impl Launcher {
                 self.apply_inline_output(&path, output);
                 cx.notify();
             }
-            LauncherAction::StartGuiSession(target, args) => {
-                self.start_gui_session(&target, args, cx);
+            LauncherAction::StartRofiSession(target, args) => {
+                self.start_rofi_session(&target, args, cx);
                 cx.notify();
             }
             LauncherAction::ExecuteScript(target, args) => {
@@ -1056,14 +1056,14 @@ impl Launcher {
             .iter()
             .map(|b| self.build_md_styled(b))
             .collect();
-        if let LauncherState::GuiMode {
+        if let LauncherState::RofiMode {
             preview_blocks: Some(blocks),
             ..
         } = &self.state
         {
             let styled: Vec<Option<MdStyled>> =
                 blocks.iter().map(|b| self.build_md_styled(b)).collect();
-            if let LauncherState::GuiMode { preview_styled, .. } = &mut self.state {
+            if let LauncherState::RofiMode { preview_styled, .. } = &mut self.state {
                 *preview_styled = Some(styled);
             }
         }
@@ -1207,20 +1207,20 @@ impl Launcher {
         }
     }
 
-    // ── GUI-mode interactive script session ────────────────────────────
+    // ── Rofi-mode interactive script session ────────────────────────────
 
-    /// Spawn a GUI session for an interactive script and read its initial
-    /// burst of output.  Transitions to `LauncherState::GuiMode`.
-    fn start_gui_session(&mut self, target: &Target, args: Vec<String>, cx: &mut Context<Self>) {
+    /// Spawn a Rofi session for an interactive script and read its initial
+    /// burst of output.  Transitions to `LauncherState::RofiMode`.
+    fn start_rofi_session(&mut self, target: &Target, args: Vec<String>, cx: &mut Context<Self>) {
         let Target::Script { path, name, .. } = target else {
             return;
         };
         let title = name.to_string();
         let layout = target.metatags().and_then(|m| m.layout.clone());
 
-        // Metatags are committed only when we actually enter GUI mode (see
-        // `show_gui_loading` / the burst task below) — not here — so the
-        // search list doesn't render with the GUI layout (columns, hidden
+        // Metatags are committed only when we actually enter Rofi mode (see
+        // `show_rofi_loading` / the burst task below) — not here — so the
+        // search list doesn't render with the Rofi layout (columns, hidden
         // input bar) during the brief wait for the first burst.
         let metatags = target.metatags().cloned();
 
@@ -1232,13 +1232,13 @@ impl Launcher {
         let mut envs = std::collections::HashMap::new();
         envs.insert("AEROFI_RETV".to_string(), "0".to_string());
 
-        match GuiSession::spawn(&path, args, envs) {
+        match RofiSession::spawn(&path, args, envs) {
             Ok(session) => {
                 let session = Arc::new(Mutex::new(session));
                 // A fresh session gets a fresh live-search pump (the old one
                 // is bound to the previous session's pipes).
-                self.gui_live_search.take();
-                self.gui_session = Some(session.clone());
+                self.rofi_live_search.take();
+                self.rofi_session = Some(session.clone());
 
                 // Read initial burst on a background thread, then update UI.
                 let view = cx.entity();
@@ -1246,7 +1246,7 @@ impl Launcher {
                 let cx_async = cx.to_async();
                 let (tx, rx) = futures::channel::oneshot::channel();
                 let _ = std::thread::Builder::new()
-                    .name("aerofi-gui-init".to_string())
+                    .name("aerofi-rofi-init".to_string())
                     .stack_size(256 * 1024)
                     .spawn(move || {
                         let burst = {
@@ -1260,11 +1260,11 @@ impl Launcher {
                     if let Ok(burst) = rx.await {
                         cx_async.update(|cx| {
                             view.update(cx, |launcher, cx| {
-                                // Commit the layout metatags as we enter GUI
+                                // Commit the layout metatags as we enter Rofi
                                 // mode. If the script exited without output,
-                                // `gui_leave()` below clears them again.
+                                // `rofi_leave()` below clears them again.
                                 launcher.sticky_metatags = metatags_burst;
-                                launcher.gui_handle_read_result(burst, &title2);
+                                launcher.rofi_handle_read_result(burst, &title2);
                                 cx.notify();
                             });
                         });
@@ -1274,7 +1274,7 @@ impl Launcher {
 
                 // Show a "loading" frame only if the script is slow to emit
                 // its first burst. Fast scripts go straight from the search
-                // list to the populated GUI, so the user never sees an empty
+                // list to the populated Rofi, so the user never sees an empty
                 // flash. The task no-ops if a burst (or an exit/hide) already
                 // landed before the delay elapsed.
                 let title_loading = title.clone();
@@ -1289,7 +1289,7 @@ impl Launcher {
                                 .await;
                             let _ = view
                                 .update(&mut app, |launcher, cx| {
-                                    launcher.show_gui_loading(
+                                    launcher.show_rofi_loading(
                                         &title_loading,
                                         layout_loading,
                                         metatags_loading,
@@ -1303,31 +1303,31 @@ impl Launcher {
                 .detach();
             }
             Err(e) => {
-                eprintln!("aerofi: failed to start GUI session for {title}: {e}");
+                eprintln!("aerofi: failed to start Rofi session for {title}: {e}");
             }
         }
     }
 
-    /// Show the temporary "loading" GUI frame, but only if a burst hasn't
-    /// landed yet (we're still not in `GuiMode`) and the session is still
-    /// alive. Invoked by a delayed task from [`start_gui_session`], so fast
+    /// Show the temporary "loading" Rofi frame, but only if a burst hasn't
+    /// landed yet (we're still not in `RofiMode`) and the session is still
+    /// alive. Invoked by a delayed task from [`start_rofi_session`], so fast
     /// scripts never trigger it — the user goes straight from the search list
-    /// to the populated GUI with no empty flash.
-    fn show_gui_loading(
+    /// to the populated Rofi with no empty flash.
+    fn show_rofi_loading(
         &mut self,
         title: &str,
         layout: Option<String>,
         metatags: Option<ScriptMetatags>,
         cx: &mut Context<Self>,
     ) {
-        if matches!(self.state, LauncherState::GuiMode { .. }) || self.gui_session.is_none() {
+        if matches!(self.state, LauncherState::RofiMode { .. }) || self.rofi_session.is_none() {
             return;
         }
-        // A new GUI session starts with fresh rows.
+        // A new Rofi session starts with fresh rows.
         self.pango_cache.borrow_mut().clear();
-        // Commit the layout metatags as we enter GUI mode (loading frame).
+        // Commit the layout metatags as we enter Rofi mode (loading frame).
         self.sticky_metatags = metatags;
-        self.state = LauncherState::GuiMode {
+        self.state = LauncherState::RofiMode {
             title: title.to_string(),
             rows: Arc::new(Vec::new()),
             filtered_rows: Vec::new(),
@@ -1351,15 +1351,15 @@ impl Launcher {
             layout,
         };
         cx.notify();
-        // This only runs when we're not already in GuiMode, so it's always a
-        // search → GUI transition: prepare the window (resize + hide stale
+        // This only runs when we're not already in RofiMode, so it's always a
+        // search → Rofi transition: prepare the window (resize + hide stale
         // content) so the loading frame appears at its final size.
-        self.reveal_gui_transition();
+        self.reveal_rofi_transition();
     }
 
-    /// Prepare the window for a search → GUI transition: resize it to the GUI
+    /// Prepare the window for a search → Rofi transition: resize it to the Rofi
     /// layout and hide the stale content (the search list, or a previous
-    /// frame) at alpha 0 until the first GUI render reveals it. This hides the
+    /// frame) at alpha 0 until the first Rofi render reveals it. This hides the
     /// otherwise-visible "resize on the go" for both entry paths — a hotkey
     /// launch (window hidden, so also shown here) and picking the script from
     /// the search list (window already visible at the search size).
@@ -1367,15 +1367,15 @@ impl Launcher {
     /// Called from within an `App` update (we hold `self`), so it must not
     /// re-enter the App: `on_show` and `show_window` run directly, without
     /// `App::update`.
-    fn reveal_gui_transition(&mut self) {
+    fn reveal_rofi_transition(&mut self) {
         let screen_h = crate::sys::appkit::screen_height();
-        let height = self.gui_fit_height(screen_h);
+        let height = self.rofi_fit_height(screen_h);
         let screen_w = crate::sys::appkit::screen_width();
-        let width = self.gui_fit_width(screen_w);
+        let width = self.rofi_fit_width(screen_w);
         let t = self.theme.clone();
         let from_hidden = !crate::ui::window::is_visible();
         // Hide the stale content *before* resizing, so the window vanishes
-        // instead of visibly shrinking from the search size to the GUI size.
+        // instead of visibly shrinking from the search size to the Rofi size.
         // The resize itself is deferred to the main queue (see
         // `resize_window_deferred` — it must not run inside this App update,
         // or GPUI's resize callback fails to update the viewport); `render`
@@ -1397,47 +1397,47 @@ impl Launcher {
             self.on_show();
             crate::ui::window::show_window();
         }
-        // Remember how we entered so `gui_leave` can decide whether to hide
+        // Remember how we entered so `rofi_leave` can decide whether to hide
         // (launched from a hotkey) or return to the search list (launched from
         // the visible search).
-        self.gui_launched_from_hidden = from_hidden;
+        self.rofi_launched_from_hidden = from_hidden;
     }
 
-    /// Handle the read result from a GUI session burst.
-    fn gui_handle_read_result(&mut self, result: ReadResult, title: &str) {
+    /// Handle the read result from a Rofi session burst.
+    fn rofi_handle_read_result(&mut self, result: ReadResult, title: &str) {
         match result {
             ReadResult::Burst(burst) => {
-                self.gui_apply_burst(burst, title);
+                self.rofi_apply_burst(burst, title);
             }
             ReadResult::BurstThenExit(burst) => {
-                self.gui_apply_burst(burst, title);
+                self.rofi_apply_burst(burst, title);
                 // Script exited after this burst — mark session as done and
                 // drop its live-search pump (a new session must not reuse it).
                 // The UI will stay showing the last rows but selecting will
-                // leave GUI mode.
-                self.gui_session = None;
-                self.gui_live_search.take();
+                // leave Rofi mode.
+                self.rofi_session = None;
+                self.rofi_live_search.take();
             }
             ReadResult::Exited => {
                 // Script exited with no output — return to search.
-                self.gui_leave();
+                self.rofi_leave();
             }
             ReadResult::Error(e) => {
-                eprintln!("aerofi: GUI script error: {e}");
-                self.gui_leave();
+                eprintln!("aerofi: Rofi script error: {e}");
+                self.rofi_leave();
             }
         }
     }
 
-    /// Apply a GUI burst (commands + rows) to the current GuiMode state.
-    pub(super) fn gui_apply_burst(
+    /// Apply a Rofi burst (commands + rows) to the current RofiMode state.
+    pub(super) fn rofi_apply_burst(
         &mut self,
-        burst: crate::core::gui_protocol::GuiBurst,
+        burst: crate::core::rofi_protocol::RofiBurst,
         title: &str,
     ) {
-        // Whether we're updating an existing GUI session (live-search burst)
-        // or entering GUI mode for the first time (search → GUI transition).
-        let was_gui = matches!(self.state, LauncherState::GuiMode { .. });
+        // Whether we're updating an existing Rofi session (live-search burst)
+        // or entering Rofi mode for the first time (search → Rofi transition).
+        let was_rofi = matches!(self.state, LauncherState::RofiMode { .. });
         // The burst installs new rows; drop memoized parses of old texts.
         self.pango_cache.borrow_mut().clear();
         let mut prompt = None;
@@ -1457,8 +1457,8 @@ impl Launcher {
         let mut markup_rows = false;
         let mut layout: Option<String> = None;
 
-        // Inherit flags if we are updating an existing GuiMode session
-        if let LauncherState::GuiMode {
+        // Inherit flags if we are updating an existing RofiMode session
+        if let LauncherState::RofiMode {
             prompt: prev_prompt,
             no_custom: prev_no_custom,
             columns: prev_columns,
@@ -1490,7 +1490,7 @@ impl Launcher {
 
         // Fall back to the script's `@aerofi.preset` (committed to
         // `sticky_metatags` when the session starts). A fast script emits its
-        // first burst before the 120ms loading frame, so `show_gui_loading`
+        // first burst before the 120ms loading frame, so `show_rofi_loading`
         // — the only other place that seeds `layout` — never runs and the
         // preset (element sizes, columns) would otherwise be dropped.
         if layout.is_none() {
@@ -1499,24 +1499,24 @@ impl Launcher {
 
         for cmd in &burst.commands {
             match cmd {
-                GuiCommand::Flush => {}
-                GuiCommand::SetPrompt(p) => prompt = Some(p.clone()),
-                GuiCommand::SetMessage(m) => message = Some(m.clone()),
-                GuiCommand::EnableMarkup => markup_rows = true,
-                GuiCommand::NoCustom(v) => no_custom = *v,
-                GuiCommand::KeepSelection(s) => keep_selection = Some(s.clone()),
-                GuiCommand::SetColumns(n) => columns = Some(*n),
-                GuiCommand::SetLoading(l) => loading = *l,
-                GuiCommand::LiveSearch(ls) => live_search = *ls,
-                GuiCommand::SetActiveIndices(indices) => active_indices = indices.clone(),
-                GuiCommand::SetData(d) => data = Some(d.clone()),
-                GuiCommand::PreviewText(text) => {
+                RofiCommand::Flush => {}
+                RofiCommand::SetPrompt(p) => prompt = Some(p.clone()),
+                RofiCommand::SetMessage(m) => message = Some(m.clone()),
+                RofiCommand::EnableMarkup => markup_rows = true,
+                RofiCommand::NoCustom(v) => no_custom = *v,
+                RofiCommand::KeepSelection(s) => keep_selection = Some(s.clone()),
+                RofiCommand::SetColumns(n) => columns = Some(*n),
+                RofiCommand::SetLoading(l) => loading = *l,
+                RofiCommand::LiveSearch(ls) => live_search = *ls,
+                RofiCommand::SetActiveIndices(indices) => active_indices = indices.clone(),
+                RofiCommand::SetData(d) => data = Some(d.clone()),
+                RofiCommand::PreviewText(text) => {
                     let blocks = crate::core::markdown::parse(text);
                     preview_styled = Some(blocks.iter().map(|b| self.build_md_styled(b)).collect());
                     preview_blocks = Some(blocks);
                     preview_changed = true;
                 }
-                GuiCommand::PreviewFile(file_path) => {
+                RofiCommand::PreviewFile(file_path) => {
                     let resolved = super::helpers::expand_tilde_path(file_path);
                     if let Ok(text) = std::fs::read_to_string(&resolved) {
                         let blocks = crate::core::markdown::parse(&text);
@@ -1526,18 +1526,18 @@ impl Launcher {
                         preview_changed = true;
                     }
                 }
-                GuiCommand::MultiSelect(b) => multi_select = *b,
-                GuiCommand::MarkupRows(b) => markup_rows = *b,
-                GuiCommand::Reload => {
-                    // Leave GUI mode before reloading so the user sees the
+                RofiCommand::MultiSelect(b) => multi_select = *b,
+                RofiCommand::MarkupRows(b) => markup_rows = *b,
+                RofiCommand::Reload => {
+                    // Leave Rofi mode before reloading so the user sees the
                     // regular search list immediately after the script exits.
-                    // We must return early to avoid the `self.state = GuiMode`
+                    // We must return early to avoid the `self.state = RofiMode`
                     // assignment at the bottom of this function overwriting the
-                    // `Search` state that gui_leave() sets.
-                    // gui_leave() already reloaded when the theme changed on
+                    // `Search` state that rofi_leave() sets.
+                    // rofi_leave() already reloaded when the theme changed on
                     // disk; only reload again for other config changes so a
                     // theme switch triggers exactly one full re-index.
-                    if !self.gui_leave() {
+                    if !self.rofi_leave() {
                         self.reload();
                     }
                     return;
@@ -1558,7 +1558,7 @@ impl Launcher {
             .and_then(|sel| burst.rows.iter().position(|r| r.text == sel))
             .unwrap_or(0);
 
-        self.state = LauncherState::GuiMode {
+        self.state = LauncherState::RofiMode {
             title: title.to_string(),
             rows: Arc::new(burst.rows),
             filtered_rows,
@@ -1580,18 +1580,18 @@ impl Launcher {
             layout,
         };
 
-        // On a search → GUI transition (first burst), prepare the window so
-        // the resize is hidden and the first visible frame is the GUI — for
+        // On a search → Rofi transition (first burst), prepare the window so
+        // the resize is hidden and the first visible frame is the Rofi — for
         // both a hotkey launch (window hidden) and picking the script from the
         // search list (window already visible at the search size). Live-search
-        // bursts (already in GuiMode) skip this to avoid an alpha flicker.
-        if !was_gui {
-            self.reveal_gui_transition();
+        // bursts (already in RofiMode) skip this to avoid an alpha flicker.
+        if !was_rofi {
+            self.reveal_rofi_transition();
         }
     }
 
-    /// Handle keystrokes while in `LauncherState::GuiMode`.
-    fn handle_gui_mode_keystroke(
+    /// Handle keystrokes while in `LauncherState::RofiMode`.
+    fn handle_rofi_mode_keystroke(
         &mut self,
         ks: &gpui::Keystroke,
         cx: Option<&mut Context<Self>>,
@@ -1615,7 +1615,7 @@ impl Launcher {
 
         if let Some(retv) = custom_retv {
             if let Some(cx) = cx {
-                self.gui_dispatch_selection(cx, "custom", Some(retv));
+                self.rofi_dispatch_selection(cx, "custom", Some(retv));
             }
             return LauncherAction::None;
         }
@@ -1630,80 +1630,80 @@ impl Launcher {
 
         match (ks.key.as_str(), cmd, ctrl, alt, shift) {
             ("escape", false, false, false, false) => {
-                self.gui_leave();
+                self.rofi_leave();
                 LauncherAction::None
             }
             ("enter" | "return", false, false, false, false) => {
                 if let Some(cx) = cx {
-                    self.gui_select_row(cx);
+                    self.rofi_select_row(cx);
                 }
                 LauncherAction::None
             }
             ("enter" | "return", false, false, false, true) => {
                 // Shift+Enter contextual action
                 if let Some(cx) = cx {
-                    self.gui_action_row(cx, "shift+enter");
+                    self.rofi_action_row(cx, "shift+enter");
                 }
                 LauncherAction::None
             }
             ("enter" | "return", false, false, true, false) => {
                 // Alt+Enter contextual action
                 if let Some(cx) = cx {
-                    self.gui_action_row(cx, "alt+enter");
+                    self.rofi_action_row(cx, "alt+enter");
                 }
                 LauncherAction::None
             }
             ("up", false, false, false, false)
             | ("p", false, true, false, false)
             | ("k", false, true, false, false) => {
-                let cols = self.gui_columns() as isize;
-                self.gui_move_selection(-cols);
+                let cols = self.rofi_columns() as isize;
+                self.rofi_move_selection(-cols);
                 LauncherAction::None
             }
             ("down", false, false, false, false)
             | ("n", false, true, false, false)
             | ("j", false, true, false, false) => {
-                let cols = self.gui_columns() as isize;
-                self.gui_move_selection(cols);
+                let cols = self.rofi_columns() as isize;
+                self.rofi_move_selection(cols);
                 LauncherAction::None
             }
             ("up", true, false, false, false) => {
-                self.gui_jump_to_edge(true);
+                self.rofi_jump_to_edge(true);
                 LauncherAction::None
             }
             ("down", true, false, false, false) => {
-                self.gui_jump_to_edge(false);
+                self.rofi_jump_to_edge(false);
                 LauncherAction::None
             }
             ("left", false, false, false, false) | ("b", false, true, false, false) => {
-                self.gui_move_selection(-1);
+                self.rofi_move_selection(-1);
                 LauncherAction::None
             }
             ("right", false, false, false, false) | ("f", false, true, false, false) => {
-                self.gui_move_selection(1);
+                self.rofi_move_selection(1);
                 LauncherAction::None
             }
             ("tab", false, false, false, false) => {
-                self.gui_toggle_selection(1);
+                self.rofi_toggle_selection(1);
                 LauncherAction::None
             }
             ("tab", false, false, false, true) => {
-                self.gui_toggle_selection(-1);
+                self.rofi_toggle_selection(-1);
                 LauncherAction::None
             }
             ("backspace", false, false, false, false) => {
                 let mut is_live = false;
-                if let LauncherState::GuiMode {
+                if let LauncherState::RofiMode {
                     query, live_search, ..
                 } = &mut self.state
                 {
                     is_live = *live_search;
                     if query.pop().is_some() && !is_live {
-                        self.gui_refilter();
+                        self.rofi_refilter();
                     }
                 }
                 if is_live && let Some(cx) = cx {
-                    self.gui_send_live_search(cx);
+                    self.rofi_send_live_search(cx);
                 }
                 LauncherAction::None
             }
@@ -1711,7 +1711,7 @@ impl Launcher {
                 // Ctrl + <key> contextual action (e.g. ctrl+e, ctrl+d)
                 if let Some(cx) = cx {
                     let action_key = format!("ctrl+{key}");
-                    self.gui_action_row(cx, &action_key);
+                    self.rofi_action_row(cx, &action_key);
                 }
                 LauncherAction::None
             }
@@ -1725,18 +1725,18 @@ impl Launcher {
                     && !c.chars().any(char::is_control)
                 {
                     let mut is_live = false;
-                    if let LauncherState::GuiMode {
+                    if let LauncherState::RofiMode {
                         query, live_search, ..
                     } = &mut self.state
                     {
                         query.push_str(c);
                         is_live = *live_search;
                         if !is_live {
-                            self.gui_refilter();
+                            self.rofi_refilter();
                         }
                     }
                     if is_live && let Some(cx) = cx {
-                        self.gui_send_live_search(cx);
+                        self.rofi_send_live_search(cx);
                     }
                 }
                 LauncherAction::None
@@ -1744,9 +1744,9 @@ impl Launcher {
         }
     }
 
-    /// Move the selection cursor within the filtered GUI rows.
-    fn gui_move_selection(&mut self, delta: isize) {
-        let (new_selected, row_count) = if let LauncherState::GuiMode {
+    /// Move the selection cursor within the filtered Rofi rows.
+    fn rofi_move_selection(&mut self, delta: isize) {
+        let (new_selected, row_count) = if let LauncherState::RofiMode {
             filtered_rows,
             selected,
             ..
@@ -1764,7 +1764,7 @@ impl Launcher {
         // Keep the selected row in view as the user navigates with the arrows.
         // In grid mode the list items are rows of `cols` cells, so convert
         // the flat selection index to the grid-row index first.
-        let cols = self.gui_columns().max(1);
+        let cols = self.rofi_columns().max(1);
         let total_rows = row_count.div_ceil(cols);
         // A single-row grid fills the (stretched) list exactly, so there is
         // nothing to scroll — and `scroll_to_item` on it nags the list's
@@ -1776,13 +1776,13 @@ impl Launcher {
             } else {
                 new_selected
             };
-            self.gui_rows_scroll
+            self.rofi_rows_scroll
                 .scroll_to_item(item_ix, ScrollStrategy::Nearest);
         }
     }
 
-    fn gui_jump_to_edge(&mut self, top: bool) {
-        let new_selected = if let LauncherState::GuiMode {
+    fn rofi_jump_to_edge(&mut self, top: bool) {
+        let new_selected = if let LauncherState::RofiMode {
             filtered_rows,
             selected,
             ..
@@ -1796,19 +1796,19 @@ impl Launcher {
         } else {
             return;
         };
-        let cols = self.gui_columns().max(1);
+        let cols = self.rofi_columns().max(1);
         let item_ix = if cols > 1 {
             new_selected / cols
         } else {
             new_selected
         };
-        self.gui_rows_scroll
+        self.rofi_rows_scroll
             .scroll_to_item(item_ix, ScrollStrategy::Nearest);
     }
 
     /// Toggle selection of the currently focused row if multi-select is enabled.
-    fn gui_toggle_selection(&mut self, delta: isize) {
-        let selected_copy = if let LauncherState::GuiMode {
+    fn rofi_toggle_selection(&mut self, delta: isize) {
+        let selected_copy = if let LauncherState::RofiMode {
             filtered_rows,
             selected,
             multi_select,
@@ -1833,36 +1833,36 @@ impl Launcher {
         };
 
         if selected_copy.is_some() {
-            self.gui_move_selection(delta);
+            self.rofi_move_selection(delta);
         }
     }
 
-    pub(super) fn gui_columns(&self) -> usize {
-        if let LauncherState::GuiMode { columns, .. } = &self.state {
+    pub(super) fn rofi_columns(&self) -> usize {
+        if let LauncherState::RofiMode { columns, .. } = &self.state {
             (*columns).unwrap_or(1)
         } else {
             1
         }
     }
 
-    /// User selected a row in GUI mode with standard Enter.
-    pub(super) fn gui_select_row(&mut self, cx: &mut Context<Self>) {
-        self.gui_dispatch_selection(cx, "enter", None);
+    /// User selected a row in Rofi mode with standard Enter.
+    pub(super) fn rofi_select_row(&mut self, cx: &mut Context<Self>) {
+        self.rofi_dispatch_selection(cx, "enter", None);
     }
 
-    /// User triggered a contextual action key on the selected row in GUI mode.
-    pub(super) fn gui_action_row(&mut self, cx: &mut Context<Self>, key: &str) {
-        self.gui_dispatch_selection(cx, key, Some(10));
+    /// User triggered a contextual action key on the selected row in Rofi mode.
+    pub(super) fn rofi_action_row(&mut self, cx: &mut Context<Self>, key: &str) {
+        self.rofi_dispatch_selection(cx, key, Some(10));
     }
 
-    /// Dispatch either a Select, Action, or Custom input event to the GUI script's stdin.
-    fn gui_dispatch_selection(
+    /// Dispatch either a Select, Action, or Custom input event to the Rofi script's stdin.
+    fn rofi_dispatch_selection(
         &mut self,
         cx: &mut Context<Self>,
         key: &str,
         action_retv: Option<i32>,
     ) {
-        let LauncherState::GuiMode {
+        let LauncherState::RofiMode {
             rows,
             filtered_rows,
             selected,
@@ -1907,7 +1907,7 @@ impl Launcher {
             }
 
             if is_action {
-                crate::core::gui_protocol::GuiEvent::Action {
+                crate::core::rofi_protocol::RofiEvent::Action {
                     key: key.to_string(),
                     index: row_idx,
                     id,
@@ -1918,7 +1918,7 @@ impl Launcher {
                     selected_texts,
                 }
             } else {
-                crate::core::gui_protocol::GuiEvent::Select {
+                crate::core::rofi_protocol::RofiEvent::Select {
                     key: key.to_string(),
                     index: row_idx,
                     id,
@@ -1930,7 +1930,7 @@ impl Launcher {
                 }
             }
         } else if !no_custom && !query.is_empty() {
-            crate::core::gui_protocol::GuiEvent::Custom {
+            crate::core::rofi_protocol::RofiEvent::Custom {
                 key: key.to_string(),
                 text: query.clone(),
                 retv: 2,
@@ -1940,13 +1940,13 @@ impl Launcher {
             return;
         };
 
-        let Some(session) = self.gui_session.clone() else {
-            self.gui_leave();
+        let Some(session) = self.rofi_session.clone() else {
+            self.rofi_leave();
             return;
         };
 
         // Mark loading state while waiting for the next response
-        if let LauncherState::GuiMode { loading, .. } = &mut self.state {
+        if let LauncherState::RofiMode { loading, .. } = &mut self.state {
             *loading = true;
         }
 
@@ -1954,7 +1954,7 @@ impl Launcher {
         let cx_async = cx.to_async();
         let (tx, rx) = futures::channel::oneshot::channel();
         let _ = std::thread::Builder::new()
-            .name("aerofi-gui-event".to_string())
+            .name("aerofi-rofi-event".to_string())
             .stack_size(256 * 1024)
             .spawn(move || {
                 let result = {
@@ -1971,7 +1971,7 @@ impl Launcher {
             if let Ok(result) = rx.await {
                 cx_async.update(|cx| {
                     view.update(cx, |launcher, cx| {
-                        launcher.gui_handle_read_result(result, &title);
+                        launcher.rofi_handle_read_result(result, &title);
                         cx.notify();
                     });
                 });
@@ -1989,8 +1989,8 @@ impl Launcher {
     /// pump thread per session coalesces keystrokes (only the newest query
     /// is processed), sends it to the script, and drains output until the
     /// script goes quiet.
-    fn gui_send_live_search(&mut self, cx: &mut Context<Self>) {
-        let LauncherState::GuiMode {
+    fn rofi_send_live_search(&mut self, cx: &mut Context<Self>) {
+        let LauncherState::RofiMode {
             query,
             title,
             live_search,
@@ -2006,22 +2006,22 @@ impl Launcher {
 
         let query = query.clone();
         let title = title.clone();
-        let Some(session) = self.gui_session.clone() else {
+        let Some(session) = self.rofi_session.clone() else {
             return;
         };
 
         // Mark loading while script recalculates
-        if let LauncherState::GuiMode { loading, .. } = &mut self.state {
+        if let LauncherState::RofiMode { loading, .. } = &mut self.state {
             *loading = true;
         }
 
         // Start the pump lazily on the first live-search keystroke.
-        let pump = match self.gui_live_search.as_mut() {
+        let pump = match self.rofi_live_search.as_mut() {
             Some(p) => p,
             None => {
                 let pump = Self::start_live_search_pump(session, title.clone(), cx.entity(), cx);
-                self.gui_live_search = Some(pump);
-                self.gui_live_search.as_mut().expect("pump just started")
+                self.rofi_live_search = Some(pump);
+                self.rofi_live_search.as_mut().expect("pump just started")
             }
         };
         let query_generation = pump.latest_enqueued.fetch_add(1, Ordering::Relaxed) + 1;
@@ -2032,7 +2032,7 @@ impl Launcher {
     /// control handle. The thread exits when the returned `LiveSearchPump`
     /// is dropped (its sender half).
     fn start_live_search_pump(
-        session: Arc<Mutex<GuiSession>>,
+        session: Arc<Mutex<RofiSession>>,
         title: String,
         view: gpui::Entity<Launcher>,
         cx: &mut Context<Self>,
@@ -2047,7 +2047,7 @@ impl Launcher {
 
         let pump_latest = latest_enqueued.clone();
         let _ = std::thread::Builder::new()
-            .name("aerofi-gui-live-search".to_string())
+            .name("aerofi-rofi-live-search".to_string())
             .stack_size(256 * 1024)
             .spawn(move || {
                 while let Ok((mut query, mut query_generation)) = query_rx.recv() {
@@ -2082,17 +2082,17 @@ impl Launcher {
                 cx_async.update(|cx| {
                     view.update(cx, |launcher, cx| {
                         // Ignore results from a session that is no longer
-                        // active (left GUI mode, or a new session started)
+                        // active (left Rofi mode, or a new session started)
                         // and skip frames superseded by a newer query.
                         let active = launcher
-                            .gui_session
+                            .rofi_session
                             .as_ref()
                             .is_some_and(|s| Arc::ptr_eq(s, &session));
                         if active && !stale {
                             if let Some(result) = result {
-                                launcher.gui_handle_read_result(result, &title);
+                                launcher.rofi_handle_read_result(result, &title);
                             }
-                            if let LauncherState::GuiMode { loading, .. } = &mut launcher.state {
+                            if let LauncherState::RofiMode { loading, .. } = &mut launcher.state {
                                 *loading = false;
                             }
                             cx.notify();
@@ -2112,7 +2112,7 @@ impl Launcher {
     /// Send a live-search query to the script, then drain its output until
     /// the script goes quiet. Returns `None` if the script produced nothing
     /// within the first-line deadline (the UI stays on its current rows).
-    fn send_and_drain(session: &Mutex<GuiSession>, query: &str) -> Option<ReadResult> {
+    fn send_and_drain(session: &Mutex<RofiSession>, query: &str) -> Option<ReadResult> {
         // Lock is held only for the stdin write itself.
         {
             let mut s = session
@@ -2170,9 +2170,9 @@ impl Launcher {
         last
     }
 
-    /// Re-filter GUI rows based on the current query.
-    fn gui_refilter(&mut self) {
-        if let LauncherState::GuiMode {
+    /// Re-filter Rofi rows based on the current query.
+    fn rofi_refilter(&mut self) {
+        if let LauncherState::RofiMode {
             rows,
             filtered_rows,
             query,
@@ -2180,36 +2180,36 @@ impl Launcher {
             ..
         } = &mut self.state
         {
-            *filtered_rows = gui_session::filter_gui_rows(rows, query);
+            *filtered_rows = rofi_session::filter_rofi_rows(rows, query);
             if *selected >= filtered_rows.len() {
                 *selected = 0;
             }
         }
     }
 
-    /// Leave GUI mode: kill the session and return to the search list.
-    /// Leave GUI mode. Returns `true` if a reload was performed because the
+    /// Leave Rofi mode: kill the session and return to the search list.
+    /// Leave Rofi mode. Returns `true` if a reload was performed because the
     /// theme changed on disk (callers that also want a reload — e.g. the
-    /// `Reload` GUI command — can skip their own to avoid a double re-index).
-    fn gui_leave(&mut self) -> bool {
-        // A GUI session launched from a hidden window (a global hotkey) was
+    /// `Reload` Rofi command — can skip their own to avoid a double re-index).
+    fn rofi_leave(&mut self) -> bool {
+        // A Rofi session launched from a hidden window (a global hotkey) was
         // opened as a standalone action, so there's no search list to return
         // to — hide the launcher and return focus to the previous app.
-        // (Set by `reveal_gui_transition`, based on whether the window was
+        // (Set by `reveal_rofi_transition`, based on whether the window was
         // visible when the session started.)
-        let hide_on_exit = self.gui_launched_from_hidden;
+        let hide_on_exit = self.rofi_launched_from_hidden;
 
-        if let Some(session) = self.gui_session.take()
+        if let Some(session) = self.rofi_session.take()
             && let Ok(mut s) = session.lock()
         {
             s.kill();
         }
         // Stop the live-search pump thread for this session.
-        self.gui_live_search.take();
-        // Clear sticky_metatags so the GUI script's layout overrides (e.g.
+        self.rofi_live_search.take();
+        // Clear sticky_metatags so the Rofi script's layout overrides (e.g.
         // `@aerofi.columns 1`) don't linger after the script exits.
         // Without this, a 4-column grid theme would render as a 1-column list
-        // after closing a gui-mode script that declared columns = 1.
+        // after closing a rofi-mode script that declared columns = 1.
         self.sticky_metatags = None;
         let new_config = crate::core::config::AppConfig::load();
         let reloaded = new_config.theme != self.app_config.theme;
@@ -2222,7 +2222,7 @@ impl Launcher {
         // resident until the next session happens to start.
         self.pango_cache.borrow_mut().clear();
 
-        // Fire-and-forget GUI launch: hide the launcher and return focus to
+        // Fire-and-forget Rofi launch: hide the launcher and return focus to
         // the previously active app instead of leaving the search list up.
         if hide_on_exit {
             self.on_hide();
@@ -2255,9 +2255,9 @@ impl Launcher {
     }
 }
 
-/// Handle for the single live-search pump thread of an active GUI session.
+/// Handle for the single live-search pump thread of an active Rofi session.
 ///
-/// Dropping the value (on `gui_leave` / `on_hide`) drops the sender half,
+/// Dropping the value (on `rofi_leave` / `on_hide`) drops the sender half,
 /// which makes the pump thread's `recv()` return and the thread exit.
 pub(super) struct LiveSearchPump {
     /// Generation of the newest enqueued query. The pump skips applying a
@@ -2275,7 +2275,7 @@ struct LiveSearchApply {
     result: Option<ReadResult>,
     title: String,
     /// The session this result belongs to; stale if no longer the active one.
-    session: Arc<Mutex<GuiSession>>,
+    session: Arc<Mutex<RofiSession>>,
     /// `true` if a newer query was enqueued while this round was draining.
     stale: bool,
 }

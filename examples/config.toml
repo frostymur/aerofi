@@ -141,9 +141,9 @@ toggle = "opt+space"
 "opt+t" = "Theme Switcher"
 
 # ------------------------------------------------------------------------------
-# [bindings.custom] - GUI Mode Custom Keybindings
+# [bindings.custom] - Rofi Mode Custom Keybindings
 # ------------------------------------------------------------------------------
-# Maps custom key combos to action return codes (retv: 10..28) in interactive GUI mode.
+# Maps custom key combos to action return codes (retv: 10..28) in interactive Rofi mode.
 # Supported keys: "kb-custom-1" through "kb-custom-19"
 [bindings.custom]
 "kb-custom-1" = "alt+1"

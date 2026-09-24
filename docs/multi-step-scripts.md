@@ -8,33 +8,33 @@ supports two mechanisms for this, from lightest to richest:
 |---|---|---|---|
 | **Argument prompt** | `@aerofi.argumentN` | gather N text inputs, then run | one-shot |
 | **Confirmation** | `@aerofi.needsConfirmation` | one yes/no gate before running | one-shot |
-| **GUI session** | `@aerofi.mode gui` | unlimited interactive sub-screens | persistent, two-way |
+| **Rofi session** | `@aerofi.mode rofi` | unlimited interactive sub-screens | persistent, two-way |
 
 The first two are one-shot: aerofi prompts, you type/confirm, then the script
-runs once. The **GUI session** is the real multi-step engine — a long-lived,
+runs once. The **Rofi session** is the real multi-step engine — a long-lived,
 bidirectional process where *your script owns the UI across any number of
 steps*. The rest of this doc is about that, and how it differs from Rofi.
 
 The full wire protocol (every control command, row field, and event field) is
-documented in [scripts.md](./scripts.md#-interactive-gui-mode-protocol). This
+documented in [scripts.md](./scripts.md#-interactive-rofi-mode-protocol). This
 page focuses on the *pattern* for building multi-step flows.
 
 ---
 
 ## The core model: one persistent, two-way process
 
-When a `gui`-mode script is executed, aerofi does **not** run it once and read
+When a `rofi`-mode script is executed, aerofi does **not** run it once and read
 its output. It spawns the script as a **long-lived child process** with piped
 `stdin` and `stdout` and keeps talking to it until the script exits or the
 window closes:
 
-- `src/core/gui_session.rs` — `GuiSession` owns the child (`Command` with
+- `src/core/rofi_session.rs` — `RofiSession` owns the child (`Command` with
   `stdin`/`stdout` piped). A background thread reads stdout line-by-line and
   forwards it; `send_event()` writes a user event to the script's stdin. `Drop`
   (and window hide) kills the child.
-- `src/ui/launcher/state.rs:1214` — `start_gui_session()` calls
-  `GuiSession::spawn()` and transitions the launcher into `GuiMode`.
-- `src/core/gui_protocol.rs` — parses what the script emits (control commands
+- `src/ui/launcher/state.rs:1214` — `start_rofi_session()` calls
+  `RofiSession::spawn()` and transitions the launcher into `RofiMode`.
+- `src/core/rofi_protocol.rs` — parses what the script emits (control commands
   + rows) and formats what aerofi sends back (events).
 
 ```
@@ -127,7 +127,7 @@ whole loop:
 ```bash
 #!/usr/bin/env bash
 # @aerofi.title Two-Step Example
-# @aerofi.mode gui
+# @aerofi.mode rofi
 # @aerofi.show_search false
 
 US=$'\x1f'
@@ -206,7 +206,7 @@ levers for a multi-step UI:
 
 ### The simpler primitives (when you don't need a session)
 
-If "multi-step" just means *ask for a value, then run*, you don't need a GUI
+If "multi-step" just means *ask for a value, then run*, you don't need a Rofi
 session at all:
 
 - `@aerofi.argument1 { "type": "text", "placeholder": "Repo" }` (…up to
@@ -215,14 +215,14 @@ session at all:
 - `@aerofi.needsConfirmation true` — a yes/no gate before the script runs
   (state.rs `Confirming`).
 
-These are one-shot; reach for the GUI session when you need more than
+These are one-shot; reach for the Rofi session when you need more than
 "collect inputs → run once".
 
 ---
 
 ## How this compares to Rofi
 
-aerofi's GUI protocol is deliberately *Rofi-shaped* — same "script owns the
+aerofi's Rofi protocol is deliberately *Rofi-shaped* — same "script owns the
 menu, selections flow back" idea and the same `\0`-prefixed / `\x1f`-delimited
 control-line convention. The two diverge on **process model**, which is the
 whole ballgame for multi-step work.
@@ -268,7 +268,7 @@ read event; open "$dir/$file"
 
 ### Side-by-side
 
-| | Rofi | aerofi GUI mode |
+| | Rofi | aerofi Rofi mode |
 |---|---|---|
 | Process model | one process **per step** | one persistent process |
 | How a step's list is built | command run once per step | script emits frames on demand |
@@ -294,18 +294,18 @@ read event; open "$dir/$file"
    `\0loading` while you compute, and `\0preview` for a side pane.
 
 The practical upshot: anything you can build as a chain of Rofi menus you can
-build as a single aerofi GUI script — and you additionally get live,
+build as a single aerofi Rofi script — and you additionally get live,
 in-process interactivity that process-chaining can't.
 
 ---
 
 ## Where the pieces live
 
-- `src/core/gui_session.rs` — the persistent child process (spawn, stdin/stdout,
+- `src/core/rofi_session.rs` — the persistent child process (spawn, stdin/stdout,
   event sender, EOF/kill).
-- `src/core/gui_protocol.rs` — the parser/formatter for commands, rows, and
+- `src/core/rofi_protocol.rs` — the parser/formatter for commands, rows, and
   events.
-- `src/ui/launcher/state.rs` — `start_gui_session()` (`:1214`), event
+- `src/ui/launcher/state.rs` — `start_rofi_session()` (`:1214`), event
   construction (`:1884`), and the one-shot `ArgumentInput`/`Confirming`
   states.
 - `docs/scripts.md` — the complete protocol reference.

@@ -2,7 +2,7 @@
 
 # @aerofi.schemaVersion 1
 # @aerofi.title Emoji Picker
-# @aerofi.mode gui
+# @aerofi.mode rofi
 # @aerofi.preset emoji
 # @aerofi.icon 😀
 # @aerofi.packageName Fun

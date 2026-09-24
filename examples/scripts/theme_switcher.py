@@ -2,7 +2,7 @@
 """
 # @aerofi.schemaVersion 1
 # @aerofi.title Theme Switcher
-# @aerofi.mode gui
+# @aerofi.mode rofi
 # @aerofi.icon 
 # @aerofi.packageName aerofi
 # @aerofi.description Switch the active aerofi theme
@@ -10,7 +10,7 @@
 # @aerofi.columns 1
 # @aerofi.preset list
 
-Interactive theme switcher for aerofi's gui mode. Scans
+Interactive theme switcher for aerofi's rofi mode. Scans
 ~/.config/aerofi/themes/*.toml plus the built-in default, renders each
 palette as colour swatches, and live-reloads the launcher on selection.
 """

@@ -14,12 +14,12 @@ aerofi is configured via transparent, human-readable TOML files located in `~/.c
   - [Script Directories](#script-directories)
   - [App Filtering & Custom Discovery](#app-filtering--custom-discovery)
   - [Aliases & Shortcuts](#aliases--shortcuts)
-  - [Custom Keys (GUI Mode)](#custom-keys-gui-mode)
+  - [Custom Keys (Rofi Mode)](#custom-keys-rofi-mode)
 - [Theming Engine (`theme.toml`)](#theming-engine-themetoml)
   - [Modular Themes & Imports (`imports`)](#modular-themes--imports-imports--)
   - [Font & Typography](#font--typography)
   - [Window & Frosted Glassmorphism](#window--frosted-glassmorphism)
-  - [GUI Mode (`[gui]`)](#gui-mode-gui)
+  - [Full-Window Script View (`[script_view]`)](#full-window-script-view-script-view)
   - [Presets (`[presets.*]`)](#presets-preset)
   - [Layout Hierarchy (`[mainbox]`)](#layout-hierarchy-mainbox)
   - [Search Bar (`[inputbar]`)](#search-bar-inputbar)
@@ -148,11 +148,11 @@ toggle = "opt+space"
 "opt+c" = "Clipboard History"
 ```
 
-### Custom Keys (GUI Mode)
+### Custom Keys (Rofi Mode)
 ```toml
 [bindings.custom]
 # Forward custom key combinations as action return codes (retv: 10..28)
-# to interactive GUI scripts (see docs/scripts.md).
+# to interactive Rofi scripts (see docs/scripts.md).
 "kb-custom-1" = "alt+1"
 "kb-custom-2" = "alt+2"
 "kb-custom-3" = "ctrl+d"
@@ -265,18 +265,24 @@ skipped and takes no space.
 height = 80.0                         # Banner height in points (default: 120.0)
 ```
 
-### GUI Mode (`[gui]`)
+### Full-Window Script View (`[script_view]`)
 
-GUI mode (theme switcher, script output) renders outside the mainbox
-layout. Use `[gui]` to control its appearance independently:
+The full-window script view is what you see when a script takes over the
+whole window with its output or interactive results — the `fullOutput` and
+`rofi` script modes (and the built-in theme switcher, which is itself a
+`rofi` script). It replaces the launcher's `[mainbox]` layout for the run,
+and does **not** apply to the launcher itself, `inline` (a subtitle inside
+a list row), or the `silent`/`compact` toasts.
+
+Use `[script_view]` to control that view's appearance independently of the launcher:
 
 ```toml
-[gui]
-padding = 10.0               # Inset from window edges (default: 0)
+[script_view]
+padding = 10.0    # Extra inset around the view's content (default: 0)
 ```
 
-Useful when `[window].padding = 0` (image pane reaches the edge) but
-GUI-mode still needs an inset.
+Useful when `[window].padding = 0` (an image pane reaches the window edge)
+but the script view still needs some breathing room.
 
 ### Presets (`[presets.*]`)
 
@@ -284,7 +290,7 @@ A **preset** is a per-script override. A script declares one via
 `# @aerofi.preset <name>`, and the theme then overrides `[element]` sizes for
 that script's results — unset fields inherit. A preset may also override the
 **window width** for that script with `window_width` (points or `"XX%"`): the
-window grows/shrinks while the script's GUI is open and returns to the base
+window grows/shrinks while the script's Rofi view is open and returns to the base
 width when it closes.
 
 ```toml
@@ -444,7 +450,7 @@ description_color = "$accent"
 ```
 
 ### Semantic Status Colors
-Used for GUI interactive mode items (e.g. clipboard manager or script results):
+Used for Rofi interactive mode items (e.g. clipboard manager or script results):
 ```toml
 [status_colors]
 urgent_background = "$urgent"

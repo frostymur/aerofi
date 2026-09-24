@@ -2,14 +2,14 @@
 
 # @aerofi.schemaVersion 1
 # @aerofi.title Two-Step Example
-# @aerofi.mode gui
+# @aerofi.mode rofi
 # @aerofi.packageName Examples
 # @aerofi.icon 🗂️
-# @aerofi.description Pick a category, then an item — Rofi-compatible GUI protocol
+# @aerofi.description Pick a category, then an item — Rofi protocol
 # @aerofi.show_search false
 # @aerofi.columns 1
 
-# GUI mode is a two-way session: the script emits frames on stdout and aerofi
+# Rofi mode is a two-way session: the script emits frames on stdout and aerofi
 # sends user events back on stdin. The process stays alive across steps, so a
 # script can drive any number of sub-menus without being re-launched.
 #

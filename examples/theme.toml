@@ -93,14 +93,16 @@ y_offset = 0.0
 
 
 # ------------------------------------------------------------------------------
-# [gui] - GUI Mode (Script Output / Theme Switcher)
+# [script_view] - Full-Window Script View (fullOutput / rofi scripts)
 # ------------------------------------------------------------------------------
-# GUI mode renders outside the [mainbox] layout. Use this section to control
-# its appearance independently of the normal launcher layout.
+# The full-window script view replaces the [mainbox] launcher layout when a
+# script takes over the whole window with its output or interactive results
+# (the fullOutput and rofi script modes, and the theme switcher). It does not
+# apply to the launcher, inline (a row subtitle), or the silent/compact toasts.
 #
-# Extra padding around GUI-mode content, in points. Adds to the existing
-# [window].padding. Useful when [window].padding = 0 (e.g. image pane
-# reaches the window edge) but you still want the script output inset.
+# Extra padding around the view's content, in points (default: 0).
+# Useful when [window].padding = 0 (e.g. an image pane reaches the window
+# edge) but you still want the script view inset.
 # Type: Float (f32)
 # Default: 0.0
 # padding = 10.0
@@ -114,7 +116,7 @@ y_offset = 0.0
 # Unset fields inherit from [element].
 # A preset may also override the window width for that script via
 # `window_width` (points or "XX%"); the window resizes when the script's
-# GUI opens/closes.
+# Rofi view opens/closes.
 #
 # [presets.emoji]
 # window_width = 640.0
@@ -338,7 +340,7 @@ description_color = "$accent"
 # fallback = ["SF Mono"]
 
 # ------------------------------------------------------------------------------
-# [status_colors] - Semantic Colors for GUI Mode
+# [status_colors] - Semantic Colors for Rofi Mode
 # ------------------------------------------------------------------------------
 [status_colors]
 urgent_background = "$urgent"

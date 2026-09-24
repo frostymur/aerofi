@@ -7,7 +7,7 @@ imports = [
     "layouts/catppuccin-split.toml",
 ]
 
-[gui]
+[script_view]
 padding = 10.0
 
 [presets.emoji.element]
