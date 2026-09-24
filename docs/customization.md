@@ -20,6 +20,7 @@ aerofi is configured via transparent, human-readable TOML files located in `~/.c
   - [Font & Typography](#font--typography)
   - [Window & Frosted Glassmorphism](#window--frosted-glassmorphism)
   - [GUI Mode (`[gui]`)](#gui-mode-gui)
+  - [Presets (`[presets.*]`)](#presets-preset)
   - [Layout Hierarchy (`[mainbox]`)](#layout-hierarchy-mainbox)
   - [Search Bar (`[inputbar]`)](#search-bar-inputbar)
   - [Results List & Badges (`[listview]`)](#results-list--badges-listview)
@@ -277,13 +278,14 @@ padding = 10.0               # Inset from window edges (default: 0)
 Useful when `[window].padding = 0` (image pane reaches the edge) but
 GUI-mode still needs an inset.
 
-### Per-Mode Element Overrides (`[presets.*]`)
+### Presets (`[presets.*]`)
 
-Scripts declare a mode name via `# @aerofi.preset <name>`.
-Themes override `[element]` sizes per mode — unset fields inherit. A preset
-may also override the **window width** for that mode with `window_width`
-(points or `"XX%"`): the window grows/shrinks when the script's GUI opens
-and returns to the base width when it closes.
+A **preset** is a per-script override. A script declares one via
+`# @aerofi.preset <name>`, and the theme then overrides `[element]` sizes for
+that script's results — unset fields inherit. A preset may also override the
+**window width** for that script with `window_width` (points or `"XX%"`): the
+window grows/shrinks while the script's GUI is open and returns to the base
+width when it closes.
 
 ```toml
 # For a script with: # @aerofi.preset emoji
@@ -302,6 +304,24 @@ padding = [10.0, 14.0]
 ```
 
 No `@aerofi.preset` in the script → no overrides applied.
+
+#### Presets vs Layouts
+
+These are unrelated, but the word "layout" is easy to conflate with a preset.
+
+| | **Preset** (`[presets.<name>]`) | **Layout** |
+|---|---|---|
+| What | Per-script size overrides | The window's static structure |
+| Triggered by | A script's `# @aerofi.preset <name>` | Always — it is the theme itself |
+| Defined in | `[presets.<name>]`, `[presets.<name>.element]` | `[mainbox]` (orientation + `children`), `[element].layout` (row slots), and the `layouts/` mixin files |
+
+A preset only changes *sizes* (element `padding`/`icon_size`/`corner_radius`/`columns`) and the window width for one script. It cannot add, remove, or reorder widgets — that is the **layout**'s job (`[mainbox].children`).
+
+The same property can live in both, which is the usual source of confusion:
+- `[listview].columns = 4` (in a `layouts/` mixin) sets the *default* grid for every list.
+- `[presets.list.element].columns = 1` overrides that *only* for scripts declaring `# @aerofi.preset list`.
+
+So a "grid theme" is a **layout** (a `layouts/*.toml` mixin setting `[listview].columns`); the per-script column tweaks on top of it are **presets**.
 
 ### Layout Hierarchy (`[mainbox]`)
 

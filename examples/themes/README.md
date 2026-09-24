@@ -24,7 +24,7 @@ A warm, vintage retro-groove theme designed for optimal contrast and eye comfort
 A 4-column icon tile grid search layout styled with the Tokyo Night palette.
 
 - **Layout**: 4-column tile grid with large 72pt icons
-- **Window**: 750x440 footprint
+- **Window**: 51.0% × 46.0% of the screen (screen-relative)
 
 ---
 
@@ -35,7 +35,7 @@ results list. The window is a frosted-glass blur; the opaque right pane covers i
 so only the left side reads as blurred.
 
 - **Layout**: Two equal panes side by side (search left, results right)
-- **Window**: 912pt wide (20% larger than the default), fully transparent + blurred
+- **Window**: 62.0% of screen width (~20% larger than the 51.7% default), fully transparent + blurred
 - **Right pane**: Opaque background (hides the window blur → "no blur" on that side)
 - **Accents**: Latte blue (`#89b4fa`), Mauve (`#cba6f7`), Sage green (`#a6e3a1`)
 
@@ -64,6 +64,8 @@ steps — in the same split two-pane layout as Catppuccin.
 - **`layouts/` variants**: Per-theme tweaks — `catppuccin-split.toml`, `graphite-split.toml`, and `gruvbox-compact.toml`.
 - **`widgets/header-bar.toml`**: A header bar (logo + brand) as reusable custom widgets.
 - **`widgets/footer-bar.toml`**: A footer bar (hint + quick-action buttons) as reusable custom widgets.
+
+> **`layouts/` ≠ presets.** The `layouts/` files are *geometry mixins* (window + `[mainbox]` + element sizing) imported to build a base theme. They are unrelated to the per-script `[presets.*]` overrides. See the [Customization Guide — Presets vs Layouts](../../docs/customization.md#presets-vs-layouts).
 
 ---
 

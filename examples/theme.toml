@@ -107,12 +107,14 @@ y_offset = 0.0
 
 
 # ------------------------------------------------------------------------------
-# [presets.<name>.element] - Per-Mode Element Overrides
+# [presets.<name>.element] - Presets (per-script element overrides)
 # ------------------------------------------------------------------------------
-# Scripts declare a mode name via `# @aerofi.preset <name>`.
+# A preset is a per-script override. A script declares one via
+# `# @aerofi.preset <name>`.
 # Unset fields inherit from [element].
-# A preset may also override the window width for that mode via `window_width`
-# (points or "XX%"); the window resizes when the script's GUI opens/closes.
+# A preset may also override the window width for that script via
+# `window_width` (points or "XX%"); the window resizes when the script's
+# GUI opens/closes.
 #
 # [presets.emoji]
 # window_width = 640.0
