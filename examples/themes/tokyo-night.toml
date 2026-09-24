@@ -8,7 +8,7 @@ imports = [
 ]
 
 [window]
-background_opacity = 0.75
+background_opacity = 1.0
 
 [presets.emoji.element]
 columns = 8

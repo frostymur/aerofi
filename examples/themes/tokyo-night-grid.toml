@@ -8,10 +8,10 @@ imports = [
 ]
 
 [window]
-background_opacity = 0.75
+background_opacity = 1.0
 
 [colors]
-bg       = "#1a1b26f4"
+bg       = "#1a1b26"
 surface2 = "#343b58"
 
 [presets.emoji.element]
