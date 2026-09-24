@@ -1,8 +1,8 @@
 <div align="center">
 
-# aerofi — Fast macOS Launcher & Raycast Alternative
+# aerofi — Fast, native, rofi-inspired macOS launcher
 
-**A blazing fast, keyboard-driven application launcher and extensible script runner for macOS, built with GPUI and Rust. A lightweight Spotlight, Raycast, and Alfred alternative.**
+**A blazing fast, keyboard-driven application launcher and extensible script runner for macOS. Built with GPUI and Rust for zero bloat, instant response, and infinite scriptability.**
 
 [![Release](https://img.shields.io/github/v/release/frostymur/aerofi?style=flat-square&color=7aa2f7&label=version)](https://github.com/frostymur/aerofi/releases)
 [![CI](https://img.shields.io/github/actions/workflow/status/frostymur/aerofi/ci.yml?branch=main&style=flat-square&label=ci)](https://github.com/frostymur/aerofi/actions)
@@ -33,20 +33,13 @@
 
 ## Why aerofi?
 
-**aerofi** is a lightweight, open-source macOS application launcher and extensible productivity tool designed as a fast Spotlight and Raycast alternative. Built in Rust with GPU acceleration (GPUI), it brings fast application launching, a declarative widget & theming engine, six script execution modes (including an interactive stdin/stdout Rofi mode), and full Raycast script command compatibility to macOS.
+**aerofi** brings the Unix philosophy of tools like `rofi` and `dmenu` to macOS, but with native polish and GPU acceleration. It is built for power users who want a lightning-fast, keyboard-driven workflow managed entirely through plain-text dotfiles.
 
-Compare to alternatives:
-
-| Feature | aerofi | Raycast | Alfred |
-|---------|--------|---------|--------|
-| Memory | ~45-65 MB | 250 MB | ~75 MB |
-| Open Source | Yes | No | No |
-| Config as Code | Plain TOML (dotfiles) | GUI only | GUI only |
-| Declarative Widgets & Theme | TOML | — | — |
-| Raycast Scripts | Yes | Yes | No |
-| Interactive Script IPC (stdin/stdout) | Yes | No | No |
-| C ABI Plugins | Yes | No | No |
-| Cost | Free | Free / $12/mo | Free / $42 |
+- ⚡️ **Insanely fast & native:** Built in Rust with GPUI (Metal acceleration). ~40MB footprint. No Electron, no web views.
+- 🛠 **Config as code:** Everything lives in `~/.config/aerofi/config.toml`. Track it in your dotfiles. No walled gardens or opaque GUI settings.
+- 🐚 **Unix pipeline scripting:** Write interactive menus using plain `stdin` and `stdout` in any language (Bash, Python, Node, Go). No SDKs required.
+- 🎨 **Declarative theming:** Build completely custom UIs with a powerful TOML widget engine and frosted glassmorphism.
+- 🤝 **Ecosystem compatible:** Drop in existing Raycast script commands directly — they run out of the box. Or use `aerofi dmenu` as a drop-in menu for your shell scripts.
 
 ---
 
@@ -98,10 +91,11 @@ cargo build --release
 ## Key Features
 
 **Performance**
-- 🪶 ~40 MB memory footprint (vs 250 MB Raycast)
+- 🪶 ~40 MB memory footprint
+- 🚀 Instant startup and 120 FPS Metal rendering
 
 **Compatibility**
-- 📜 Raycast script commands work out-of-the-box (`@raycast.*` and `@aerofi.*`)
+- 📜 Huge ecosystem: drop in any Raycast script command or build your own with `@aerofi.*` tags
 - 🔑 Zero-friction Carbon hotkey (no Accessibility permissions required)
 
 **Flexibility & Customization**
