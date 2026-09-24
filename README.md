@@ -26,7 +26,7 @@
 
 <div align="center">
 <video src="https://github.com/user-attachments/assets/bdebffb7-003c-43aa-9992-4a669bbfc443" autoplay loop muted playsinline width="820"></video>
-  <p><em>Recorded demo showing instant search, theming with custom theme_switcher script, and native file search plugin</em></p>
+  <p><em>Recorded demo showing instant search, theming with custom theme_switcher script, clipboard manager script, and native file search plugin</em></p>
 </div>
  
 ---
