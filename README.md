@@ -215,7 +215,7 @@ aerofi is inspired by rofi's Unix philosophy but built specifically for macOS:
 - Same stdin/stdout piping model (`rofi` mode = rofi-compatible)
 - Native macOS experience (no X11 layers)
 - GPUI rendering (120 FPS, Metal acceleration)
-- Modern scripting ecosystem (Raycast compatibility)
+- Compatible with community script ecosystems
 
 You can port rofi scripts to aerofi with minimal changes.
 
@@ -260,4 +260,4 @@ MIT — See [LICENSE](./LICENSE)
 
 - Built on [GPUI](https://github.com/zed-industries/zed) — the GPU-accelerated UI framework from Zed
 - Inspired by [rofi](https://github.com/davatorium/rofi)
-- Raycast script compatibility via [@raycast/script-commands](https://github.com/raycast/script-commands)
+- Drop-in compatibility with community [script-commands](https://github.com/raycast/script-commands)
