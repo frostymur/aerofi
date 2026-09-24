@@ -1628,6 +1628,14 @@ impl Launcher {
             return LauncherAction::None;
         }
 
+        // With the search bar hidden (`@aerofi.show_search false`) there is
+        // nothing to type into, so character input (and backspace) is ignored.
+        let show_search = self
+            .sticky_metatags
+            .as_ref()
+            .and_then(|m| m.show_search)
+            .unwrap_or(true);
+
         match (ks.key.as_str(), cmd, ctrl, alt, shift) {
             ("escape", false, false, false, false) => {
                 self.rofi_leave();
@@ -1693,9 +1701,10 @@ impl Launcher {
             }
             ("backspace", false, false, false, false) => {
                 let mut is_live = false;
-                if let LauncherState::RofiMode {
-                    query, live_search, ..
-                } = &mut self.state
+                if show_search
+                    && let LauncherState::RofiMode {
+                        query, live_search, ..
+                    } = &mut self.state
                 {
                     is_live = *live_search;
                     if query.pop().is_some() && !is_live {
@@ -1716,7 +1725,8 @@ impl Launcher {
                 LauncherAction::None
             }
             _ => {
-                if !cmd
+                if show_search
+                    && !cmd
                     && !ctrl
                     && !alt
                     && ks.key != "tab"

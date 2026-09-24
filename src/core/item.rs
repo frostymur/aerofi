@@ -158,7 +158,9 @@ pub enum BuiltinAction {
 /// is hidden. Selecting the script never applies them.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ScriptMetatags {
-    /// Hide the search input bar (`# @aerofi.show_search false`).
+    /// Hide the search input bar and disable character input (`# @aerofi.show_search false`).
+    /// When false the bar is removed from the view and typing (including
+    /// backspace) no longer filters the row list.
     pub show_search: Option<bool>,
     /// Override the number of list columns (`# @aerofi.columns N`).
     pub columns: Option<usize>,

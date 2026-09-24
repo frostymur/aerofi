@@ -59,7 +59,7 @@ Annotations are placed inside comments (`#`) at the top of your script:
 | `description` | Script description | `@aerofi.description Interactive theme preview` |
 | `author` | Author name | `@aerofi.author Your Name` |
 | `authorURL` | Author website URL | `@aerofi.authorURL https://github.com/...` |
-| `show_search` | Toggle search bar in Rofi mode (default `true`) | `@aerofi.show_search false` |
+| `show_search` | Hide the search input bar and disable filtering (default `true`) | `@aerofi.show_search false` |
 | `columns` | Override list column count (default `1`) | `@aerofi.columns 2` |
 | `preset` | Preset name from the theme's `[presets.*]` tables applied to the script's list (e.g. `list`, `emoji`), overriding the default | `@aerofi.preset list` |
 
