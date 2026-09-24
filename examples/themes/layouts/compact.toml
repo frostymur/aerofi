@@ -13,8 +13,8 @@ weight = 300
 fallback = ["SF Pro", "Helvetica Neue", "Arial"]
 
 [window]
-width = 680.0
-height = 450.0
+width = "46.3%"
+height = "47.1%"
 padding = 16.0
 background = "$bg"
 blur = true

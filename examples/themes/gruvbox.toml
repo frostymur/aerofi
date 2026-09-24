@@ -8,7 +8,7 @@ imports = [
 ]
 
 [presets.emoji]
-window_width = 620.0
+window_width = "42.2%"
 
 [presets.emoji.element]
 columns = 8
@@ -17,7 +17,7 @@ padding = [10.0, 16.0]
 corner_radius = 12.0
 
 [presets.power]
-window_width = 680.0
+window_width = "46.3%"
 
 [presets.power.element]
 # Bigger tiles for the power menu (few items, 2 columns).

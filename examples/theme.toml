@@ -50,8 +50,8 @@ fallback = ["SF Pro", "SF Mono", "Helvetica Neue", "Arial"]
 [window]
 # Dimensions in points, or a screen-relative percentage string (e.g. "50%").
 # Type: Float (f32) or String ("XX%")
-width = 720.0
-height = 480.0
+width = "49.0%"
+height = "50.2%"
 
 # Inner padding around the window container.
 # Type: Float (f32)

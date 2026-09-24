@@ -364,8 +364,8 @@ pub struct WindowConfig {
 impl Default for WindowConfig {
     fn default() -> Self {
         Self {
-            width: Dimension::Points(760.0),
-            height: Dimension::Points(480.0),
+            width: Dimension::Percent(51.7),
+            height: Dimension::Percent(50.2),
             padding: 16.0,
             x_offset: 0.0,
             y_offset: 0.0,
@@ -1247,8 +1247,8 @@ accent = "#7aa2f7"
         // Modular composition + a partial palette override (bg, surface2).
         let t = load_example_theme("tokyo-night-grid.toml");
         assert_eq!(t.name, "Tokyo Night Grid");
-        assert_eq!(t.window.width, Dimension::Points(750.0));
-        assert_eq!(t.window.height, Dimension::Points(440.0));
+        assert_eq!(t.window.width, Dimension::Percent(51.0));
+        assert_eq!(t.window.height, Dimension::Percent(46.0));
         assert_eq!(t.listview.columns, 4);
         // Rofi-ported grid: borderless tiles, 12px radius, 72px icons, 15px gap.
         assert_eq!(t.font.size, 15.0);
@@ -1270,7 +1270,7 @@ accent = "#7aa2f7"
         let t = load_example_theme("catppuccin-mocha.toml");
         assert_eq!(t.name, "Catppuccin Mocha");
         // Window is 20% wider than the default; normal (1:1) icon/text sizes.
-        assert_eq!(t.window.width, Dimension::Points(912.0));
+        assert_eq!(t.window.width, Dimension::Percent(62.0));
         assert_eq!(t.font.size, 15.0);
         assert_eq!(t.element.icon_size, 24.0);
         // No blur; $bg at 80% opacity (unblurred desktop shows through).
@@ -1885,8 +1885,8 @@ orientation = "horizontal"
             .try_into()
             .expect("merged theme should deserialize");
         theme.resolve_colors();
-        assert_eq!(theme.window.width, Dimension::Points(680.0));
-        assert_eq!(theme.window.height, Dimension::Points(450.0));
+        assert_eq!(theme.window.width, Dimension::Percent(46.3));
+        assert_eq!(theme.window.height, Dimension::Percent(47.1));
         // header-bar.toml defines 4 widgets (header_bar + 3 children).
         assert_eq!(theme.widgets.len(), 4);
         let registry = crate::core::widget::WidgetRegistry::from_theme(&theme.widgets);
