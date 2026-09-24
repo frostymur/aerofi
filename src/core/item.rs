@@ -11,7 +11,6 @@
 //! - `# @raycast.mode <mode>`  -> `silent` | `fullOutput` | `compact` | `inline` | `pipe` | `rofi`
 //! - `# @raycast.packageName <pkg>` -> script package/group name
 //! - `# @raycast.icon <icon>`  -> emoji or icon path/identifier
-//! - `# @raycast.iconDark <icon>` -> dark mode icon path/identifier
 //! - `# @raycast.refreshTime <time>` -> refresh interval (e.g. `1h`, `5m`)
 //! - `# @raycast.needsConfirmation <bool>` -> confirmation before execution
 //! - `# @raycast.argument1..3 <json/text>` -> typed positional input arguments
@@ -125,8 +124,6 @@ pub struct RaycastMetadata {
     pub package_name: Option<SharedString>,
     /// Icon name, emoji, or path (from `@raycast.icon`).
     pub icon: Option<SharedString>,
-    /// Dark mode icon path (from `@raycast.iconDark`).
-    pub icon_dark: Option<SharedString>,
     /// Automatic update interval (from `@raycast.refreshTime`, e.g. "1h", "5m").
     pub refresh_time: Option<SharedString>,
     /// Whether to prompt before running (from `@raycast.needsConfirmation`).
@@ -449,9 +446,6 @@ impl Target {
                     "icon" if is_aerofi || metadata.icon.is_none() => {
                         metadata.icon = Some(SharedString::from(value.to_string()));
                     }
-                    "iconDark" if is_aerofi || metadata.icon_dark.is_none() => {
-                        metadata.icon_dark = Some(SharedString::from(value.to_string()));
-                    }
                     "refreshTime" if is_aerofi || metadata.refresh_time.is_none() => {
                         metadata.refresh_time = Some(SharedString::from(value.to_string()));
                     }
@@ -593,6 +587,7 @@ mod tests {
 # Optional parameters:
 # @raycast.packageName Developer Utilities
 # @raycast.icon ⭐️
+# iconDark is intentionally kept: unrecognized tags must be ignored gracefully
 # @raycast.iconDark 🌟
 # @raycast.refreshTime 5m
 # @raycast.needsConfirmation true
@@ -639,7 +634,6 @@ echo "Running script..."
             Some("Developer Utilities")
         );
         assert_eq!(metadata.icon.as_deref(), Some("⭐️"));
-        assert_eq!(metadata.icon_dark.as_deref(), Some("🌟"));
         assert_eq!(metadata.refresh_time.as_deref(), Some("5m"));
         assert_eq!(metadata.needs_confirmation, Some(true));
 
@@ -699,7 +693,6 @@ echo "Running script..."
 # @aerofi.mode rofi
 # @aerofi.packageName aerofi Utilities
 # @aerofi.icon 🎨
-# @aerofi.iconDark 🎭
 # @aerofi.refreshTime 10m
 # @aerofi.needsConfirmation false
 # @aerofi.argument1 {"type": "text", "placeholder": "Theme name"}
@@ -737,7 +730,6 @@ echo "Theme switcher..."
         assert_eq!(metadata.mode, Some(ScriptMode::Rofi));
         assert_eq!(metadata.package_name.as_deref(), Some("aerofi Utilities"));
         assert_eq!(metadata.icon.as_deref(), Some("🎨"));
-        assert_eq!(metadata.icon_dark.as_deref(), Some("🎭"));
         assert_eq!(metadata.refresh_time.as_deref(), Some("10m"));
         assert_eq!(metadata.needs_confirmation, Some(false));
 

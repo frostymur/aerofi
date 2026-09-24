@@ -51,7 +51,6 @@ Annotations are placed inside comments (`#`) at the top of your script:
 | `schemaVersion` | Metadata schema version (parsed for Raycast compatibility) | `@aerofi.schemaVersion 1` |
 | `mode` | Execution mode (see below) | `@aerofi.mode silent` |
 | `icon` | Emoji, Nerd Font glyph, or image path (see [Icons](#icons)) | `@aerofi.icon 🚀` |
-| `iconDark` | Optional dark mode icon identifier | `@aerofi.iconDark 🌟` |
 | `packageName` | Category/namespace displayed as subtitle | `@aerofi.packageName Git` |
 | `argument[1-3]` | Interactive argument prompt specification | `{"type": "text", "placeholder": "URL"}` |
 | `refreshTime` | Periodic background refresh interval | `5m`, `1h` (for `inline` mode) |
