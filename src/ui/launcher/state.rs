@@ -378,10 +378,31 @@ impl Launcher {
                     focused_index,
                 } = &mut self.state
                 {
+                    // Validation: check if all required fields are filled.
+                    let mut first_invalid = None;
+                    let mut all_valid = true;
+                    for (i, (arg, val)) in args.iter().zip(values.iter()).enumerate() {
+                        let is_optional = arg.optional.unwrap_or(false);
+                        if !is_optional && val.trim().is_empty() {
+                            all_valid = false;
+                            if first_invalid.is_none() {
+                                first_invalid = Some(i);
+                            }
+                        }
+                    }
+
                     if *focused_index < args.len() - 1 {
                         *focused_index += 1;
+                        Self::prefill_dropdown(values, args, *focused_index);
                         return LauncherAction::None;
                     }
+
+                    if !all_valid {
+                        // Jump back to the first unfilled required field.
+                        *focused_index = first_invalid.unwrap_or(*focused_index);
+                        return LauncherAction::None;
+                    }
+
                     let t = target.clone();
                     let vals = values.clone();
                     if t.needs_confirmation() {
@@ -393,11 +414,11 @@ impl Launcher {
                     } else {
                         self.state = LauncherState::Search;
                         let action = self.execute_target_with_args(&t, vals);
+                        // Full output keeps the window open, so preserve the
+                        // query and selection for when the user comes back.
                         if matches!(
                             action,
-                            LauncherAction::Hide
-                                | LauncherAction::ExecuteScript(..)
-                                | LauncherAction::SetFullOutput { .. }
+                            LauncherAction::Hide | LauncherAction::ExecuteScript(..)
                         ) {
                             self.reset();
                         }
@@ -410,6 +431,7 @@ impl Launcher {
                 let shift = ks.modifiers.shift;
                 if let LauncherState::ArgumentInput {
                     args,
+                    values,
                     focused_index,
                     ..
                 } = &mut self.state
@@ -419,19 +441,61 @@ impl Launcher {
                     } else {
                         *focused_index = (*focused_index + 1) % args.len();
                     }
+                    Self::prefill_dropdown(values, args, *focused_index);
+                }
+                LauncherAction::None
+            }
+            ("up" | "down", false)
+                if matches!(&self.state, LauncherState::ArgumentInput { .. }) =>
+            {
+                if let LauncherState::ArgumentInput {
+                    args,
+                    values,
+                    focused_index,
+                    ..
+                } = &mut self.state
+                {
+                    let arg = &args[*focused_index];
+                    if arg.arg_type.as_deref() == Some("dropdown")
+                        && let Some(data) = arg.data.as_deref().filter(|d| !d.is_empty())
+                    {
+                        let current_val = &values[*focused_index];
+                        let current_idx = data
+                            .iter()
+                            .position(|o| o.value == *current_val)
+                            .unwrap_or(0);
+                        let new_idx = if ks.key == "up" {
+                            if current_idx == 0 {
+                                data.len() - 1
+                            } else {
+                                current_idx - 1
+                            }
+                        } else {
+                            if current_idx + 1 >= data.len() {
+                                0
+                            } else {
+                                current_idx + 1
+                            }
+                        };
+                        values[*focused_index] = data[new_idx].value.clone();
+                    }
                 }
                 LauncherAction::None
             }
             ("backspace", false) if matches!(&self.state, LauncherState::ArgumentInput { .. }) => {
                 if let LauncherState::ArgumentInput {
+                    args,
                     values,
                     focused_index,
                     ..
                 } = &mut self.state
-                    && values[*focused_index].pop().is_none()
-                    && *focused_index > 0
                 {
-                    *focused_index -= 1;
+                    let is_dropdown = args[*focused_index].arg_type.as_deref() == Some("dropdown");
+                    if is_dropdown {
+                        values[*focused_index].clear();
+                    } else if values[*focused_index].pop().is_none() && *focused_index > 0 {
+                        *focused_index -= 1;
+                    }
                 }
                 LauncherAction::None
             }
@@ -444,12 +508,16 @@ impl Launcher {
                     && !c.is_empty()
                     && !c.chars().any(char::is_control)
                     && let LauncherState::ArgumentInput {
+                        args,
                         values,
                         focused_index,
                         ..
                     } = &mut self.state
                 {
-                    values[*focused_index].push_str(c);
+                    let is_dropdown = args[*focused_index].arg_type.as_deref() == Some("dropdown");
+                    if !is_dropdown {
+                        values[*focused_index].push_str(c);
+                    }
                 }
                 LauncherAction::None
             }
@@ -492,11 +560,11 @@ impl Launcher {
                 // Plain Enter activates a running app; Shift+Enter opens a new
                 // instance (`open -n`).
                 let action = self.execute_selected(ks.modifiers.shift);
+                // Full output keeps the window open, so preserve the query
+                // and selection for when the user comes back.
                 if matches!(
                     action,
-                    LauncherAction::Hide
-                        | LauncherAction::ExecuteScript(..)
-                        | LauncherAction::SetFullOutput { .. }
+                    LauncherAction::Hide | LauncherAction::ExecuteScript(..)
                 ) {
                     self.reset();
                 }
@@ -540,6 +608,15 @@ impl Launcher {
 
     /// Clear the query and reselect the top (first) entry.
     fn reset(&mut self) {
+        // The window stays open on the full-output page, so the search
+        // list behind it must survive: keep the query and selection
+        // intact until the user comes back.
+        if matches!(
+            self.state,
+            LauncherState::RunningFull { .. } | LauncherState::FullOutput { .. }
+        ) {
+            return;
+        }
         self.query.clear();
         self.refilter(None);
         self.selected = 0;
@@ -778,10 +855,14 @@ impl Launcher {
                 if !args.is_empty() {
                     let arg_clones: Vec<_> = args.into_iter().cloned().collect();
                     let len = arg_clones.len();
+
+                    let mut initial_values = vec![String::new(); len];
+                    Self::prefill_dropdown(&mut initial_values, &arg_clones, 0);
+
                     self.state = LauncherState::ArgumentInput {
                         target: item.clone(),
                         args: arg_clones,
-                        values: vec![String::new(); len],
+                        values: initial_values,
                         focused_index: 0,
                     };
                     return LauncherAction::None;
@@ -960,11 +1041,11 @@ impl Launcher {
         let a = args_values.clone();
         self.state = LauncherState::Search;
         let action = self.execute_target_with_args(&t, a);
+        // Full output keeps the window open, so preserve the query and
+        // selection for when the user comes back.
         if matches!(
             action,
-            LauncherAction::Hide
-                | LauncherAction::ExecuteScript(..)
-                | LauncherAction::SetFullOutput { .. }
+            LauncherAction::Hide | LauncherAction::ExecuteScript(..)
         ) {
             self.reset();
         }
@@ -982,6 +1063,21 @@ impl Launcher {
             && index < args.len()
         {
             *focused_index = index;
+        }
+    }
+
+    /// When a freshly-focused dropdown argument is still empty, preselect its
+    /// first option so the user has a valid value to start from.
+    fn prefill_dropdown(
+        values: &mut [String],
+        args: &[crate::core::item::ScriptArgument],
+        ix: usize,
+    ) {
+        if args[ix].arg_type.as_deref() == Some("dropdown")
+            && values[ix].is_empty()
+            && let Some(first_opt) = args[ix].data.as_deref().and_then(|d| d.first())
+        {
+            values[ix] = first_opt.value.clone();
         }
     }
 

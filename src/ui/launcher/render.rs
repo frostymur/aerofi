@@ -58,14 +58,28 @@ impl Render for Launcher {
             | LauncherState::ArgumentInput { .. }
             | LauncherState::Confirming { .. } => {
                 if require_input {
+                    // Argument chips wrap onto extra rows in narrow bars, so
+                    // the bar — and the window that fits to it — may need to
+                    // be taller than its nominal height.
+                    let ib_h = if let LauncherState::ArgumentInput {
+                        target,
+                        args,
+                        values,
+                        ..
+                    } = &self.state
+                    {
+                        self.estimate_argument_bar_height(screen_w, target, args, values)
+                    } else {
+                        ib_height
+                    };
                     if should_show_list {
                         let item_h = t.element.padding.get(1).copied().unwrap_or(12.0) * 2.0
                             + t.element.icon_size;
                         let list_h = (self.filtered.len() as f32) * (item_h + t.listview.spacing);
-                        let total = ib_height + margin_bottom + list_h + pad_v * 2.0;
+                        let total = ib_h + margin_bottom + list_h + pad_v * 2.0;
                         total.min(t.window.height.resolve(screen_h))
                     } else {
-                        ib_height + margin_bottom + pad_v * 2.0
+                        ib_h + margin_bottom + pad_v * 2.0
                     }
                 } else {
                     t.window.height.resolve(screen_h)
@@ -164,22 +178,22 @@ impl Render for Launcher {
                     Widget::Builtin(BuiltinWidget::InputBar) => {
                         inner_box = inner_box.child(self.render_inputbar(cx));
                     }
-                    Widget::Builtin(BuiltinWidget::ListView) => {
-                        match &self.state {
-                            LauncherState::Search => {
-                                if should_show_list {
-                                    inner_box = inner_box.child(self.render_listview(cx, columns));
-                                }
+                    Widget::Builtin(BuiltinWidget::ListView) => match &self.state {
+                        LauncherState::Search => {
+                            if should_show_list {
+                                inner_box = inner_box.child(self.render_listview(cx, columns));
                             }
-                            LauncherState::Confirming { target, .. } => {
-                                inner_box = inner_box.child(self.render_confirmation(target, cx));
-                            }
-                            LauncherState::ArgumentInput { .. } => {
-                                // Argument options list (dropdown) could be rendered here.
-                            }
-                            _ => {}
                         }
-                    }
+                        LauncherState::Confirming { target, .. } => {
+                            inner_box = inner_box.child(self.render_confirmation(target, cx));
+                        }
+                        LauncherState::ArgumentInput { .. } => {
+                            if let Some(options) = self.render_argument_options(cx) {
+                                inner_box = inner_box.child(options);
+                            }
+                        }
+                        _ => {}
+                    },
                     Widget::Builtin(BuiltinWidget::Banner) => {
                         if let Some(path) = t.banner.as_ref().and_then(|b| b.image_path.as_ref()) {
                             let resolved = expand_tilde_path(path);
@@ -354,6 +368,55 @@ impl Launcher {
             .min(screen_w)
     }
 
+    /// Rough height estimate for the argument input bar, used to size the
+    /// window in `require_input` themes. Argument chips wrap onto extra rows
+    /// when they don't fit, so the bar can be taller than its nominal height.
+    ///
+    /// The estimate assumes a monospaced font (advance ≈ 0.6em), which holds
+    /// for the bundled themes; it is deliberately conservative and the result
+    /// is always capped by the theme window height upstream, while the bar
+    /// itself uses `min_h` so it can never be clipped.
+    fn estimate_argument_bar_height(
+        &self,
+        screen_w: f32,
+        target: &Target,
+        args: &[crate::core::item::ScriptArgument],
+        values: &[String],
+    ) -> f32 {
+        let t = &self.theme;
+        let ib = &t.inputbar;
+        let font_sz = self.inputbar_font.1;
+        let char_w = font_sz * 0.6;
+
+        let pad_h = ib.padding.first().copied().unwrap_or(12.0);
+        let pad_v = ib.padding.get(1).copied().unwrap_or(16.0);
+        let win_w = t.window.width.resolve(screen_w).min(screen_w);
+        // Bar inner width minus the icon box, gaps, and window/bar padding.
+        let icon_w = (ib.height - pad_v * 2.0).max(0.0);
+        let bar_inner_w = (win_w - t.window.padding * 2.0 - pad_h * 2.0 - icon_w - 24.0).max(80.0);
+
+        let text_w = |s: &str| s.chars().count() as f32 * char_w;
+        let name_w = text_w(target.name());
+        let chips_w: f32 = args
+            .iter()
+            .enumerate()
+            .map(|(i, a)| {
+                let text = values
+                    .get(i)
+                    .map(String::as_str)
+                    .filter(|v| !v.is_empty())
+                    .or(a.placeholder.as_deref())
+                    .unwrap_or("...");
+                text_w(text) + 20.0 // chip horizontal padding + border
+            })
+            .sum();
+        let gap_w = (args.len() as f32 + 1.0) * 8.0; // gap between items
+        let line_h = font_sz * 1.2 + 8.0; // one text line + chip vertical padding
+
+        let lines = ((name_w + chips_w + gap_w) / bar_inner_w).ceil().max(1.0);
+        ib.height.max(lines * line_h + pad_v * 2.0)
+    }
+
     /// Ideal window height for Rofi mode: fit the actual content (input bar,
     /// message banner, and the list/grid) instead of always using the full
     /// theme window height, so short menus (e.g. a power menu) don't leave a
@@ -432,54 +495,82 @@ impl Launcher {
             focused_index,
         } = &self.state
         {
-            let mut row = div().flex().flex_row().items_center().gap_2().child(
-                div()
-                    .text_color(rgba(Self::color(&t.element.text_color)))
-                    .child(target.name().to_string()),
-            );
+            // Chips wrap onto extra rows instead of being squeezed when the
+            // bar is too narrow (compact themes, split layouts); the bar
+            // itself grows via `min_h` below.
+            let mut row = div()
+                .flex()
+                .flex_row()
+                .flex_wrap()
+                .items_center()
+                .gap_2()
+                .w_full()
+                .child(
+                    div()
+                        .min_w(px(0.0))
+                        .line_clamp(1)
+                        .text_ellipsis()
+                        .overflow_hidden()
+                        .text_color(rgba(Self::color(&t.element.text_color)))
+                        .child(target.name().to_string()),
+                );
 
             for (i, arg) in args.iter().enumerate() {
                 let is_focused = i == *focused_index;
+                // Use accent for the focused chip's background and border so
+                // the selection is always visible — even when the theme sets
+                // `selected.background = transparent` (e.g. gruvbox).
                 let bg_color = if is_focused {
-                    rgba(Self::color(&t.element.selected.background))
+                    rgba(Self::color(&t.status_colors.accent))
                 } else {
                     rgba(0x00000000)
                 };
                 let border_color = if is_focused {
-                    rgba(Self::color(&t.element.selected.background))
+                    rgba(Self::color(&t.status_colors.accent))
                 } else {
                     rgba(Self::color(&ib.placeholder_color))
                 };
                 let text_val = &values[i];
                 let display_text = if text_val.is_empty() {
-                    arg.placeholder.as_deref().unwrap_or("...")
+                    arg.placeholder.as_deref().unwrap_or("...").to_string()
+                } else if arg.arg_type.as_deref() == Some("dropdown") {
+                    if let Some(data) = &arg.data {
+                        data.iter()
+                            .find(|o| o.value == *text_val)
+                            .map(|o| o.title.clone())
+                            .unwrap_or_else(|| text_val.clone())
+                    } else {
+                        text_val.clone()
+                    }
                 } else {
-                    text_val
+                    text_val.clone()
                 };
-                let t_color = if text_val.is_empty() {
+                let t_color = if is_focused {
+                    rgba(Self::color(&t.element.selected.text_color))
+                } else if text_val.is_empty() {
                     rgba(Self::color(&ib.placeholder_color))
                 } else {
                     rgba(Self::color(&ib.text_color))
                 };
-                row = row.child(
-                    div()
-                        .px_2()
-                        .py_1()
-                        .rounded_sm()
-                        .bg(bg_color)
-                        .border_1()
-                        .border_color(border_color)
-                        .text_color(t_color)
-                        .cursor(CursorStyle::PointingHand)
-                        .id(format!("arg-chip-{i}"))
-                        .on_click(cx.listener(move |this, event, _window, cx| {
-                            if is_primary_click(event) {
-                                this.focus_argument(i);
-                                cx.notify();
-                            }
-                        }))
-                        .child(display_text.to_string()),
-                );
+                let chip = div()
+                    .px_2()
+                    .py_1()
+                    .rounded_sm()
+                    .bg(bg_color)
+                    .border_1()
+                    .border_color(border_color)
+                    .text_color(t_color)
+                    .cursor(CursorStyle::PointingHand)
+                    .flex_shrink_0()
+                    .id(format!("arg-chip-{i}"))
+                    .on_click(cx.listener(move |this, event, _window, cx| {
+                        if is_primary_click(event) {
+                            this.focus_argument(i);
+                            cx.notify();
+                        }
+                    }))
+                    .child(display_text);
+                row = row.child(chip);
             }
             row.into_any()
         } else {
@@ -510,32 +601,140 @@ impl Launcher {
         let padding_v = ib.padding.get(1).copied().unwrap_or(16.0);
         let margin_bottom = ib.margin.get(2).copied().unwrap_or(8.0);
 
-        div()
+        // Argument chips wrap onto multiple rows in narrow bars, so the bar
+        // may need to be taller than its nominal height. In every other
+        // state the bar is exactly `ib.height`.
+        let is_argument_state = matches!(&self.state, LauncherState::ArgumentInput { .. });
+        let bar = div()
             .flex()
             .items_center()
             .gap_2()
             .w_full()
-            .h(px(ib.height))
             .px(px(padding_h))
             .py(px(padding_v))
             .mb(px(margin_bottom))
             .bg(rgba(Self::color(&ib.background)))
             .rounded(px(ib.corner_radius))
             .border(px(ib.border_width))
-            .border_color(rgba(Self::color(&ib.border_color)))
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .w(px(ib.height - padding_v * 2.0))
-                    .h(px(ib.height - padding_v * 2.0))
-                    .text_size(px(ib.height * 0.4))
-                    .text_color(rgba(Self::color(icon_color)))
-                    .child(icon_label.to_string()),
-            )
-            .child(inner_view)
-            .into_any()
+            .border_color(rgba(Self::color(&ib.border_color)));
+        let bar = if is_argument_state {
+            bar.min_h(px(ib.height))
+        } else {
+            bar.h(px(ib.height))
+        };
+
+        bar.child(
+            div()
+                .flex()
+                .items_center()
+                .justify_center()
+                .w(px(ib.height - padding_v * 2.0))
+                .h(px(ib.height - padding_v * 2.0))
+                .text_size(px(ib.height * 0.4))
+                .text_color(rgba(Self::color(icon_color)))
+                .child(icon_label.to_string()),
+        )
+        .child(inner_view)
+        .into_any()
+    }
+
+    /// Render a virtualized options list for the focused argument when it is
+    /// a dropdown with choices. Returns `None` when the focused argument is
+    /// not a non-empty dropdown (nothing to show in the list area).
+    pub(super) fn render_argument_options(
+        &self,
+        cx: &mut Context<Self>,
+    ) -> Option<gpui::AnyElement> {
+        let LauncherState::ArgumentInput {
+            args,
+            focused_index,
+            ..
+        } = &self.state
+        else {
+            return None;
+        };
+        let arg = args.get(*focused_index)?;
+        if arg.arg_type.as_deref() != Some("dropdown") {
+            return None;
+        }
+        let options = arg.data.as_deref().filter(|d| !d.is_empty())?;
+
+        // Each option is one text line with fixed vertical padding, so rows
+        // are uniform and `uniform_list` can virtualize them — a script may
+        // provide many choices and the list re-renders every frame.
+        let option_h = 2.0 * 6.0 + self.theme.font.size * 1.2;
+        let list = uniform_list(
+            "arg-options",
+            options.len(),
+            cx.processor(move |this, range: std::ops::Range<usize>, _window, _cx| {
+                // Read the live state through `this` (the entity) so no
+                // option data is cloned per frame.
+                let (data, selected_val) = match &this.state {
+                    LauncherState::ArgumentInput {
+                        args,
+                        values,
+                        focused_index,
+                        ..
+                    } => (
+                        args.get(*focused_index)
+                            .and_then(|a| a.data.as_deref())
+                            .unwrap_or(&[]),
+                        values.get(*focused_index).map(String::as_str).unwrap_or(""),
+                    ),
+                    _ => (&[] as &[crate::core::item::ScriptArgumentOption], ""),
+                };
+                let t = &this.theme;
+                range
+                    .filter(|ix| *ix < data.len())
+                    .map(|ix| {
+                        let option = &data[ix];
+                        let is_selected = option.value == selected_val;
+                        // Use accent for the selected option's background so
+                        // the selection is always visible — even when the theme
+                        // sets `selected.background = transparent` (e.g. gruvbox).
+                        let bg_color = if is_selected {
+                            rgba(Self::color(&t.status_colors.accent))
+                        } else {
+                            rgba(0x00000000)
+                        };
+                        let text_color = if is_selected {
+                            rgba(Self::color(&t.element.selected.text_color))
+                        } else {
+                            rgba(Self::color(&t.element.text_color))
+                        };
+                        let border_color = if is_selected {
+                            rgba(Self::color(&t.status_colors.accent))
+                        } else {
+                            rgba(0x00000000)
+                        };
+                        div()
+                            .w_full()
+                            .h(px(option_h))
+                            .px(px(12.0))
+                            .rounded_md()
+                            .bg(bg_color)
+                            .border(px(1.0))
+                            .border_color(border_color)
+                            .flex()
+                            .items_center()
+                            .text_color(text_color)
+                            .child(option.title.clone())
+                            .into_any()
+                    })
+                    .collect()
+            }),
+        );
+        Some(
+            div()
+                .flex_1()
+                .min_h(px(0.0))
+                .w_full()
+                .overflow_hidden()
+                .px(px(8.0))
+                .py(px(4.0))
+                .child(list.h_full().w_full())
+                .into_any(),
+        )
     }
 
     /// Render the interactive Rofi-mode view: input bar with custom prompt,
@@ -701,6 +900,12 @@ impl Launcher {
             let desc_color = rgba(Self::color(
                 el.description_color.as_deref().unwrap_or(&el.text_color),
             ));
+            // Explicit uniform row height for the single-column list (the
+            // rows are virtualized with `uniform_list`, which only measures
+            // the first row — see `render_row`).
+            let icon_size_f32 = mode_el.and_then(|m| m.icon_size).unwrap_or(el.icon_size);
+            let rofi_row_h =
+                pad_v_el * 2.0 + icon_size_f32.max(t.font.size * 1.2) + el.border_width * 2.0;
 
             let cols = self.rofi_effective_columns();
             if cols > 1 {
@@ -788,6 +993,7 @@ impl Launcher {
                                         .items_center()
                                         .gap_2()
                                         .w_full()
+                                        .h(px(rofi_row_h))
                                         .px(px(pad_h))
                                         .py(px(effective_pad_v))
                                         .rounded(px(rofi_radius))
@@ -826,7 +1032,13 @@ impl Launcher {
                                         ));
                                     }
 
-                                    let text_div = div().flex_1().text_color(name_color);
+                                    let text_div = div()
+                                        .flex_1()
+                                        .min_w(px(0.0))
+                                        .line_clamp(1)
+                                        .text_ellipsis()
+                                        .overflow_hidden()
+                                        .text_color(name_color);
                                     let text_div = if markup_rows_val {
                                         text_div.child(_this.markup_text(&row.text))
                                     } else if let Some(st) =
@@ -910,6 +1122,7 @@ impl Launcher {
                                         .items_center()
                                         .gap_2()
                                         .w_full()
+                                        .h(px(rofi_row_h))
                                         .px(px(pad_h))
                                         .py(px(pad_v_el))
                                         .rounded(px(rofi_radius))
@@ -941,7 +1154,13 @@ impl Launcher {
                                         ));
                                     }
 
-                                    let text_div = div().flex_1().text_color(name_color);
+                                    let text_div = div()
+                                        .flex_1()
+                                        .min_w(px(0.0))
+                                        .line_clamp(1)
+                                        .text_ellipsis()
+                                        .overflow_hidden()
+                                        .text_color(name_color);
                                     let text_div = if markup_rows_val {
                                         text_div.child(_this.markup_text(&row.text))
                                     } else if let Some(st) =
@@ -1242,6 +1461,11 @@ impl Launcher {
             pad_v
         };
 
+        // Explicit uniform cell height (see `render_grid_cell`).
+        let icon_size_f32 = mode_el.and_then(|m| m.icon_size).unwrap_or(el.icon_size);
+        let text_h = ((t.font.size - 1.5).max(11.0)) * 1.2;
+        let cell_h = pad_v * 2.0 + icon_size_f32 + el.icon_gap + text_h + el.border_width * 2.0;
+
         let mut cell = div()
             .id(format!("rofi-cell-{vis_ix}"))
             .flex()
@@ -1250,6 +1474,7 @@ impl Launcher {
             .justify_center()
             .gap(px(el.icon_gap))
             .w_full()
+            .h(px(cell_h))
             .px(px(pad_h))
             .py(px(effective_pad_v))
             .rounded(px(rofi_radius))
@@ -1936,8 +2161,9 @@ impl Launcher {
             div().into_any()
         };
 
-        let pad_v = el.padding.get(1).copied().unwrap_or(10.0);
+        // `[element].padding` is `[horizontal, vertical]` (see `render_row`).
         let pad_h = el.padding.first().copied().unwrap_or(8.0);
+        let pad_v = el.padding.get(1).copied().unwrap_or(10.0);
         // Shrink padding by border width on the selected cell so the total
         // cell height stays constant.
         let effective_pad_v = if is_selected && el.border_width > 0.0 {
@@ -1946,8 +2172,17 @@ impl Launcher {
             pad_v
         };
 
+        // Explicit uniform cell height: grid rows are virtualized with
+        // `uniform_list`, which measures only the first row. Emoji-preset
+        // names fall back to the emoji font, whose line metrics differ from
+        // the theme font, so without a fixed height the icon columns would
+        // drift row by row.
+        let text_h = (self.element_font_val.1 - 1.5).max(11.0) * 1.2;
+        let cell_h = pad_v * 2.0 + el.icon_size + el.icon_gap + text_h + el.border_width * 2.0;
+
         let mut cell_div = div()
             .w_full()
+            .h(px(cell_h))
             .flex()
             .flex_col()
             .items_center()
@@ -2025,6 +2260,8 @@ impl Launcher {
             ))
         };
 
+        // `[element].padding` is `[horizontal, vertical]` — the order every
+        // shipped theme is written in.
         let pad_h = el.padding.first().copied().unwrap_or(8.0);
         let pad_v = el.padding.get(1).copied().unwrap_or(12.0);
 
@@ -2040,11 +2277,21 @@ impl Launcher {
             el.description_color.as_deref().unwrap_or(&el.text_color),
         ));
 
+        // Explicit uniform row height. `uniform_list` measures only the first
+        // row and lays out every other row at multiples of that size, so any
+        // per-row content-height variance (a wrapped name, an emoji font's
+        // line metrics differing from the theme font) would shift every row
+        // below it and the icon column would drift. Clamping the name to one
+        // line plus a fixed height keeps all rows pixel-identical.
+        let text_h = self.element_font_val.1 * 1.2;
+        let row_h = pad_v * 2.0 + el.icon_size.max(text_h) + el.border_width * 2.0;
+
         let mut row = div()
             .flex()
             .items_center()
             .gap_2()
             .w_full()
+            .h(px(row_h))
             .px(px(pad_h))
             .py(px(effective_pad_v))
             .rounded(px(el.corner_radius))
@@ -2106,6 +2353,9 @@ impl Launcher {
             row = row
                 .child(self.render_row_icon(item, icon_color))
                 .child(self.render_row_name(item, name_color, desc_color, is_selected));
+            // The name takes its natural width, so insert an explicit spacer
+            // to push the trailing badges to the right edge.
+            row = row.child(div().flex_1());
             if let Some(alias) = self.render_alias_badge(item) {
                 row = row.child(alias);
             }
@@ -2297,15 +2547,23 @@ impl Launcher {
         };
         let (name_font, name_size) = &self.element_font_val;
 
+        // The name takes its natural width (shrinking with an ellipsis only
+        // when it truly overflows). It must not `flex_1()`: layouts like
+        // ["icon", "name", "spacer"] would otherwise split the leftover width
+        // 50/50 between name and spacer, truncating names mid-row.
         if let Some(subtitle) = subtitle_opt {
             div()
-                .flex_1()
+                .min_w(px(0.0))
                 .flex()
                 .flex_row()
                 .items_center()
                 .gap_2()
                 .child(
                     div()
+                        .min_w(px(0.0))
+                        .line_clamp(1)
+                        .text_ellipsis()
+                        .overflow_hidden()
                         .font(name_font.clone())
                         .text_size(px(*name_size))
                         .text_color(name_color)
@@ -2313,6 +2571,7 @@ impl Launcher {
                 )
                 .child(
                     div()
+                        .flex_shrink_0()
                         .text_size(px(t.font.size - 2.0))
                         .text_color(desc_color)
                         .child(subtitle.to_string()),
@@ -2320,7 +2579,10 @@ impl Launcher {
                 .into_any()
         } else {
             div()
-                .flex_1()
+                .min_w(px(0.0))
+                .line_clamp(1)
+                .text_ellipsis()
+                .overflow_hidden()
                 .font(name_font.clone())
                 .text_size(px(*name_size))
                 .text_color(name_color)

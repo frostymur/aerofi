@@ -334,6 +334,11 @@ impl Launcher {
                     crate::ui::launcher::types::LauncherState::Confirming { target, .. } => {
                         container = container.child(self.render_confirmation(target, cx));
                     }
+                    crate::ui::launcher::types::LauncherState::ArgumentInput { .. } => {
+                        if let Some(options) = self.render_argument_options(cx) {
+                            container = container.child(options);
+                        }
+                    }
                     _ => {}
                 }
             } else if let Some(child_el) =
