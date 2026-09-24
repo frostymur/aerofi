@@ -1230,7 +1230,7 @@ accent = "#7aa2f7"
     fn example_tokyo_night_file_is_valid() {
         let t = load_example_theme("tokyo-night.toml");
         assert_eq!(t.name, "Tokyo Night");
-        assert_eq!(t.window.background, "#1a1b26f0");
+        assert_eq!(t.window.background, "#1a1b26");
         assert_eq!(t.status_colors.accent, "#7aa2f7");
     }
 
@@ -1257,7 +1257,7 @@ accent = "#7aa2f7"
         assert_eq!(t.element.icon_size, 72.0);
         assert_eq!(t.element.icon_gap, 15.0);
         assert_eq!(t.element.border_width, 0.0);
-        assert_eq!(t.colors.get("bg").map(String::as_str), Some("#1a1b26f4"));
+        assert_eq!(t.colors.get("bg").map(String::as_str), Some("#1a1b26"));
         assert_eq!(
             t.colors.get("surface2").map(String::as_str),
             Some("#343b58")
