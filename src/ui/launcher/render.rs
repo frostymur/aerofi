@@ -2459,7 +2459,11 @@ impl Launcher {
             match cache.get(name) {
                 Some(r) => r.clone(),
                 None => {
-                    let r = crate::core::search::highlight_ranges(name, &self.query);
+                    let r = crate::core::search::highlight_ranges(
+                        name,
+                        &self.query,
+                        self.app_config.general.matching,
+                    );
                     cache.insert(gpui::SharedString::from(name), r.clone());
                     r
                 }

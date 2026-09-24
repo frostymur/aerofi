@@ -80,6 +80,21 @@ theme = "tokyo-night"
 [general]
 # Maximum number of search results displayed simultaneously.
 max_results = 20
+# Launch new app instances (shift+enter) in the background (`open -n -g`):
+# the window opens on the current workspace without activating the app, so
+# macOS won't switch to another workspace where the app is already open.
+# Useful with tiling window managers (Aerospace, yabai, ...).
+background_new_instance = false
+# How the filter query matches target names (and aliases):
+#   "fuzzy"  — fzf-style subsequence match (default, nucleo scoring)
+#   "prefix" — the name/alias must start with the query
+#   "glob"   — glob over the whole name/alias: * = any run of chars,
+#              ? = one char; without wildcards this is an exact match
+matching = "fuzzy"
+# How matching results are ordered:
+#   "frecency" — fuzzy score + usage history (default)
+#   "lexical"  — alphabetical by display name (pinned items still lead)
+ranking = "frecency"
 ```
 
 ### Search Sources

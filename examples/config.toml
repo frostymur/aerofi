@@ -36,6 +36,30 @@ theme = "tokyo-night"
 # Default: 20
 max_results = 20
 
+# Launch new app instances (shift+enter) in the background via `open -n -g`:
+# the window appears on the current workspace without activating the app, so
+# macOS won't switch to another workspace where the app is already open.
+# Useful with tiling window managers (Aerospace, yabai, ...).
+# Type: Boolean
+# Default: false
+background_new_instance = false
+
+# How the filter query matches target names (and aliases):
+#   "fuzzy"  - fzf-style subsequence match (nucleo scoring)
+#   "prefix" - the name/alias must start with the query
+#   "glob"   - glob over the whole name/alias: * = any run of chars,
+#              ? = one char; without wildcards this is an exact match
+# Type: String ("fuzzy" | "prefix" | "glob")
+# Default: "fuzzy"
+matching = "fuzzy"
+
+# How matching results are ordered:
+#   "frecency" - fuzzy score + usage history
+#   "lexical"  - alphabetical by display name (pinned items still lead)
+# Type: String ("frecency" | "lexical")
+# Default: "frecency"
+ranking = "frecency"
+
 
 # ------------------------------------------------------------------------------
 # [sources] - Search Sources Indexing Toggles

@@ -1,12 +1,15 @@
 //! nucleo-matcher wrapper: ranks targets (by display name or configured
 //! aliases) against a filter query, boosted by frecency.
 
+use std::cmp::Ordering;
 use std::collections::HashMap;
 
 use nucleo_matcher::{Config, Matcher, Utf32Str};
 
+use crate::core::config::{MatchMode, RankingMode};
 use crate::core::history::History;
 use crate::core::item::Target;
+use crate::core::scanner::glob_match_chars;
 
 use gpui::SharedString;
 
@@ -28,6 +31,11 @@ pub struct SearchIndex {
     scored_buf: Vec<(bool, u32, u32, usize)>,
     /// Reused buffer for the lowercased query string.
     lower_query_buf: String,
+    /// Reused char buffers for `matching = "glob"`: the pattern is the
+    /// lowercased query, the name is filled per target — no per-keystroke
+    /// allocations.
+    glob_pat_buf: Vec<char>,
+    glob_name_buf: Vec<char>,
 }
 
 impl SearchIndex {
@@ -58,6 +66,8 @@ impl SearchIndex {
             hay_buf: Vec::new(),
             scored_buf: Vec::new(),
             lower_query_buf: String::new(),
+            glob_pat_buf: Vec::new(),
+            glob_name_buf: Vec::new(),
         }
     }
 
@@ -68,22 +78,32 @@ impl SearchIndex {
     /// - Empty query: every target matches with a zero fuzzy score, so
     ///   the order is by frecency, descending. Targets with frecency 0
     ///   keep their original order (stable sort).
-    /// - Non-empty query: a target matches when its display name or one
-    ///   of its aliases fuzzy-matches the query; the frecency score is
-    ///   added to the best fuzzy score before ranking.
+    /// - Non-empty query, `matching = Fuzzy`: a target matches when its
+    ///   display name or one of its aliases fuzzy-matches the query; the
+    ///   frecency score is added to the best fuzzy score before ranking.
+    /// - `matching = Prefix`: the name (or an alias) must start with the
+    ///   query; the fuzzy score (when present) still feeds the ranking.
+    /// - `matching = Glob`: the name (or an alias) must match the glob
+    ///   (`*`/`?`); ranking is by frecency only.
     ///
-    /// Ties keep the original order.
+    /// `ranking = Frecency` orders matches by score; `ranking = Lexical`
+    /// orders them alphabetically by display name. Pinned items lead in
+    /// both, in config order. Ties keep the original order.
     pub fn search(
         &mut self,
         query: &str,
         targets: &[Target],
         history: &History,
+        matching: MatchMode,
+        ranking: RankingMode,
         out_filtered: &mut Vec<usize>,
     ) {
         // Reuse all scratch buffers to avoid heap allocations every keystroke.
         self.needle_buf.clear();
         self.hay_buf.clear();
         self.scored_buf.clear();
+        self.glob_pat_buf.clear();
+        self.glob_name_buf.clear();
         out_filtered.clear();
 
         // nucleo lowercases the haystack when matching (ignore_case) but
@@ -96,33 +116,74 @@ impl SearchIndex {
         self.lower_query_buf
             .extend(query.chars().flat_map(|c| c.to_lowercase()));
         let query = self.lower_query_buf.as_str();
+        if matching == MatchMode::Glob {
+            self.glob_pat_buf.extend(query.chars());
+        }
 
-        let needle = Utf32Str::new(query, &mut self.needle_buf);
+        // Nucleo runs only in Fuzzy/Prefix modes. Glob mode uses the glob as
+        // its predicate and ranks by frecency alone, so the (relatively
+        // costly) fuzzy matcher is skipped entirely there.
+        let need_fuzzy = matching != MatchMode::Glob && !query.is_empty();
+        let needle = need_fuzzy.then(|| Utf32Str::new(query, &mut self.needle_buf));
         let frecency_map = history.calculate_frecency_map();
         for (i, target) in targets.iter().enumerate() {
             let name = target.name();
             let aliases = self.aliases_by_target.get(name);
 
-            let mut fuzzy: Option<u16> = if query.is_empty() {
-                Some(0)
-            } else {
-                let hay = Utf32Str::new(name, &mut self.hay_buf);
-                self.matcher.fuzzy_match(hay, needle)
-            };
-            if !query.is_empty()
-                && let Some(list) = aliases
-            {
-                for alias in list {
-                    let hay = Utf32Str::new(alias, &mut self.hay_buf);
-                    if let Some(score) = self.matcher.fuzzy_match(hay, needle) {
-                        fuzzy = Some(fuzzy.map_or(score, |b| b.max(score)));
+            // The fuzzy score doubles as the Fuzzy-mode predicate; in
+            // Prefix mode it refines the ranking (0 when absent).
+            let fuzzy: Option<u16> = if let Some(needle) = needle {
+                let mut best = {
+                    let hay = Utf32Str::new(name, &mut self.hay_buf);
+                    self.matcher.fuzzy_match(hay, needle)
+                };
+                if let Some(list) = aliases {
+                    for alias in list {
+                        let hay = Utf32Str::new(alias, &mut self.hay_buf);
+                        if let Some(score) = self.matcher.fuzzy_match(hay, needle) {
+                            best = Some(best.map_or(score, |b| b.max(score)));
+                        }
                     }
                 }
-            }
-
-            let Some(fuzzy_score) = fuzzy else {
-                continue;
+                best
+            } else {
+                None
             };
+
+            let matched = if query.is_empty() {
+                true
+            } else {
+                match matching {
+                    MatchMode::Fuzzy => fuzzy.is_some(),
+                    MatchMode::Prefix => {
+                        starts_with_ci(name, query)
+                            || aliases
+                                .is_some_and(|list| list.iter().any(|a| starts_with_ci(a, query)))
+                    }
+                    MatchMode::Glob => {
+                        // Direct field access (not a helper method) so the
+                        // borrow of the whole self does not conflict with
+                        // the scratch-buffer borrows held by `needle`/`hay`.
+                        self.glob_name_buf.clear();
+                        self.glob_name_buf
+                            .extend(name.chars().map(|c| c.to_ascii_lowercase()));
+                        let name_hits = glob_match_chars(&self.glob_pat_buf, &self.glob_name_buf);
+                        let alias_hits = aliases.is_some_and(|list| {
+                            list.iter().any(|a| {
+                                self.glob_name_buf.clear();
+                                self.glob_name_buf
+                                    .extend(a.chars().map(|c| c.to_ascii_lowercase()));
+                                glob_match_chars(&self.glob_pat_buf, &self.glob_name_buf)
+                            })
+                        });
+                        name_hits || alias_hits
+                    }
+                }
+            };
+            if !matched {
+                continue;
+            }
+            let fuzzy_score = fuzzy.unwrap_or(0);
             let frecency = frecency_map.get(target.identifier()).copied().unwrap_or(0);
             let score = u32::from(fuzzy_score) + frecency;
             // Pinned entries match by display name (case-insensitive) or by
@@ -138,20 +199,51 @@ impl SearchIndex {
             };
             self.scored_buf.push((is_pinned, order, score, i));
         }
-        self.scored_buf.sort_unstable_by(|a, b| {
-            // Pinned items first; within a group keep the relevant order
-            // (pinned: config order, non-pinned: score then original index).
-            b.0.cmp(&a.0).then_with(|| {
-                if a.0 && b.0 {
-                    a.1.cmp(&b.1)
-                } else {
-                    b.2.cmp(&a.2).then(a.3.cmp(&b.3))
-                }
-            })
-        });
+        match ranking {
+            RankingMode::Frecency => self.scored_buf.sort_unstable_by(|a, b| {
+                // Pinned items first; within a group keep the relevant order
+                // (pinned: config order, non-pinned: score then original
+                // index).
+                b.0.cmp(&a.0).then_with(|| {
+                    if a.0 && b.0 {
+                        a.1.cmp(&b.1)
+                    } else {
+                        b.2.cmp(&a.2).then(a.3.cmp(&b.3))
+                    }
+                })
+            }),
+            RankingMode::Lexical => self.scored_buf.sort_unstable_by(|a, b| {
+                // Pinned items first (config order); the rest alphabetically
+                // by display name, then original index for equal names.
+                b.0.cmp(&a.0).then_with(|| {
+                    if a.0 && b.0 {
+                        a.1.cmp(&b.1)
+                    } else {
+                        icmp(targets[a.3].name(), targets[b.3].name()).then(a.3.cmp(&b.3))
+                    }
+                })
+            }),
+        }
         out_filtered.clear();
         out_filtered.extend(self.scored_buf.iter().map(|&(_, _, _, i)| i));
     }
+}
+
+/// Case-insensitive (ASCII) "name starts with query", allocation-free.
+fn starts_with_ci(name: &str, query: &str) -> bool {
+    name.len() >= query.len() && name[..query.len()].eq_ignore_ascii_case(query)
+}
+
+/// Case-insensitive (ASCII) lexicographic comparison without allocating a
+/// lowercased copy — called per comparison in `ranking = "lexical"`.
+fn icmp(a: &str, b: &str) -> Ordering {
+    for (ca, cb) in a.chars().zip(b.chars()) {
+        match ca.to_ascii_lowercase().cmp(&cb.to_ascii_lowercase()) {
+            Ordering::Equal => continue,
+            ord => return ord,
+        }
+    }
+    a.chars().count().cmp(&b.chars().count())
 }
 
 // ---------------------------------------------------------------------------
@@ -235,15 +327,27 @@ thread_local! {
 }
 
 /// Byte ranges (char-aligned) of the query's matched characters inside
-/// `name` — the same fuzzy, case-insensitive match as
-/// [`SearchIndex::search`], so a row shown in the list always highlights.
-/// Returns an empty vec when the query does not match the name.
-pub fn highlight_ranges(name: &str, query: &str) -> Vec<std::ops::Range<usize>> {
+/// `name` — the same match rule as [`SearchIndex::search`], so a row shown
+/// in the list always highlights. Fuzzy mode highlights the matched
+/// characters, prefix mode the matched prefix, glob mode none (a glob has
+/// no unique highlightable spans). Returns an empty vec when the query does
+/// not match the name.
+pub fn highlight_ranges(
+    name: &str,
+    query: &str,
+    matching: MatchMode,
+) -> Vec<std::ops::Range<usize>> {
     let query = query.trim();
     if query.is_empty() || name.is_empty() {
         return Vec::new();
     }
-    RANGE_MATCHER.with(|m| m.borrow_mut().ranges(name, query).to_vec())
+    match matching {
+        MatchMode::Fuzzy => RANGE_MATCHER.with(|m| m.borrow_mut().ranges(name, query).to_vec()),
+        MatchMode::Prefix if starts_with_ci(name, query) => {
+            std::iter::once(0..query.len()).collect()
+        }
+        MatchMode::Prefix | MatchMode::Glob => Vec::new(),
+    }
 }
 
 #[cfg(test)]
@@ -254,19 +358,19 @@ mod tests {
 
     #[test]
     fn highlight_ranges_empty_query() {
-        assert!(highlight_ranges("Firefox", "").is_empty());
-        assert!(highlight_ranges("Firefox", "   ").is_empty());
+        assert!(highlight_ranges("Firefox", "", MatchMode::Fuzzy).is_empty());
+        assert!(highlight_ranges("Firefox", "   ", MatchMode::Fuzzy).is_empty());
     }
 
     #[test]
     fn highlight_ranges_no_match() {
-        assert!(highlight_ranges("Firefox", "zzz").is_empty());
+        assert!(highlight_ranges("Firefox", "zzz", MatchMode::Fuzzy).is_empty());
     }
 
     #[test]
     fn highlight_ranges_fuzzy_match() {
         let name = "Firefox";
-        let r = highlight_ranges(name, "fx");
+        let r = highlight_ranges(name, "fx", MatchMode::Fuzzy);
         assert_eq!(r.len(), 2);
         let matched: String = r.iter().map(|x| name[x.clone()].to_string()).collect();
         // Matched chars keep their original case.
@@ -276,7 +380,7 @@ mod tests {
     #[test]
     fn highlight_ranges_case_insensitive() {
         let name = "Firefox";
-        let r = highlight_ranges(name, "FX");
+        let r = highlight_ranges(name, "FX", MatchMode::Fuzzy);
         let matched: String = r.iter().map(|x| name[x.clone()].to_string()).collect();
         assert_eq!(matched.to_lowercase(), "fx");
     }
@@ -284,7 +388,7 @@ mod tests {
     #[test]
     fn highlight_ranges_consecutive_chars_merge() {
         let name = "Firefox";
-        let r = highlight_ranges(name, "fi");
+        let r = highlight_ranges(name, "fi", MatchMode::Fuzzy);
         assert_eq!(r.len(), 1);
         assert_eq!(name[r[0].clone()].to_lowercase(), "fi");
     }
@@ -294,7 +398,7 @@ mod tests {
         // The haystack contains the two-byte é; byte offsets must stay on
         // char boundaries (GPUI assert).
         let name = "café app";
-        let r = highlight_ranges(name, "fa");
+        let r = highlight_ranges(name, "fa", MatchMode::Fuzzy);
         assert_eq!(r.len(), 2);
         let matched: String = r.iter().map(|x| name[x.clone()].to_string()).collect();
         assert_eq!(matched, "fa");
@@ -307,8 +411,8 @@ mod tests {
     #[test]
     fn highlight_ranges_trims_query() {
         let name = "Firefox";
-        let padded = highlight_ranges(name, "  fx ");
-        let plain = highlight_ranges(name, "fx");
+        let padded = highlight_ranges(name, "  fx ", MatchMode::Fuzzy);
+        let plain = highlight_ranges(name, "fx", MatchMode::Fuzzy);
         assert_eq!(padded, plain);
     }
 
@@ -363,8 +467,26 @@ mod tests {
         targets: &[Target],
         query: &str,
     ) -> Vec<Target> {
+        search_helper_modes(
+            idx,
+            history,
+            targets,
+            query,
+            MatchMode::Fuzzy,
+            RankingMode::Frecency,
+        )
+    }
+
+    fn search_helper_modes(
+        idx: &mut SearchIndex,
+        history: &History,
+        targets: &[Target],
+        query: &str,
+        matching: MatchMode,
+        ranking: RankingMode,
+    ) -> Vec<Target> {
         let mut results = Vec::new();
-        idx.search(query, targets, history, &mut results);
+        idx.search(query, targets, history, matching, ranking, &mut results);
         results.into_iter().map(|i| targets[i].clone()).collect()
     }
 
@@ -553,5 +675,307 @@ mod tests {
         let targets = [other, script];
         let results = search_helper(&mut idx, &history, &targets, "");
         assert_eq!(names(&results), vec!["My Script", "Other"]);
+    }
+
+    // ------------------------------------------------------------------
+    // matching = "prefix"
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn prefix_mode_matches_only_names_starting_with_query() {
+        let mut idx = SearchIndex::new(&HashMap::new(), &[]);
+        let history = empty_history();
+        let targets = [target("Git Status"), target("Grep"), target("GitKraken")];
+        // "gi" starts "Git Status" and "GitKraken", not "Grep".
+        assert_eq!(
+            names(&search_helper_modes(
+                &mut idx,
+                &history,
+                &targets,
+                "gi",
+                MatchMode::Prefix,
+                RankingMode::Frecency
+            )),
+            vec!["Git Status", "GitKraken"]
+        );
+        // Fuzzy would also match "Grep" for "gr"; prefix must not.
+        assert_eq!(
+            names(&search_helper_modes(
+                &mut idx,
+                &history,
+                &targets,
+                "gr",
+                MatchMode::Prefix,
+                RankingMode::Frecency
+            )),
+            vec!["Grep"]
+        );
+        // "st" is not the start of any of these names, so nothing matches.
+        assert_eq!(
+            names(&search_helper_modes(
+                &mut idx,
+                &history,
+                &targets,
+                "st",
+                MatchMode::Prefix,
+                RankingMode::Frecency
+            )),
+            Vec::<&str>::new()
+        );
+    }
+
+    #[test]
+    fn prefix_mode_is_case_insensitive() {
+        let mut idx = SearchIndex::new(&HashMap::new(), &[]);
+        let history = empty_history();
+        let targets = [target("Firefox"), target("Chrome")];
+        assert_eq!(
+            names(&search_helper_modes(
+                &mut idx,
+                &history,
+                &targets,
+                "FIRE",
+                MatchMode::Prefix,
+                RankingMode::Frecency
+            )),
+            vec!["Firefox"]
+        );
+    }
+
+    #[test]
+    fn prefix_mode_matches_aliases() {
+        let mut idx = SearchIndex::new(&aliases(&[("ed", "TextEdit")]), &[]);
+        let history = empty_history();
+        let targets = [target("TextEdit")];
+        assert_eq!(
+            names(&search_helper_modes(
+                &mut idx,
+                &history,
+                &targets,
+                "ed",
+                MatchMode::Prefix,
+                RankingMode::Frecency
+            )),
+            vec!["TextEdit"]
+        );
+    }
+
+    #[test]
+    fn prefix_mode_empty_query_matches_all() {
+        let mut idx = SearchIndex::new(&HashMap::new(), &[]);
+        let history = empty_history();
+        let targets = [target("Alpha"), target("Bravo")];
+        assert_eq!(
+            names(&search_helper_modes(
+                &mut idx,
+                &history,
+                &targets,
+                "",
+                MatchMode::Prefix,
+                RankingMode::Frecency
+            )),
+            vec!["Alpha", "Bravo"]
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // matching = "glob"
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn glob_mode_star_and_question() {
+        let mut idx = SearchIndex::new(&HashMap::new(), &[]);
+        let history = empty_history();
+        let targets = [target("Git Status"), target("Grep"), target("GitKraken")];
+        // "git*" matches both Git-prefixed names, not "Grep".
+        assert_eq!(
+            names(&search_helper_modes(
+                &mut idx,
+                &history,
+                &targets,
+                "git*",
+                MatchMode::Glob,
+                RankingMode::Frecency
+            )),
+            vec!["Git Status", "GitKraken"]
+        );
+        // "g?it" would need a whole name of exactly 4 chars g-x-i-t; none
+        // of these is (proving full-name glob semantics, no substrings).
+        assert_eq!(
+            names(&search_helper_modes(
+                &mut idx,
+                &history,
+                &targets,
+                "g?it",
+                MatchMode::Glob,
+                RankingMode::Frecency
+            )),
+            Vec::<&str>::new()
+        );
+        // No wildcards: exact, case-insensitive match on the whole name.
+        assert_eq!(
+            names(&search_helper_modes(
+                &mut idx,
+                &history,
+                &targets,
+                "grep",
+                MatchMode::Glob,
+                RankingMode::Frecency
+            )),
+            vec!["Grep"]
+        );
+    }
+
+    #[test]
+    fn glob_mode_matches_aliases() {
+        let mut idx = SearchIndex::new(&aliases(&[("t*", "TextEdit")]), &[]);
+        let history = empty_history();
+        let targets = [target("TextEdit")];
+        assert_eq!(
+            names(&search_helper_modes(
+                &mut idx,
+                &history,
+                &targets,
+                "t*",
+                MatchMode::Glob,
+                RankingMode::Frecency
+            )),
+            vec!["TextEdit"]
+        );
+    }
+
+    #[test]
+    fn glob_mode_empty_query_matches_all() {
+        let mut idx = SearchIndex::new(&HashMap::new(), &[]);
+        let history = empty_history();
+        let targets = [target("Alpha"), target("Bravo")];
+        assert_eq!(
+            names(&search_helper_modes(
+                &mut idx,
+                &history,
+                &targets,
+                "",
+                MatchMode::Glob,
+                RankingMode::Frecency
+            )),
+            vec!["Alpha", "Bravo"]
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // ranking = "lexical"
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn lexical_ranking_orders_alphabetically_on_empty_query() {
+        let mut idx = SearchIndex::new(&HashMap::new(), &[]);
+        let history = empty_history();
+        let targets = [target("Charlie"), target("Alpha"), target("Bravo")];
+        assert_eq!(
+            names(&search_helper_modes(
+                &mut idx,
+                &history,
+                &targets,
+                "",
+                MatchMode::Fuzzy,
+                RankingMode::Lexical
+            )),
+            vec!["Alpha", "Bravo", "Charlie"]
+        );
+    }
+
+    #[test]
+    fn lexical_ranking_orders_matches_alphabetically_with_query() {
+        let mut idx = SearchIndex::new(&HashMap::new(), &[]);
+        let history = empty_history();
+        let targets = [
+            target("Zebra"),
+            target("Zulu"),
+            target("Zoom"),
+            target("Apple"),
+        ];
+        // Fuzzy "z" matches the three Z-named targets; lexical orders them.
+        assert_eq!(
+            names(&search_helper_modes(
+                &mut idx,
+                &history,
+                &targets,
+                "z",
+                MatchMode::Fuzzy,
+                RankingMode::Lexical
+            )),
+            vec!["Zebra", "Zoom", "Zulu"]
+        );
+    }
+
+    #[test]
+    fn lexical_ranking_ignores_frecency() {
+        // Frecency would put "Zebra" first; lexical keeps alphabetical.
+        let records = (0..5).map(|_| fresh_record("Zebra")).collect();
+        let history = History::test_new(PathBuf::new(), records);
+        let mut idx = SearchIndex::new(&HashMap::new(), &[]);
+        let targets = [target("Zed"), target("Zebra")];
+        assert_eq!(
+            names(&search_helper_modes(
+                &mut idx,
+                &history,
+                &targets,
+                "z",
+                MatchMode::Fuzzy,
+                RankingMode::Lexical
+            )),
+            vec!["Zebra", "Zed"]
+        );
+    }
+
+    #[test]
+    fn lexical_ranking_keeps_pinned_first() {
+        // "Mango" is pinned; alphabetically it sits between L and N, but it
+        // must still lead in lexical mode.
+        let mut idx = SearchIndex::new(&HashMap::new(), &["Mango".into()]);
+        let history = empty_history();
+        let targets = [
+            target("Lemon"),
+            target("Mango"),
+            target("Apple"),
+            target("Nectarine"),
+        ];
+        assert_eq!(
+            names(&search_helper_modes(
+                &mut idx,
+                &history,
+                &targets,
+                "",
+                MatchMode::Fuzzy,
+                RankingMode::Lexical
+            )),
+            vec!["Mango", "Apple", "Lemon", "Nectarine"]
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // highlight_ranges with matching modes
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn prefix_highlight_marks_the_prefix() {
+        let r = highlight_ranges("Firefox", "fir", MatchMode::Prefix);
+        assert_eq!(r, vec![0..3]);
+    }
+
+    #[test]
+    fn prefix_highlight_is_case_insensitive() {
+        let r = highlight_ranges("Firefox", "FIR", MatchMode::Prefix);
+        assert_eq!(r, vec![0..3]);
+    }
+
+    #[test]
+    fn prefix_highlight_empty_when_not_a_prefix() {
+        assert!(highlight_ranges("Firefox", "fox", MatchMode::Prefix).is_empty());
+    }
+
+    #[test]
+    fn glob_highlight_returns_no_ranges() {
+        assert!(highlight_ranges("Firefox", "fi*rx", MatchMode::Glob).is_empty());
     }
 }

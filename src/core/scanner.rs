@@ -159,10 +159,16 @@ pub fn scan_all(config: &AppConfig) -> Vec<Target> {
 /// True when `name` matches `pattern`, case-insensitively. A pattern
 /// without wildcards must match the whole name; `*` matches any run of
 /// characters and `?` matches any single character.
-fn name_matches_pattern(pattern: &str, name: &str) -> bool {
+pub(crate) fn name_matches_pattern(pattern: &str, name: &str) -> bool {
     let pattern: Vec<char> = pattern.to_ascii_lowercase().chars().collect();
     let name: Vec<char> = name.to_ascii_lowercase().chars().collect();
+    glob_match_chars(&pattern, &name)
+}
 
+/// Core of [`name_matches_pattern`] over pre-lowercased char slices.
+/// Allocation-free: the search path calls it per target per keystroke and
+/// reuses its own scratch buffers.
+pub(crate) fn glob_match_chars(pattern: &[char], name: &[char]) -> bool {
     let (mut pi, mut ni) = (0usize, 0usize);
     let mut star: Option<usize> = None;
     let mut mark = 0usize;

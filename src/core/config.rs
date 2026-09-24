@@ -25,11 +25,19 @@ theme = "default"
 pinned = []
 
 [general]
-# Global hotkey to toggle the launcher visibility.
-# Examples: "opt+space", "cmd+space", "ctrl+shift+p"
-toggle_hotkey = "opt+space"
 # Maximum number of results shown in the launcher list.
 max_results = 20
+# Launch new app instances (shift+enter) in the background (open -n -g):
+# the window opens on the current workspace without activating the app, so
+# macOS won't switch to another workspace where the app is already open.
+background_new_instance = false
+# How the filter query matches target names/aliases:
+# "fuzzy" (default, fzf-style), "prefix" (must start with the query),
+# or "glob" (* = any run of characters, ? = one character).
+matching = "fuzzy"
+# How results are ordered: "frecency" (default: fuzzy score + usage history)
+# or "lexical" (alphabetical; pinned items still lead).
+ranking = "frecency"
 
 [sources]
 # Which target sources the launcher indexes.
@@ -57,22 +65,53 @@ extra_apps = []
 # search; typing it exactly runs the target immediately (no Enter), e.g.:
 # "rc" = "Reload Configuration"
 
-[shortcuts]
+[bindings]
+# Global hotkey to toggle the launcher visibility.
+# Examples: "opt+space", "cmd+space", "ctrl+shift+p"
+toggle = "opt+space"
+
 # Key combinations that run a target immediately while the launcher is
 # open. Modifiers: cmd, ctrl, alt, shift (any order, before the key), e.g.:
 # "cmd+r" = "Reload Configuration"
+[bindings.launcher]
 
-[global_shortcuts]
 # System-wide shortcuts: run the named target directly, without opening the
 # launcher. Use opt (or cmd) to avoid app conflicts, e.g.:
 # "opt+d" = "Deploy"
 # Registered at startup only (restart after editing); conflicting combos
 # are skipped with a warning.
+[bindings.global]
 
-[custom_keys]
 # Bind combinations to emit custom action events (retv: 10..28) in rofi mode.
 # e.g. "kb-custom-1" = "alt+1"
+[bindings.custom]
 "#;
+
+/// How the filter query is matched against target names and aliases.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MatchMode {
+    /// Fuzzy subsequence match (nucleo, fzf-style scoring) — the default.
+    #[default]
+    Fuzzy,
+    /// The name (or an alias) must start with the query.
+    Prefix,
+    /// The name (or an alias) must match the glob: `*` = any run of
+    /// characters, `?` = any single character. Without wildcards this is an
+    /// exact match.
+    Glob,
+}
+
+/// How matching targets are ordered in the list.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RankingMode {
+    /// Fuzzy score + frecency (history) — the default.
+    #[default]
+    Frecency,
+    /// Alphabetical by display name. Pinned items still lead.
+    Lexical,
+}
 
 /// Launcher-wide behaviour.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -80,11 +119,25 @@ extra_apps = []
 pub struct GeneralConfig {
     /// The maximum number of search results displayed in the UI.
     pub max_results: usize,
+    /// Launch new app instances (Shift+Enter) in the background via
+    /// `open -n -g`: the window appears on the current workspace without
+    /// activating the app, so macOS won't switch to another workspace where
+    /// the app is already open (useful with tiling window managers).
+    pub background_new_instance: bool,
+    /// Filter query matching mode: `fuzzy` (default), `prefix`, or `glob`.
+    pub matching: MatchMode,
+    /// Result ranking: `frecency` (default) or `lexical` (alphabetical).
+    pub ranking: RankingMode,
 }
 
 impl Default for GeneralConfig {
     fn default() -> Self {
-        Self { max_results: 20 }
+        Self {
+            max_results: 20,
+            background_new_instance: false,
+            matching: MatchMode::Fuzzy,
+            ranking: RankingMode::Frecency,
+        }
     }
 }
 

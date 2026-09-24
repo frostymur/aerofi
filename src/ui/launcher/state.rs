@@ -666,6 +666,8 @@ impl Launcher {
                     &self.query,
                     &self.all[..self.base_count],
                     &self.history,
+                    self.app_config.general.matching,
+                    self.app_config.general.ranking,
                     &mut self.filtered,
                 );
                 self.filtered.truncate(self.app_config.general.max_results);
@@ -739,6 +741,8 @@ impl Launcher {
                 &self.query,
                 &self.all[..self.base_count],
                 &self.history,
+                self.app_config.general.matching,
+                self.app_config.general.ranking,
                 &mut self.filtered,
             );
             self.filtered.truncate(self.app_config.general.max_results);
@@ -878,7 +882,12 @@ impl Launcher {
             }
             Target::App { path, .. } => {
                 let identifier = item.identifier();
-                crate::core::executor::open_app(path, item.name(), new_instance);
+                crate::core::executor::open_app(
+                    path,
+                    item.name(),
+                    new_instance,
+                    new_instance && self.app_config.general.background_new_instance,
+                );
                 self.history.record_launch(identifier);
                 LauncherAction::Hide
             }

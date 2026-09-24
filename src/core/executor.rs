@@ -192,11 +192,17 @@ const LAST_LINE_TAIL: usize = 4096;
 
 /// Open an application bundle via macOS `open`. When `new_instance` is true,
 /// `-n` is passed so a fresh instance is launched even if one is already
-/// running; otherwise `open` activates the existing instance.
-pub fn open_app(path: &Path, name: &str, new_instance: bool) {
+/// running; otherwise `open` activates the existing instance. When
+/// `background` is true, `-g` is passed so the app opens without being
+/// brought to the foreground — no workspace switch on macOS, and the window
+/// appears on the current workspace.
+pub fn open_app(path: &Path, name: &str, new_instance: bool, background: bool) {
     let mut cmd = Command::new("open");
     if new_instance {
         cmd.arg("-n");
+    }
+    if background {
+        cmd.arg("-g");
     }
     cmd.arg(path);
     if let Err(e) = cmd.status() {
@@ -374,7 +380,7 @@ fn human_size(bytes: u64) -> String {
 /// stderr, never panics.
 pub fn execute(target: &Target) {
     match target {
-        Target::App { path, .. } => open_app(path, target.name(), false),
+        Target::App { path, .. } => open_app(path, target.name(), false, false),
         Target::Script {
             mode: ScriptMode::Pipe,
             path,
