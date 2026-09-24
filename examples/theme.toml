@@ -39,6 +39,12 @@ family = "SF Pro Text"
 # Default: 15.0
 size = 15.0
 
+# Base font weight: a number ("100".."900") or a name
+# ("thin", "light", "regular", "medium", "semibold", "bold", "heavy").
+# Type: String (Optional)
+# Default: "regular"
+# weight = "regular"
+
 # Fallback fonts used when primary font misses glyphs or symbols.
 # Type: Array of Strings (Optional)
 fallback = ["SF Pro", "SF Mono", "Helvetica Neue", "Arial"]
@@ -118,6 +124,9 @@ y_offset = 0.0
 # `window_width` (points or "XX%"); the window resizes when the script's
 # Rofi view opens/closes.
 #
+# Note: preset `padding` uses [vertical, horizontal] — the opposite order
+# of the base [element].padding ([horizontal, vertical]).
+#
 # [presets.emoji]
 # window_width = 640.0
 # [presets.emoji.element]
@@ -178,9 +187,9 @@ height = 80.0
 # Type: Float (f32)
 height = 46.0
 
-# Inner padding: [top, right, bottom, left] or [vertical, horizontal].
+# Inner padding: [horizontal, vertical].
 # Type: Array of Floats (f32)
-padding = [10.0, 14.0]
+padding = [14.0, 10.0]
 
 # Outer margin around inputbar: [top, right, bottom, left].
 # Type: Array of Floats (f32)
@@ -274,9 +283,9 @@ border_color = "$accent"
 # [element] - List Row Elements
 # ------------------------------------------------------------------------------
 [element]
-# Padding inside each row: [vertical, horizontal].
+# Padding inside each row: [horizontal, vertical].
 # Type: Array of Floats (f32)
-padding = [8.0, 12.0]
+padding = [12.0, 8.0]
 
 # Corner radius for each row capsule.
 # Type: Float (f32)
@@ -367,17 +376,75 @@ error_dot = "$urgent"
 # ==============================================================================
 # Custom Widgets System
 # ==============================================================================
-# Define custom widgets using table syntax [widgets.<id>].
-# Custom widgets can be inserted into [mainbox.children] or into Box containers.
+# Define custom widgets using table syntax [widgets.<id>] (or array syntax
+# [[widgets]]). Custom widgets can be inserted into [mainbox.children] or
+# into Box containers.
 #
-# Available widget types:
-#   - "box": Container for grouping other widgets (horizontal or vertical)
-#   - "text": Static text label with custom typography
-#   - "icon": Symbol or emoji icon
-#   - "image": Local image view with scaling and corner radius
-#   - "spacer": Flexible space expanding to fill remaining room
-#   - "divider": Horizontal or vertical rule separator
-#   - "button": Clickable button with action and keyboard shortcut
+# Complete property reference for every widget type (all fields except
+# `type`/`id` are optional unless noted):
+#
+# [widgets.example_box]
+# type = "box"
+# orientation = "horizontal"   # "horizontal" | "vertical"
+# gap = 8.0                    # spacing between children (points)
+# padding = [8.0, 4.0]         # [horizontal, vertical]
+# align = "center"             # "left" | "center" | "end"
+# background = "$surface"      # Hex / $alias
+# radius = 8.0
+# width = 400.0                # fixed size (points); unset = content-sized
+# height = 24.0
+# flex = true                  # expand to fill the remaining space
+# children = ["child_a", "child_b"]
+#
+# [widgets.example_text]
+# type = "text"
+# text = "Static label"
+# color = "$text"
+# font_size = 12.0
+# font_weight = "semibold"     # name ("thin".."heavy") or number 100..900
+# align = "left"               # "left" | "center" | "end"
+#
+# [widgets.example_icon]
+# type = "icon"
+# icon = "⚡"                   # Nerd Font glyph or emoji
+# size = 14.0
+# color = "$accent"
+#
+# [widgets.example_image]
+# type = "image"
+# path = "~/.config/aerofi/themes/logo.png"
+# width = 48.0
+# height = 48.0
+# radius = 8.0
+#
+# [widgets.example_spacer]
+# type = "spacer"               # expands along the parent's orientation
+#
+# [widgets.example_divider]
+# type = "divider"
+# color = "$border"
+# thickness = 1.0
+# margin = 8.0
+#
+# [widgets.example_button]
+# type = "button"
+# text = "Action"
+# icon = "🔄"
+# action = "Target name"        # runs the named target (app/script/builtin)
+# hotkey = "cmd+r"              # optional in-launcher shortcut
+# close = true                  # default: launcher hides after the action;
+#                               # set false to keep it open
+# color = "$text"
+# background = "$surface"
+# hover_background = "$surface2"
+# hover_color = "$accent"
+# border_color = "$border"
+# border_width = 1.0
+# radius = 6.0
+# padding = [4.0, 8.0]          # [horizontal, vertical]
+# font_size = 11.0
+# font_weight = "medium"
+# gap = 4.0                     # icon-text gap
 # ==============================================================================
 
 # Custom Header Bar (Box containing title icon and branding text)
