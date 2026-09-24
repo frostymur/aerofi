@@ -2,7 +2,7 @@
 
 # aerofi — Fast, native, rofi-inspired macOS launcher
 
-**A blazing fast, keyboard-driven application launcher and extensible script runner for macOS. Built with GPUI and Rust for zero bloat, instant response, and infinite scriptability.**
+**A blazing-fast, GPU-accelerated launcher and script engine for macOS. Built with Rust & GPUI for zero-lag performance and dynamic UI layouts.**
 
 [![Release](https://img.shields.io/github/v/release/frostymur/aerofi?style=flat-square&color=7aa2f7&label=version)](https://github.com/frostymur/aerofi/releases)
 [![CI](https://img.shields.io/github/actions/workflow/status/frostymur/aerofi/ci.yml?branch=main&style=flat-square&label=ci)](https://github.com/frostymur/aerofi/actions)
@@ -13,7 +13,7 @@
 
 <br />
 
-[Why aerofi?](#why-aerofi) •
+[Core Pillars](#️-core-pillars) •
 [Installation](#installation) •
 [Key Features](#key-features) •
 [Widgets & Theming](#declarative-widgets--theming) •
@@ -31,15 +31,30 @@
  
 ---
 
-## Why aerofi?
+AeroFi is a modern modal launcher designed for speed-obsessed macOS users. It bridges the gap between lightweight Unix `dmenu`/`rofi` tools and feature-rich productivity shells like Raycast, giving you rich UI components with zero configuration bloat.
 
-**aerofi** brings the Unix philosophy of tools like `rofi` and `dmenu` to macOS, but with native polish and GPU acceleration. It is built for power users who want a lightning-fast, keyboard-driven workflow managed entirely through plain-text dotfiles.
+## ⚡️ Core Pillars
 
-- ⚡️ **Insanely fast & native:** Built in Rust with GPUI (Metal acceleration). ~40MB footprint. No Electron, no web views.
-- 🛠 **Config as code:** Everything lives in `~/.config/aerofi/config.toml`. Track it in your dotfiles. No walled gardens or opaque GUI settings.
-- 🐚 **Unix pipeline scripting:** Write interactive menus using plain `stdin` and `stdout` in any language (Bash, Python, Node, Go). No SDKs required.
-- 🎨 **Declarative theming:** Build completely custom UIs with a powerful TOML widget engine and frosted glassmorphism.
-- 🤝 **Ecosystem compatible:** Drop in existing Raycast script commands directly — they run out of the box. Or use `aerofi dmenu` as a drop-in menu for your shell scripts.
+### 1. GPU-Powered Performance
+Pure Rust and GPUI at its core. Experience instant cold starts, true zero-lag typing, and native Metal rendering without Electron, WebViews, or heavy runtimes.
+
+### 2. Plug & Play Scripting
+No bulky SDKs or complex API wrappers. Your scripts (Bash, Python, Go) simply pipe structured text to `stdout`. AeroFi instantly turns it into a rich, interactive dashboard with live filtering and state management.
+
+### 3. Semantic TOML Themes & Dynamic Shells
+Strict separation of concerns: scripts don't know about pixels, they just request a layout (e.g. `# @aerofi.preset grid`). Your TOML theme takes over, automatically adapting the **Dynamic Window Shell** (resizing the window, padding, and icons) to perfectly fit the mode. No ugly CSS/RASI complexity.
+
+---
+
+## 🥊 How It Compares
+
+| Feature | Rofi / dmenu | Raycast / Alfred | AeroFi |
+|---------|--------------|------------------|--------|
+| **Platform** | Linux (X11/Wayland) | macOS | **macOS** |
+| **Engine & Speed** | C / C++ (CPU Render) | React / WebViews (Heavy) | **Rust + GPUI Metal (Zero-Lag)** |
+| **Configuration** | Complex RASI / CSS | Closed GUI / App Settings | **Clean TOML Design Tokens** |
+| **Scripting Model** | One-shot stdout | Heavy TS / JS Extensions | **Two-way IPC Protocol (No SDKs)** |
+| **Window Geometry** | Static window size | Fixed app frame | **Dynamic Window Shell** (Adapts to preset) |
 
 ---
 
