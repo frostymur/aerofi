@@ -15,6 +15,21 @@
 theme = "tokyo-night"
 
 
+# ------------------------------------------------------------------------------
+# Pinned Items
+# ------------------------------------------------------------------------------
+# Type: Array of Strings
+# Default: []
+# Pin items to the top of the results, in the order listed. Each entry matches
+# a target by display name (case-insensitive) or by full path. Pinned items
+# outrank frecency and fuzzy score while they match the current query; if a
+# pinned item does not match the typed query it is hidden like any other.
+# pinned = [
+#     "Safari",
+#     "Power Menu"
+# ]
+
+
 [general]
 # Maximum number of search results displayed in the list view.
 # Type: Integer (usize)

@@ -14,6 +14,7 @@ aerofi is configured via transparent, human-readable TOML files located in `~/.c
   - [Script Directories](#script-directories)
   - [App Filtering & Custom Discovery](#app-filtering--custom-discovery)
   - [Aliases & Shortcuts](#aliases--shortcuts)
+  - [Pinned Items](#pinned-items)
   - [Custom Keys (Rofi Mode)](#custom-keys-rofi-mode)
 - [Theming Engine (`theme.toml`)](#theming-engine-themetoml)
   - [Modular Themes & Imports (`imports`)](#modular-themes--imports-imports--)
@@ -123,8 +124,40 @@ extra_apps = ["/System/Library/CoreServices/Finder.app"]
 # immediately without needing to press Enter.
 "rc" = "Reload Configuration"
 "cb" = "Clipboard History"
-"term" = "Ghostty"
+ "term" = "Ghostty"
+ ```
+
+### Pinned Items
+Pin your most-used apps and scripts to the top of the results, in the order
+you list them. A pinned item always outranks frecency (recent-usage recency)
+and fuzzy-match score **while it matches the current query** — so an empty
+query surfaces your pinned items first, and as you type they stay ahead of
+everything else that matches.
+
+```toml
+# Top-level key in config.toml (not a table).
+# Each entry matches a target by:
+#   • display name, case-insensitive  —  "Safari"
+#   • full path (the on-disk identifier)  —  "~/.config/aerofi/scripts/power-menu.sh"
+pinned = [
+    "Safari",
+    "Power Menu",
+    "Terminal"
+]
 ```
+
+Behaviour details:
+
+- **Ordering** — the order of the array is the order the pinned items appear
+  (index 0 is the very first row). This is independent of frecency and match
+  quality.
+- **Still searchable** — a pinned item is filtered like any other: if it does
+  not fuzzy-match the text you have typed, it is hidden. Pinned is a ranking
+  boost, not an "always show" override.
+- **Apps and scripts** — both are supported. Match apps by name (e.g.
+  `"Safari"`) and scripts by their `@aerofi.title` (e.g. `"Power Menu"`) or by
+  the script's full path when two items share a display name.
+- **Changes take effect** on the next `Cmd+R` reload (the index is rebuilt).
 
 ### Hotkeys and Bindings
 The `[bindings]` table centrally manages all keyboard shortcuts for the launcher:

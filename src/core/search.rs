@@ -18,20 +18,28 @@ use gpui::SharedString;
 pub struct SearchIndex {
     matcher: Matcher,
     aliases_by_target: HashMap<SharedString, Vec<SharedString>>,
+    /// Pinned target entries (display name or full path), in the order the
+    /// user listed them. Pinned matches outrank frecency and fuzzy score.
+    pinned: Vec<SharedString>,
     needle_buf: Vec<char>,
     hay_buf: Vec<char>,
-    /// Reused scratch buffer for (score, index) pairs — avoids a per-keystroke heap allocation.
-    scored_buf: Vec<(u32, usize)>,
+    /// Reused scratch buffer for (is_pinned, pinned_order, score, index) —
+    /// avoids a per-keystroke heap allocation.
+    scored_buf: Vec<(bool, u32, u32, usize)>,
     /// Reused buffer for the lowercased query string.
     lower_query_buf: String,
 }
 
 impl SearchIndex {
     /// Build an index that also matches the given `aliases` (alias ->
-    /// target display name). Alias values must equal the target's display
-    /// name exactly; aliases pointing to a target that is not in the
-    /// searched list simply never match.
-    pub fn new(aliases: &HashMap<String, String>) -> Self {
+    /// target display name) and pins the given `pinned` entries. Alias
+    /// values must equal the target's display name exactly; aliases pointing
+    /// to a target that is not in the searched list simply never match.
+    ///
+    /// A `pinned` entry matches a target by display name (case-insensitive)
+    /// or by full path. Pinned matches are ranked above everything else, in
+    /// the order the entries were listed.
+    pub fn new(aliases: &HashMap<String, String>, pinned: &[String]) -> Self {
         let mut aliases_by_target: HashMap<SharedString, Vec<SharedString>> = HashMap::new();
         for (alias, target) in aliases {
             aliases_by_target
@@ -42,6 +50,10 @@ impl SearchIndex {
         Self {
             matcher: Matcher::new(Config::DEFAULT),
             aliases_by_target,
+            pinned: pinned
+                .iter()
+                .map(|p| SharedString::from(p.clone()))
+                .collect(),
             needle_buf: Vec::new(),
             hay_buf: Vec::new(),
             scored_buf: Vec::new(),
@@ -112,12 +124,33 @@ impl SearchIndex {
                 continue;
             };
             let frecency = frecency_map.get(target.identifier()).copied().unwrap_or(0);
-            self.scored_buf.push((u32::from(fuzzy_score) + frecency, i));
+            let score = u32::from(fuzzy_score) + frecency;
+            // Pinned entries match by display name (case-insensitive) or by
+            // full path. The list is short, so a linear scan is cheap and
+            // allocation-free; `position` also yields the user's ordering.
+            let pinned_order = self.pinned.iter().position(|entry| {
+                entry.as_ref().eq_ignore_ascii_case(name)
+                    || entry.as_ref().eq_ignore_ascii_case(target.identifier())
+            });
+            let (is_pinned, order) = match pinned_order {
+                Some(order) => (true, order as u32),
+                None => (false, 0),
+            };
+            self.scored_buf.push((is_pinned, order, score, i));
         }
-        self.scored_buf
-            .sort_unstable_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
+        self.scored_buf.sort_unstable_by(|a, b| {
+            // Pinned items first; within a group keep the relevant order
+            // (pinned: config order, non-pinned: score then original index).
+            b.0.cmp(&a.0).then_with(|| {
+                if a.0 && b.0 {
+                    a.1.cmp(&b.1)
+                } else {
+                    b.2.cmp(&a.2).then(a.3.cmp(&b.3))
+                }
+            })
+        });
         out_filtered.clear();
-        out_filtered.extend(self.scored_buf.iter().map(|&(_, i)| i));
+        out_filtered.extend(self.scored_buf.iter().map(|&(_, _, _, i)| i));
     }
 }
 
@@ -301,6 +334,21 @@ mod tests {
         }
     }
 
+    /// A target whose display name differs from its on-disk path, so a test
+    /// can pin it by path (identifier) rather than by name.
+    fn target_with_path(name: &str, path: &str) -> Target {
+        Target::Script {
+            name: name.into(),
+            mode: crate::core::item::ScriptMode::FullOutput,
+            icon: None,
+            icon_image_path: None,
+            path: std::sync::Arc::from(PathBuf::from(path)),
+            metadata: std::sync::Arc::default(),
+            metatags: crate::core::item::ScriptMetatags::default(),
+            inline_output: None,
+        }
+    }
+
     fn names(results: &[Target]) -> Vec<&str> {
         results.iter().map(Target::name).collect()
     }
@@ -327,7 +375,7 @@ mod tests {
     /// prefilter" panic).
     #[test]
     fn uppercase_query_does_not_panic_and_matches() {
-        let mut idx = SearchIndex::new(&HashMap::new());
+        let mut idx = SearchIndex::new(&HashMap::new(), &[]);
         let history = empty_history();
         let targets = [
             target("Safari"),
@@ -356,7 +404,7 @@ mod tests {
 
     #[test]
     fn matches_names_without_aliases() {
-        let mut idx = SearchIndex::new(&HashMap::new());
+        let mut idx = SearchIndex::new(&HashMap::new(), &[]);
         let history = empty_history();
         let targets = [target("Git Status"), target("Grep")];
         assert_eq!(
@@ -371,7 +419,7 @@ mod tests {
 
     #[test]
     fn alias_matches_when_name_does_not() {
-        let mut idx = SearchIndex::new(&aliases(&[("rm", "Uninstaller")]));
+        let mut idx = SearchIndex::new(&aliases(&[("rm", "Uninstaller")]), &[]);
         let history = empty_history();
         let targets = [target("Uninstaller")];
         assert_eq!(
@@ -387,7 +435,7 @@ mod tests {
 
     #[test]
     fn name_still_matches_with_alias_configured() {
-        let mut idx = SearchIndex::new(&aliases(&[("notes", "TextEdit")]));
+        let mut idx = SearchIndex::new(&aliases(&[("notes", "TextEdit")]), &[]);
         let history = empty_history();
         let targets = [target("TextEdit")];
         assert_eq!(
@@ -402,7 +450,7 @@ mod tests {
 
     #[test]
     fn alias_only_match_ranks_first() {
-        let mut idx = SearchIndex::new(&aliases(&[("un", "Unpack"), ("extract", "Unpack")]));
+        let mut idx = SearchIndex::new(&aliases(&[("un", "Unpack"), ("extract", "Unpack")]), &[]);
         let history = empty_history();
         let targets = [target("Unpack"), target("Grep")];
         assert_eq!(
@@ -413,7 +461,7 @@ mod tests {
 
     #[test]
     fn alias_to_missing_target_never_matches() {
-        let mut idx = SearchIndex::new(&aliases(&[("zz", "Ghost App")]));
+        let mut idx = SearchIndex::new(&aliases(&[("zz", "Ghost App")]), &[]);
         let history = empty_history();
         let targets = [target("Grep")];
         assert!(search_helper(&mut idx, &history, &targets, "zz").is_empty());
@@ -421,7 +469,7 @@ mod tests {
 
     #[test]
     fn all_results_returned_without_cap() {
-        let mut idx = SearchIndex::new(&HashMap::new());
+        let mut idx = SearchIndex::new(&HashMap::new(), &[]);
         let history = empty_history();
         let targets = [
             target("Alpha"),
@@ -437,7 +485,7 @@ mod tests {
 
     #[test]
     fn empty_query_sorts_by_frecency_desc() {
-        let mut idx = SearchIndex::new(&HashMap::new());
+        let mut idx = SearchIndex::new(&HashMap::new(), &[]);
         let history = History::test_new(PathBuf::new(), vec![fresh_record("B")]);
         let targets = [target("A"), target("B"), target("C")];
         // B has a recent launch; A and C (frecency 0) keep their order.
@@ -447,7 +495,7 @@ mod tests {
 
     #[test]
     fn frecency_boosts_fuzzy_ranking() {
-        let mut idx = SearchIndex::new(&HashMap::new());
+        let mut idx = SearchIndex::new(&HashMap::new(), &[]);
         // Five recent launches of "Zebra" (500 points) beat the stronger
         // fuzzy match of "Zed".
         let records = (0..5).map(|_| fresh_record("Zebra")).collect();
@@ -455,5 +503,55 @@ mod tests {
         let targets = [target("Zed"), target("Zebra")];
         let results = search_helper(&mut idx, &history, &targets, "z");
         assert_eq!(results[0].name(), "Zebra");
+    }
+
+    #[test]
+    fn pinned_items_come_first_in_config_order() {
+        // Pinned order is C then A (config order); B has recent frecency and
+        // D is a plain zero-score item. Pinned items lead, then the rest.
+        let history = History::test_new(PathBuf::new(), vec![fresh_record("B")]);
+        let targets = [target("A"), target("B"), target("C"), target("D")];
+        let mut idx = SearchIndex::new(&HashMap::new(), &["C".into(), "A".into()]);
+        let results = search_helper(&mut idx, &history, &targets, "");
+        assert_eq!(names(&results), vec!["C", "A", "B", "D"]);
+    }
+
+    #[test]
+    fn pinned_item_outranks_fuzzy_and_frecency() {
+        // "Zebra" has strong frecency and matches "a"; "Apple" also matches
+        // "a" but is pinned, so it ranks first regardless.
+        let records = (0..5).map(|_| fresh_record("Zebra")).collect();
+        let history = History::test_new(PathBuf::new(), records);
+        let targets = [target("Zebra"), target("Apple")];
+        let mut idx = SearchIndex::new(&HashMap::new(), &["Apple".into()]);
+        let results = search_helper(&mut idx, &history, &targets, "a");
+        assert_eq!(names(&results), vec!["Apple", "Zebra"]);
+    }
+
+    #[test]
+    fn pinned_item_hidden_when_query_does_not_match() {
+        // "Pinned" does not fuzzy-match the query, so it is filtered out even
+        // though it would otherwise be pinned to the top.
+        let mut idx = SearchIndex::new(&HashMap::new(), &["Pinned".into()]);
+        let history = empty_history();
+        let targets = [target("Pinned"), target("Other")];
+        let results = search_helper(&mut idx, &history, &targets, "oth");
+        assert_eq!(names(&results), vec!["Other"]);
+    }
+
+    #[test]
+    fn pinned_by_path_matches() {
+        // The script's display name does not contain the pin string; only its
+        // on-disk path (identifier) does, proving path-based pinning.
+        let script = target_with_path("My Script", "/usr/local/bin/my-script.sh");
+        let other = target("Other");
+        let mut idx = SearchIndex::new(
+            &HashMap::new(),
+            &["/usr/local/bin/my-script.sh".to_string()],
+        );
+        let history = empty_history();
+        let targets = [other, script];
+        let results = search_helper(&mut idx, &history, &targets, "");
+        assert_eq!(names(&results), vec!["My Script", "Other"]);
     }
 }

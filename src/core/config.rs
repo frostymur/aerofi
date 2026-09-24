@@ -19,6 +19,11 @@ const DEFAULT_CONFIG: &str = r#"# aerofi configuration
 # Use "default" for the built-in Tokyo Night palette.
 theme = "default"
 
+# Pin items to the top of the results, in the order listed. Each entry
+# matches a target by display name (case-insensitive) or by full path, e.g.:
+# pinned = ["Safari", "Power Menu"]
+pinned = []
+
 [general]
 # Global hotkey to toggle the launcher visibility.
 # Examples: "opt+space", "cmd+space", "ctrl+shift+p"
@@ -179,6 +184,11 @@ pub struct AppConfig {
     pub aliases: HashMap<String, String>,
     /// Unified keybindings configuration.
     pub bindings: BindingsConfig,
+    /// Items pinned to the top of the results, in the order listed. Each
+    /// entry matches a target by display name (case-insensitive) or by full
+    /// path. Pinned items outrank frecency and fuzzy score while matching the
+    /// current query.
+    pub pinned: Vec<String>,
 }
 
 impl Default for AppConfig {
@@ -191,6 +201,7 @@ impl Default for AppConfig {
             apps: AppsConfig::default(),
             aliases: HashMap::new(),
             bindings: BindingsConfig::default(),
+            pinned: Vec::new(),
         }
     }
 }
@@ -342,6 +353,21 @@ mod tests {
         "#;
         let config: AppConfig = toml::from_str(toml_str).unwrap();
         assert!(config.scripts.dirs.is_empty());
+    }
+
+    #[test]
+    fn pinned_defaults_empty_and_parses_entries() {
+        let config: AppConfig = toml::from_str(r#"theme = "default""#).unwrap();
+        assert!(config.pinned.is_empty());
+
+        let config: AppConfig = toml::from_str(
+            r#"
+            theme = "default"
+            pinned = ["Safari", "~/bin/quick.sh"]
+            "#,
+        )
+        .unwrap();
+        assert_eq!(config.pinned, vec!["Safari", "~/bin/quick.sh"]);
     }
 
     #[test]

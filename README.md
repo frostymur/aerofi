@@ -106,6 +106,7 @@ cargo build --release
 
 **Flexibility & Customization**
 - 6 execution modes: `silent`, `compact`, `inline`, `fullOutput`, `pipe`, and interactive `rofi`
+- 📌 Pinned items — keep favourite apps & scripts at the top of the results
 - 🧩 Declarative widget engine (custom headers, footers, action buttons, status pills)
 - 🎨 Deep TOML theming (frosted glass blur, fonts, `$palette` tokens, custom layouts)
 - 🔌 [Native C ABI plugins](docs/plugins.md) (Rust, C, C++, Swift)

@@ -172,7 +172,7 @@ impl Launcher {
             query: String::new(),
             selected: 0,
             list: UniformListScrollHandle::new(),
-            search: SearchIndex::new(&app_config.aliases),
+            search: SearchIndex::new(&app_config.aliases, &app_config.pinned),
             history,
             app_config,
             theme: Arc::new(theme),
@@ -1037,7 +1037,7 @@ impl Launcher {
         // Reconcile inline-script daemons with the new target set (scripts
         // added/removed/re-intervalled by the reload).
         crate::core::scheduler::reconcile_daemons(&self.all);
-        self.search = SearchIndex::new(&self.app_config.aliases);
+        self.search = SearchIndex::new(&self.app_config.aliases, &self.app_config.pinned);
         self.plugin_manager = crate::core::plugin_manager::PluginManager::load_all();
         self.widget_registry = WidgetRegistry::from_theme(&theme.widgets);
         self.button_hotkeys = self.widget_registry.button_hotkeys();
