@@ -64,6 +64,7 @@ pub enum WidgetDef {
         font_size: Option<f32>,
         font_weight: Option<FontWeightSpec>,
         align: Option<String>,
+        margin: Option<Vec<f32>>,
     },
     Icon {
         #[serde(default)]
@@ -71,6 +72,7 @@ pub enum WidgetDef {
         icon: String,
         size: Option<f32>,
         color: Option<String>,
+        margin: Option<Vec<f32>>,
     },
     Image {
         #[serde(default)]
@@ -88,6 +90,9 @@ pub enum WidgetDef {
         /// any window size — the artwork-pane use case.
         #[serde(default)]
         h_full: Option<bool>,
+        margin: Option<Vec<f32>>,
+        border_color: Option<String>,
+        border_width: Option<f32>,
     },
     Spacer {
         #[serde(default)]
@@ -106,9 +111,12 @@ pub enum WidgetDef {
         orientation: Option<String>,
         gap: Option<f32>,
         padding: Option<Vec<f32>>,
+        margin: Option<Vec<f32>>,
         align: Option<String>,
         background: Option<String>,
         radius: Option<f32>,
+        border_color: Option<String>,
+        border_width: Option<f32>,
         width: Option<f32>,
         height: Option<f32>,
         flex: Option<bool>,
@@ -130,6 +138,7 @@ pub enum WidgetDef {
         border_width: Option<f32>,
         radius: Option<f32>,
         padding: Option<Vec<f32>>,
+        margin: Option<Vec<f32>>,
         font_size: Option<f32>,
         font_weight: Option<FontWeightSpec>,
         gap: Option<f32>,
@@ -170,7 +179,15 @@ impl WidgetDef {
             Self::Text { color, .. } => resolve_opt(color, colors),
             Self::Icon { color, .. } => resolve_opt(color, colors),
             Self::Divider { color, .. } => resolve_opt(color, colors),
-            Self::Box { background, .. } => resolve_opt(background, colors),
+            Self::Image { border_color, .. } => resolve_opt(border_color, colors),
+            Self::Box {
+                background,
+                border_color,
+                ..
+            } => {
+                resolve_opt(background, colors);
+                resolve_opt(border_color, colors);
+            }
             Self::Button {
                 color,
                 background,
@@ -185,7 +202,7 @@ impl WidgetDef {
                 resolve_opt(hover_color, colors);
                 resolve_opt(border_color, colors);
             }
-            Self::Image { .. } | Self::Spacer { .. } => {}
+            Self::Spacer { .. } => {}
         }
     }
 }
@@ -1689,6 +1706,7 @@ orientation = "horizontal"
             font_size: None,
             font_weight: None,
             align: None,
+            margin: None,
         });
         t.widgets.push(WidgetDef::Button {
             id: "btn".to_string(),
@@ -1705,6 +1723,7 @@ orientation = "horizontal"
             border_width: None,
             radius: None,
             padding: None,
+            margin: None,
             font_size: None,
             font_weight: None,
             gap: None,

@@ -147,6 +147,7 @@ mod tests {
             font_size: None,
             font_weight: None,
             align: None,
+            margin: None,
         }
     }
 
@@ -160,9 +161,12 @@ mod tests {
             orientation: None,
             gap: None,
             padding: None,
+            margin: None,
             align: None,
             background: None,
             radius: None,
+            border_color: None,
+            border_width: None,
             width: None,
             height: None,
             flex: None,
@@ -227,6 +231,7 @@ mod tests {
             border_width: None,
             radius: None,
             padding: None,
+            margin: None,
             font_size: None,
             font_weight: None,
             gap: None,

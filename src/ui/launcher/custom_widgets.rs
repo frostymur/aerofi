@@ -14,6 +14,21 @@ use super::helpers::{
 };
 use super::state::Launcher;
 
+macro_rules! apply_margin {
+    ($el:expr, $margin:expr) => {
+        if let Some(m) = $margin {
+            match m.len() {
+                1 => $el.m(px(m[0])),
+                2 => $el.my(px(m[0])).mx(px(m[1])),
+                4 => $el.mt(px(m[0])).mr(px(m[1])).mb(px(m[2])).ml(px(m[3])),
+                _ => $el,
+            }
+        } else {
+            $el
+        }
+    };
+}
+
 impl Launcher {
     /// Render a custom widget by id. Returns `None` if the id is unknown.
     pub(super) fn render_custom_widget(
@@ -60,6 +75,7 @@ impl Launcher {
                 font_size,
                 font_weight,
                 align,
+                margin,
                 ..
             } => self.render_widget_text(
                 text.as_deref(),
@@ -67,10 +83,15 @@ impl Launcher {
                 *font_size,
                 font_weight.as_ref(),
                 align.as_deref(),
+                margin.as_deref(),
             ),
             WidgetDef::Icon {
-                icon, size, color, ..
-            } => self.render_widget_icon(icon, *size, color.as_deref()),
+                icon,
+                size,
+                color,
+                margin,
+                ..
+            } => self.render_widget_icon(icon, *size, color.as_deref(), margin.as_deref()),
             WidgetDef::Image {
                 path,
                 width,
@@ -78,8 +99,21 @@ impl Launcher {
                 radius,
                 w_full,
                 h_full,
+                margin,
+                border_color,
+                border_width,
                 ..
-            } => self.render_widget_image(path, *width, *height, *radius, *w_full, *h_full),
+            } => self.render_widget_image(
+                path,
+                *width,
+                *height,
+                *radius,
+                *w_full,
+                *h_full,
+                margin.as_deref(),
+                border_color.as_deref(),
+                *border_width,
+            ),
             WidgetDef::Spacer { .. } => self.render_widget_spacer(),
             WidgetDef::Divider {
                 color,
@@ -91,9 +125,12 @@ impl Launcher {
                 orientation,
                 gap,
                 padding,
+                margin,
                 align,
                 background,
                 radius,
+                border_color,
+                border_width,
                 width,
                 height,
                 flex,
@@ -103,9 +140,12 @@ impl Launcher {
                 orientation.as_deref(),
                 *gap,
                 padding.as_deref(),
+                margin.as_deref(),
                 align.as_deref(),
                 background.as_deref(),
                 *radius,
+                border_color.as_deref(),
+                *border_width,
                 *width,
                 *height,
                 *flex,
@@ -127,6 +167,7 @@ impl Launcher {
                 border_width,
                 radius,
                 padding,
+                margin,
                 font_size,
                 font_weight,
                 gap,
@@ -145,6 +186,7 @@ impl Launcher {
                 *border_width,
                 *radius,
                 padding.as_deref(),
+                margin.as_deref(),
                 *font_size,
                 font_weight.as_ref(),
                 *gap,
@@ -162,6 +204,7 @@ impl Launcher {
         font_size: Option<f32>,
         font_weight: Option<&FontWeightSpec>,
         align: Option<&str>,
+        margin: Option<&[f32]>,
     ) -> gpui::AnyElement {
         let t = &self.theme;
         let display = text.unwrap_or("");
@@ -182,7 +225,9 @@ impl Launcher {
             _ => el, // left / default
         };
 
-        el.child(display.to_string()).into_any()
+        apply_margin!(el, margin)
+            .child(display.to_string())
+            .into_any()
     }
 
     fn render_widget_icon(
@@ -190,6 +235,7 @@ impl Launcher {
         icon: &str,
         size: Option<f32>,
         color: Option<&str>,
+        margin: Option<&[f32]>,
     ) -> gpui::AnyElement {
         let t = &self.theme;
         let sz = size.unwrap_or(t.element.icon_size);
@@ -198,27 +244,34 @@ impl Launcher {
 
         if is_image {
             let resolved = expand_tilde_path(icon);
-            img(std::path::PathBuf::from(resolved))
-                .w(px(sz))
-                .h(px(sz))
-                .rounded_sm()
-                .into_any()
+            apply_margin!(
+                img(std::path::PathBuf::from(resolved))
+                    .w(px(sz))
+                    .h(px(sz))
+                    .rounded_sm(),
+                margin
+            )
+            .into_any()
         } else {
             let col = color.and_then(parse_hex_color).unwrap_or_else(|| {
                 parse_hex_color_alpha(&t.element.text_color).unwrap_or(0x000000FF)
             });
 
-            div()
-                .text_color(rgb(col))
-                .text_size(px(sz))
-                .flex()
-                .items_center()
-                .justify_center()
-                .child(icon.to_string())
-                .into_any()
+            apply_margin!(
+                div()
+                    .text_color(rgb(col))
+                    .text_size(px(sz))
+                    .flex()
+                    .items_center()
+                    .justify_center(),
+                margin
+            )
+            .child(icon.to_string())
+            .into_any()
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn render_widget_image(
         &self,
         path: &str,
@@ -227,6 +280,9 @@ impl Launcher {
         radius: Option<f32>,
         w_full: Option<bool>,
         h_full: Option<bool>,
+        margin: Option<&[f32]>,
+        border_color: Option<&str>,
+        border_width: Option<f32>,
     ) -> gpui::AnyElement {
         let resolved = expand_tilde_path(path);
         let mut el = img(std::path::PathBuf::from(resolved));
@@ -246,8 +302,14 @@ impl Launcher {
         if let Some(r) = radius {
             el = el.rounded(px(r));
         }
+        if border_width.unwrap_or(0.0) > 0.0 {
+            el = el.border(px(border_width.unwrap_or(0.0)));
+            if let Some(bc) = border_color.and_then(parse_hex_color_alpha) {
+                el = el.border_color(rgba(bc));
+            }
+        }
 
-        el.object_fit(gpui::ObjectFit::Cover).into_any()
+        apply_margin!(el.object_fit(gpui::ObjectFit::Cover), margin).into_any()
     }
 
     fn render_widget_spacer(&self) -> gpui::AnyElement {
@@ -276,9 +338,12 @@ impl Launcher {
         orientation: Option<&str>,
         gap: Option<f32>,
         padding: Option<&[f32]>,
+        margin: Option<&[f32]>,
         align: Option<&str>,
         background: Option<&str>,
         radius: Option<f32>,
+        border_color: Option<&str>,
+        border_width: Option<f32>,
         width: Option<f32>,
         height: Option<f32>,
         flex: Option<bool>,
@@ -330,6 +395,12 @@ impl Launcher {
         if let Some(r) = radius {
             container = container.rounded(px(r));
         }
+        if border_width.unwrap_or(0.0) > 0.0 {
+            container = container.border(px(border_width.unwrap_or(0.0)));
+            if let Some(bc) = border_color.and_then(parse_hex_color_alpha) {
+                container = container.border_color(rgba(bc));
+            }
+        }
 
         // Recurse into children: supports built-ins (InputBar, ListView) as well as custom widgets.
         for child_id in children {
@@ -358,7 +429,7 @@ impl Launcher {
             }
         }
 
-        container.into_any()
+        apply_margin!(container, margin).into_any()
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -377,6 +448,7 @@ impl Launcher {
         border_width: Option<f32>,
         radius: Option<f32>,
         padding: Option<&[f32]>,
+        margin: Option<&[f32]>,
         font_size: Option<f32>,
         font_weight: Option<&FontWeightSpec>,
         gap: Option<f32>,
@@ -499,6 +571,6 @@ impl Launcher {
             }));
         }
 
-        btn.into_any()
+        apply_margin!(btn, margin).into_any()
     }
 }
