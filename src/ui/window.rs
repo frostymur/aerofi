@@ -98,6 +98,22 @@ pub fn launch_global_target(target: &Target) {
         }
     );
     if !is_rofi {
+        // Builtin actions mutate the launcher itself and have no effect in
+        // the fire-and-forget executor (it would silently drop them), so
+        // route them through the view — otherwise global bindings like
+        // `"ctrl+alt+r" = "Reload Configuration"` never fire.
+        if matches!(target, Target::Builtin { .. }) {
+            if let Some(rr) = RENDER_REQUEST.with(|r| r.borrow().clone()) {
+                let view = rr.view.clone();
+                rr.app.update(|cx| {
+                    view.update(cx, |launcher, cx| {
+                        launcher.reload();
+                        cx.notify();
+                    });
+                });
+            }
+            return;
+        }
         crate::core::executor::execute(target);
         return;
     }

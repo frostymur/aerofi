@@ -1144,7 +1144,11 @@ impl Launcher {
 
     /// Re-read `config.toml`, rescan the targets and rebuild the search
     /// index (aliases, `max_results`, sources, ignored apps, script dirs).
-    fn reload(&mut self) {
+    ///
+    /// `pub(crate)` so global Builtin bindings (`"ctrl+alt+r" =
+    /// "Reload Configuration"`) can drive it through the view from
+    /// `ui::window`.
+    pub(crate) fn reload(&mut self) {
         let config = crate::core::config::AppConfig::load();
         let theme_name = &config.theme;
         let theme = crate::core::theme::load_theme(theme_name);
