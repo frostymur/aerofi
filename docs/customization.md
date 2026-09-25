@@ -281,6 +281,7 @@ every theme, including the default one. Real emoji always render in color.
 # Point values (default) or a screen-relative percentage, e.g. "50%".
 width = 720.0
 height = 480.0
+auto_height = true        # Shrink height to fit the results list (default: inherits from require_input)
 padding = 16.0
 background = "$bg"
 blur = true               # Native macOS translucent frosted glass blur
@@ -418,7 +419,7 @@ empty_text = "No matching items"
 empty_text_color = "$subtle"
 highlight_matches = true             # Highlight the query's matched characters in item names
 # match_color = "$green"             # Colour of matched characters (default: status_colors.accent)
-# require_input = true               # Collapses listview until typing starts
+# require_input = true               # Hides the list view until the user types a query
 
 # Category Badge Styling ("Script", "Application", "Plugin")
 [listview.category_badge]

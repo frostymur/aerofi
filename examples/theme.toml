@@ -59,6 +59,11 @@ fallback = ["SF Pro", "SF Mono", "Helvetica Neue", "Arial"]
 width = "49.0%"
 height = "50.2%"
 
+# Shrink the window height automatically to fit the number of search results.
+# Inherits from `[listview] require_input` by default if unset.
+# Type: Boolean
+# auto_height = true
+
 # Inner padding around the window container.
 # Type: Float (f32)
 padding = 16.0

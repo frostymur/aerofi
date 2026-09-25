@@ -30,6 +30,7 @@ impl Render for Launcher {
 
         // Determine whether the list should be visible.
         let require_input = t.listview.require_input.unwrap_or(false);
+        let auto_height = t.window.auto_height.unwrap_or(require_input);
         let should_show_list = if require_input {
             !self.query.trim().is_empty() && !self.filtered.is_empty()
         } else {
@@ -57,7 +58,7 @@ impl Render for Launcher {
             LauncherState::Search
             | LauncherState::ArgumentInput { .. }
             | LauncherState::Confirming { .. } => {
-                if require_input {
+                if require_input || auto_height {
                     // Argument chips wrap onto extra rows in narrow bars, so
                     // the bar — and the window that fits to it — may need to
                     // be taller than its nominal height.
@@ -72,7 +73,13 @@ impl Render for Launcher {
                     } else {
                         ib_height
                     };
-                    if should_show_list {
+
+                    if !should_show_list {
+                        // Compact (list hidden): the input bar's bottom gap is
+                        // dropped too (see `render_inputbar`), leaving only the
+                        // window padding above and below so the bar sits centred.
+                        ib_h + pad_v * 2.0
+                    } else if auto_height {
                         let item_h = t.element.padding.first().copied().unwrap_or(8.0) * 2.0
                             + t.element.icon_size;
                         // Exact list height: `spacing` sits *between* rows (not
@@ -88,7 +95,14 @@ impl Render for Launcher {
                         let total = ib_h + margin_bottom + mainbox_gap + list_h + pad_v * 2.0;
                         total.min(t.window.height.resolve(screen_h))
                     } else {
-                        ib_h + margin_bottom + pad_v * 2.0
+                        // require_input is true, but auto_height is false:
+                        // expand directly to the full configured window height.
+                        // We still take the max with `ib_h` + margins in case
+                        // wrapped argument chips need more space than nominal.
+                        t.window
+                            .height
+                            .resolve(screen_h)
+                            .max(ib_h + margin_bottom + pad_v * 2.0)
                     }
                 } else {
                     t.window.height.resolve(screen_h)
@@ -139,7 +153,7 @@ impl Render for Launcher {
                     | LauncherState::ArgumentInput { .. }
                     | LauncherState::Confirming { .. }
             );
-            let anchor_height = if require_input && is_search_state {
+            let anchor_height = if (auto_height || require_input) && is_search_state {
                 Some(t.window.height.resolve(screen_h) as f64)
             } else {
                 None

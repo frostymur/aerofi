@@ -376,6 +376,9 @@ impl<'de> serde::Deserialize<'de> for Dimension {
 pub struct WindowConfig {
     pub width: Dimension,
     pub height: Dimension,
+    /// Shrinks the window height to fit the number of search results.
+    /// Inherits from `listview.require_input` by default.
+    pub auto_height: Option<bool>,
     pub padding: f32,
     /// Horizontal offset from screen centre (points). `0.0` = centred,
     /// negative = towards the left edge.
@@ -400,6 +403,7 @@ impl Default for WindowConfig {
         Self {
             width: Dimension::Percent(51.7),
             height: Dimension::Percent(50.2),
+            auto_height: None,
             padding: 16.0,
             x_offset: 0.0,
             y_offset: 0.0,
