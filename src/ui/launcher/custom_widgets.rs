@@ -29,6 +29,46 @@ macro_rules! apply_margin {
     };
 }
 
+/// Apply a border to `el`. `width` sets all four sides as the default; the
+/// per-side overrides (`top`/`right`/`bottom`/`left`) take precedence where
+/// they are `Some`. `color` tints every visible side (GPUI uses a single
+/// border color for all sides). No-op when no side is wider than 0.
+fn apply_border<E: gpui::Styled>(
+    el: E,
+    width: Option<f32>,
+    top: Option<f32>,
+    right: Option<f32>,
+    bottom: Option<f32>,
+    left: Option<f32>,
+    color: Option<gpui::Rgba>,
+) -> E {
+    let base = width.unwrap_or(0.0);
+    let t = top.unwrap_or(base);
+    let r = right.unwrap_or(base);
+    let b = bottom.unwrap_or(base);
+    let l = left.unwrap_or(base);
+    if t <= 0.0 && r <= 0.0 && b <= 0.0 && l <= 0.0 {
+        return el;
+    }
+    let mut out = el;
+    if let Some(c) = color {
+        out = out.border_color(c);
+    }
+    if t > 0.0 {
+        out = out.border_t(px(t));
+    }
+    if r > 0.0 {
+        out = out.border_r(px(r));
+    }
+    if b > 0.0 {
+        out = out.border_b(px(b));
+    }
+    if l > 0.0 {
+        out = out.border_l(px(l));
+    }
+    out
+}
+
 impl Launcher {
     /// Render a custom widget by id. Returns `None` if the id is unknown.
     pub(super) fn render_custom_widget(
@@ -102,6 +142,10 @@ impl Launcher {
                 margin,
                 border_color,
                 border_width,
+                border_top,
+                border_right,
+                border_bottom,
+                border_left,
                 shadow,
                 ..
             } => self.render_widget_image(
@@ -114,6 +158,10 @@ impl Launcher {
                 margin.as_deref(),
                 border_color.as_deref(),
                 *border_width,
+                *border_top,
+                *border_right,
+                *border_bottom,
+                *border_left,
                 *shadow,
             ),
             WidgetDef::Spacer { .. } => self.render_widget_spacer(),
@@ -133,6 +181,10 @@ impl Launcher {
                 radius,
                 border_color,
                 border_width,
+                border_top,
+                border_right,
+                border_bottom,
+                border_left,
                 shadow,
                 width,
                 height,
@@ -149,6 +201,10 @@ impl Launcher {
                 *radius,
                 border_color.as_deref(),
                 *border_width,
+                *border_top,
+                *border_right,
+                *border_bottom,
+                *border_left,
                 *shadow,
                 *width,
                 *height,
@@ -169,6 +225,10 @@ impl Launcher {
                 hover_color,
                 border_color,
                 border_width,
+                border_top,
+                border_right,
+                border_bottom,
+                border_left,
                 shadow,
                 radius,
                 padding,
@@ -189,6 +249,10 @@ impl Launcher {
                 hover_color.as_deref(),
                 border_color.as_deref(),
                 *border_width,
+                *border_top,
+                *border_right,
+                *border_bottom,
+                *border_left,
                 *shadow,
                 *radius,
                 padding.as_deref(),
@@ -289,6 +353,10 @@ impl Launcher {
         margin: Option<&[f32]>,
         border_color: Option<&str>,
         border_width: Option<f32>,
+        border_top: Option<f32>,
+        border_right: Option<f32>,
+        border_bottom: Option<f32>,
+        border_left: Option<f32>,
         shadow: Option<bool>,
     ) -> gpui::AnyElement {
         let resolved = expand_tilde_path(path);
@@ -309,12 +377,15 @@ impl Launcher {
         if let Some(r) = radius {
             el = el.rounded(px(r));
         }
-        if border_width.unwrap_or(0.0) > 0.0 {
-            el = el.border(px(border_width.unwrap_or(0.0)));
-            if let Some(bc) = border_color.and_then(parse_hex_color_alpha) {
-                el = el.border_color(rgba(bc));
-            }
-        }
+        el = apply_border(
+            el,
+            border_width,
+            border_top,
+            border_right,
+            border_bottom,
+            border_left,
+            border_color.and_then(parse_hex_color_alpha).map(rgba),
+        );
         if shadow.unwrap_or(false) {
             el = el.shadow_md();
         }
@@ -354,6 +425,10 @@ impl Launcher {
         radius: Option<f32>,
         border_color: Option<&str>,
         border_width: Option<f32>,
+        border_top: Option<f32>,
+        border_right: Option<f32>,
+        border_bottom: Option<f32>,
+        border_left: Option<f32>,
         shadow: Option<bool>,
         width: Option<f32>,
         height: Option<f32>,
@@ -406,12 +481,15 @@ impl Launcher {
         if let Some(r) = radius {
             container = container.rounded(px(r));
         }
-        if border_width.unwrap_or(0.0) > 0.0 {
-            container = container.border(px(border_width.unwrap_or(0.0)));
-            if let Some(bc) = border_color.and_then(parse_hex_color_alpha) {
-                container = container.border_color(rgba(bc));
-            }
-        }
+        container = apply_border(
+            container,
+            border_width,
+            border_top,
+            border_right,
+            border_bottom,
+            border_left,
+            border_color.and_then(parse_hex_color_alpha).map(rgba),
+        );
         if shadow.unwrap_or(false) {
             container = container.shadow_md();
         }
@@ -460,6 +538,10 @@ impl Launcher {
         hover_color: Option<&str>,
         border_color: Option<&str>,
         border_width: Option<f32>,
+        border_top: Option<f32>,
+        border_right: Option<f32>,
+        border_bottom: Option<f32>,
+        border_left: Option<f32>,
         shadow: Option<bool>,
         radius: Option<f32>,
         padding: Option<&[f32]>,
@@ -518,10 +600,28 @@ impl Launcher {
             });
         }
 
-        if let Some(bc) = border_color.and_then(parse_hex_color) {
-            let bw = border_width.unwrap_or(1.0);
-            btn = btn.border(px(bw)).border_color(rgb(bc));
-        }
+        // Preserve the long-standing convenience where a border color alone
+        // implies a 1px border when no explicit width is given.
+        let btn_width = if border_width.is_none()
+            && border_color.is_some()
+            && border_top.is_none()
+            && border_right.is_none()
+            && border_bottom.is_none()
+            && border_left.is_none()
+        {
+            Some(1.0)
+        } else {
+            border_width
+        };
+        btn = apply_border(
+            btn,
+            btn_width,
+            border_top,
+            border_right,
+            border_bottom,
+            border_left,
+            border_color.and_then(parse_hex_color).map(rgb),
+        );
         if shadow.unwrap_or(false) {
             btn = btn.shadow_md();
         }

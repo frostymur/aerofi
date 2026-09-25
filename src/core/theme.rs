@@ -88,6 +88,10 @@ pub enum WidgetDef {
         margin: Option<Vec<f32>>,
         border_color: Option<String>,
         border_width: Option<f32>,
+        border_top: Option<f32>,
+        border_right: Option<f32>,
+        border_bottom: Option<f32>,
+        border_left: Option<f32>,
         #[serde(default)]
         shadow: Option<bool>,
     },
@@ -114,6 +118,10 @@ pub enum WidgetDef {
         radius: Option<f32>,
         border_color: Option<String>,
         border_width: Option<f32>,
+        border_top: Option<f32>,
+        border_right: Option<f32>,
+        border_bottom: Option<f32>,
+        border_left: Option<f32>,
         #[serde(default)]
         shadow: Option<bool>,
         width: Option<f32>,
@@ -135,6 +143,10 @@ pub enum WidgetDef {
         hover_color: Option<String>,
         border_color: Option<String>,
         border_width: Option<f32>,
+        border_top: Option<f32>,
+        border_right: Option<f32>,
+        border_bottom: Option<f32>,
+        border_left: Option<f32>,
         #[serde(default)]
         shadow: Option<bool>,
         radius: Option<f32>,
@@ -1591,6 +1603,7 @@ orientation = "horizontal"
             hover_color = "#bb9af7"
             border_color = "#3b4261"
             border_width = 1.0
+            border_bottom = 3.0
             radius = 6.0
             padding = [8.0, 4.0]
             gap = 4.0
@@ -1655,6 +1668,11 @@ orientation = "horizontal"
             icon,
             text,
             radius,
+            border_width,
+            border_top,
+            border_right,
+            border_bottom,
+            border_left,
             ..
         } = &parsed.widgets[6]
         {
@@ -1662,6 +1680,13 @@ orientation = "horizontal"
             assert_eq!(icon.as_deref(), Some("⚡"));
             assert_eq!(text.as_deref(), Some("Reload"));
             assert_eq!(*radius, Some(6.0));
+            // border_width is the all-sides default; per-side fields override
+            // individual sides and default to None (fall back to border_width).
+            assert_eq!(*border_width, Some(1.0));
+            assert_eq!(*border_top, None);
+            assert_eq!(*border_right, None);
+            assert_eq!(*border_bottom, Some(3.0));
+            assert_eq!(*border_left, None);
         } else {
             panic!("expected Button widget");
         }
@@ -1722,6 +1747,10 @@ orientation = "horizontal"
             hover_color: None,
             border_color: None,
             border_width: None,
+            border_top: None,
+            border_right: None,
+            border_bottom: None,
+            border_left: None,
             shadow: None,
             radius: None,
             padding: None,

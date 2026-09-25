@@ -532,13 +532,18 @@ Widgets are defined either using table syntax `[widgets.<id>]` or array syntax `
 
 | Type | Description | Key Properties |
 |---|---|---|
-| **`box`** | Container for grouping widgets | `orientation` ("horizontal" / "vertical"), `gap`, `padding`, `margin`, `align` ("left", "center", "end"), `background`, `radius`, `border_color`, `border_width`, `shadow` (drop shadow), `width`, `height`, `flex`, `children` |
+| **`box`** | Container for grouping widgets | `orientation` ("horizontal" / "vertical"), `gap`, `padding`, `margin`, `align` ("left", "center", "end"), `background`, `radius`, `border_color`, `border_width`, `border_top`/`border_right`/`border_bottom`/`border_left` (per-side overrides of `border_width`), `shadow` (drop shadow), `width`, `height`, `flex`, `children` |
 | **`text`** | Static typography label | `text`, `color`, `font_size`, `font_weight` (name or number 100–900), `align`, `margin` |
 | **`icon`** | Symbol or emoji | `icon`, `size`, `color`, `margin` |
-| **`image`** | Image asset | `path`, `width`, `height`, `radius`, `w_full`, `h_full` (stretch to fill the container, overriding fixed pixel dimensions), `margin`, `border_color`, `border_width`, `shadow` |
+| **`image`** | Image asset | `path`, `width`, `height`, `radius`, `w_full`, `h_full` (stretch to fill the container, overriding fixed pixel dimensions), `margin`, `border_color`, `border_width`, `border_top`/`border_right`/`border_bottom`/`border_left`, `shadow` |
 | **`spacer`** | Flexible expanding space | Expands horizontally or vertically to push siblings apart |
 | **`divider`** | Separator rule | `color`, `thickness`, `margin` |
-| **`button`** | Clickable action button | `text`, `icon`, `action` (target name), `hotkey`, `close` (default `true`; set `false` to keep the launcher open after the action), `background`, `hover_background`, `hover_color`, `color`, `border_color`, `border_width`, `shadow`, `radius`, `padding`, `margin`, `font_size`, `font_weight`, `gap` |
+| **`button`** | Clickable action button | `text`, `icon`, `action` (target name), `hotkey`, `close` (default `true`; set `false` to keep the launcher open after the action), `background`, `hover_background`, `hover_color`, `color`, `border_color`, `border_width`, `border_top`/`border_right`/`border_bottom`/`border_left`, `shadow`, `radius`, `padding`, `margin`, `font_size`, `font_weight`, `gap` |
+
+> [!TIP]
+> **Borders & per-side control** — `border_width` sets all four sides at once (a border only renders when a side's effective width is `> 0`). To style just one edge (a header's bottom rule, a card's top accent, …), set `border_top`/`border_right`/`border_bottom`/`border_left`; each overrides that single side while the others fall back to `border_width`. `border_color` tints every visible side (GPUI uses a single border colour). On a `button`, a `border_color` with no width still implies a 1px border.
+>
+> **Shadows** — `shadow = true` adds a soft drop shadow (`shadow_md`) under `box`, `image`, and `button` widgets, useful for floating panels and cards on a frosted window.
 
 ---
 
