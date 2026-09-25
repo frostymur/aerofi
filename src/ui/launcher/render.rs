@@ -75,8 +75,17 @@ impl Render for Launcher {
                     if should_show_list {
                         let item_h = t.element.padding.first().copied().unwrap_or(8.0) * 2.0
                             + t.element.icon_size;
-                        let list_h = (self.filtered.len() as f32) * (item_h + t.listview.spacing);
-                        let total = ib_h + margin_bottom + list_h + pad_v * 2.0;
+                        // Exact list height: `spacing` sits *between* rows (not
+                        // after the last one), and the input bar is separated
+                        // from the list by the mainbox gap. Omitting that gap
+                        // clipped the last row whenever `mainbox.gap` exceeded
+                        // `listview.spacing` (the old formula only fit because
+                        // the gap defaulted to `spacing`).
+                        let n = self.filtered.len();
+                        let list_h =
+                            (n as f32) * item_h + (n.saturating_sub(1)) as f32 * t.listview.spacing;
+                        let mainbox_gap = t.mainbox.gap.unwrap_or(t.listview.spacing);
+                        let total = ib_h + margin_bottom + mainbox_gap + list_h + pad_v * 2.0;
                         total.min(t.window.height.resolve(screen_h))
                     } else {
                         ib_h + margin_bottom + pad_v * 2.0
@@ -105,6 +114,16 @@ impl Render for Launcher {
         if size_changed {
             window.resize(size(px(win_width), px(target_height)));
             self.last_window_size = Some((win_width, target_height));
+            // Force exactly one follow-up frame to paint against the updated
+            // native viewport size. Without this, GPUI leaves the uncovered
+            // region stale if the app is otherwise idle.
+            cx.spawn(|view: gpui::WeakEntity<Self>, cx: &mut gpui::AsyncApp| {
+                let mut cx = cx.clone();
+                async move {
+                    let _ = view.update(&mut cx, |_, cx| cx.notify());
+                }
+            })
+            .detach();
         }
         if self.needs_center || size_changed {
             self.needs_center = false;

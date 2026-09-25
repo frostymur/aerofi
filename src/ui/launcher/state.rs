@@ -780,6 +780,7 @@ impl Launcher {
         self.rofi_live_search.take();
         // Drop the last session's memoized Pango parses (see `rofi_leave`).
         self.pango_cache.borrow_mut().clear();
+        self.sticky_metatags = None;
         // Cancel any in-flight size transition: hiding during a pending
         // reveal would otherwise leave the flag set across the hide/show
         // cycle, and a stale safety-net timer could fire on a hidden window.
@@ -1147,6 +1148,18 @@ impl Launcher {
         self.widget_registry = WidgetRegistry::from_theme(&theme.widgets);
         self.button_hotkeys = self.widget_registry.button_hotkeys();
         self.theme = Arc::new(theme);
+
+        self.pango_cache.borrow_mut().clear();
+        self.sticky_metatags = None;
+        crate::sys::gpu::trim_gpu_memory();
+
+        // Start reveal dance so the UI doesn't stutter or show half-rendered
+        // frames while transitioning to the new theme's dimensions.
+        crate::sys::appkit::set_window_alpha(0.0);
+        self.pending_reveal = true;
+        self.reveal_wait_frames = 0;
+        crate::sys::appkit::arm_reveal_safety_net(120);
+
         self.font_fallbacks = super::helpers::font_fallback_families(&self.theme.font.fallback);
         let (root_font, inputbar_font, element_font_val, mono_font) =
             Self::build_fonts(self.theme.as_ref(), &self.font_fallbacks);
