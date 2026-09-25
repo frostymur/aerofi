@@ -390,7 +390,7 @@ children = [
 ```toml
 [inputbar]
 height = 46.0
-padding = [10.0, 14.0]               # [left/right, top/bottom]
+padding = [10.0, 14.0]               # [top/bottom, left/right]
 margin = [0.0, 0.0, 8.0, 0.0]        # [top, right, bottom, left]
 background = "$surface"
 text_color = "$text"

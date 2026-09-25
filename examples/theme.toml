@@ -125,9 +125,6 @@ y_offset = 0.0
 # `window_width` (points or "XX%"); the window resizes when the script's
 # Rofi view opens/closes.
 #
-# Note: preset `padding` uses [vertical, horizontal] — the opposite order
-# of the base [element].padding ([horizontal, vertical]).
-#
 # [presets.emoji]
 # window_width = 640.0
 # [presets.emoji.element]
@@ -177,9 +174,9 @@ children = [
 # Type: Float (f32)
 height = 46.0
 
-# Inner padding: [horizontal, vertical].
+# Inner padding: [vertical, horizontal].
 # Type: Array of Floats (f32)
-padding = [14.0, 10.0]
+padding = [10.0, 14.0]
 
 # Outer margin around inputbar: [top, right, bottom, left].
 # Type: Array of Floats (f32)
@@ -273,9 +270,9 @@ border_color = "$accent"
 # [element] - List Row Elements
 # ------------------------------------------------------------------------------
 [element]
-# Padding inside each row: [horizontal, vertical].
+# Padding inside each row: [vertical, horizontal].
 # Type: Array of Floats (f32)
-padding = [12.0, 8.0]
+padding = [8.0, 12.0]
 
 # Corner radius for each row capsule.
 # Type: Float (f32)
@@ -377,7 +374,7 @@ error_dot = "$urgent"
 # type = "box"
 # orientation = "horizontal"   # "horizontal" | "vertical"
 # gap = 8.0                    # spacing between children (points)
-# padding = [8.0, 4.0]         # [horizontal, vertical]
+# padding = [4.0, 8.0]         # [vertical, horizontal]
 # align = "center"             # "left" | "center" | "end"
 # background = "$surface"      # Hex / $alias
 # radius = 8.0
@@ -434,7 +431,7 @@ error_dot = "$urgent"
 # border_color = "$border"
 # border_width = 1.0
 # radius = 6.0
-# padding = [4.0, 8.0]          # [horizontal, vertical]
+# padding = [4.0, 8.0]          # [vertical, horizontal]
 # font_size = 11.0
 # font_weight = "medium"
 # gap = 4.0                     # icon-text gap

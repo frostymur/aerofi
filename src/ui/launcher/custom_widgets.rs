@@ -310,8 +310,8 @@ impl Launcher {
         }
 
         if let Some(pad) = padding {
-            let h = pad.first().copied().unwrap_or(0.0);
-            let v = pad.get(1).copied().unwrap_or(h);
+            let v = pad.first().copied().unwrap_or(0.0);
+            let h = pad.get(1).copied().unwrap_or(v);
             container = container.px(px(h)).py(px(v));
         }
 
@@ -397,8 +397,8 @@ impl Launcher {
             .justify_center();
 
         if let Some(pad) = padding {
-            let h = pad.first().copied().unwrap_or(8.0);
-            let v = pad.get(1).copied().unwrap_or(h);
+            let v = pad.first().copied().unwrap_or(4.0);
+            let h = pad.get(1).copied().unwrap_or(v);
             btn = btn.px(px(h)).py(px(v));
         } else {
             btn = btn.px(px(8.0)).py(px(4.0));

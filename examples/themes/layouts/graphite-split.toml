@@ -93,6 +93,6 @@ type = "box"
 orientation = "vertical"
 flex = true
 gap = 8.0
-padding = [16.0, 10.0]
+padding = [10.0, 16.0]
 background = "$bg"
 children = ["InputBar", "ListView"]

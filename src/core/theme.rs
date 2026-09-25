@@ -410,7 +410,7 @@ pub struct ScriptViewConfig {
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct PresetElementOverride {
-    /// Override `[element].padding` — `[vertical, horizontal]`.
+    /// Override `[element].padding` — `[horizontal, vertical]`.
     pub padding: Option<Vec<f32>>,
     /// Override `[element].icon_size`.
     pub icon_size: Option<f32>,

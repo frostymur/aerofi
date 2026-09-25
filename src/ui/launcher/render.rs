@@ -73,7 +73,7 @@ impl Render for Launcher {
                         ib_height
                     };
                     if should_show_list {
-                        let item_h = t.element.padding.get(1).copied().unwrap_or(12.0) * 2.0
+                        let item_h = t.element.padding.first().copied().unwrap_or(8.0) * 2.0
                             + t.element.icon_size;
                         let list_h = (self.filtered.len() as f32) * (item_h + t.listview.spacing);
                         let total = ib_h + margin_bottom + list_h + pad_v * 2.0;
@@ -375,8 +375,8 @@ impl Launcher {
         let font_sz = self.inputbar_font.1;
         let char_w = font_sz * 0.6;
 
-        let pad_h = ib.padding.first().copied().unwrap_or(12.0);
-        let pad_v = ib.padding.get(1).copied().unwrap_or(16.0);
+        let pad_v = ib.padding.first().copied().unwrap_or(10.0);
+        let pad_h = ib.padding.get(1).copied().unwrap_or(14.0);
         let win_w = t.window.width.resolve(screen_w).min(screen_w);
         // Bar inner width minus the icon box, gaps, and window/bar padding.
         let icon_w = (ib.height - pad_v * 2.0).max(0.0);
@@ -584,8 +584,8 @@ impl Launcher {
         let icon_label = ib.icon.as_deref().unwrap_or("❯");
         let icon_color = ib.icon_color.as_deref().unwrap_or(&ib.text_color);
 
-        let padding_h = ib.padding.first().copied().unwrap_or(12.0);
-        let padding_v = ib.padding.get(1).copied().unwrap_or(16.0);
+        let padding_v = ib.padding.first().copied().unwrap_or(10.0);
+        let padding_h = ib.padding.get(1).copied().unwrap_or(14.0);
         let margin_bottom = ib.margin.get(2).copied().unwrap_or(8.0);
 
         // Argument chips wrap onto multiple rows in narrow bars, so the bar
@@ -777,8 +777,8 @@ impl Launcher {
 
         let icon_label = ib.icon.as_deref().unwrap_or("❯");
         let icon_color = ib.icon_color.as_deref().unwrap_or(&ib.text_color);
-        let padding_h = ib.padding.first().copied().unwrap_or(12.0);
-        let padding_v = ib.padding.get(1).copied().unwrap_or(16.0);
+        let padding_v = ib.padding.first().copied().unwrap_or(10.0);
+        let padding_h = ib.padding.get(1).copied().unwrap_or(14.0);
         let margin_bottom = ib.margin.get(2).copied().unwrap_or(8.0);
 
         let is_image = is_image_path(icon_label);
@@ -874,12 +874,12 @@ impl Launcher {
                 .rofi_layout()
                 .and_then(|name| t.presets.get(name))
                 .map(|m| &m.element);
-            let pad_h = mode_el
-                .and_then(|m| m.padding.as_deref().and_then(|p| p.get(1).copied()))
-                .unwrap_or_else(|| el.padding.get(1).copied().unwrap_or(12.0));
             let pad_v_el = mode_el
                 .and_then(|m| m.padding.as_deref().and_then(|p| p.first().copied()))
                 .unwrap_or_else(|| el.padding.first().copied().unwrap_or(8.0));
+            let pad_h = mode_el
+                .and_then(|m| m.padding.as_deref().and_then(|p| p.get(1).copied()))
+                .unwrap_or_else(|| el.padding.get(1).copied().unwrap_or(12.0));
             let icon_size = px(mode_el.and_then(|m| m.icon_size).unwrap_or(el.icon_size));
             let rofi_radius = mode_el
                 .and_then(|m| m.corner_radius)
@@ -1367,12 +1367,12 @@ impl Launcher {
             .and_then(|name| t.presets.get(name))
             .map(|m| &m.element);
         let icon_size = px(mode_el.and_then(|m| m.icon_size).unwrap_or(el.icon_size));
-        let pad_h = mode_el
-            .and_then(|m| m.padding.as_deref().and_then(|p| p.get(1).copied()))
-            .unwrap_or_else(|| el.padding.get(1).copied().unwrap_or(12.0));
         let pad_v = mode_el
             .and_then(|m| m.padding.as_deref().and_then(|p| p.first().copied()))
             .unwrap_or_else(|| el.padding.first().copied().unwrap_or(8.0));
+        let pad_h = mode_el
+            .and_then(|m| m.padding.as_deref().and_then(|p| p.get(1).copied()))
+            .unwrap_or_else(|| el.padding.get(1).copied().unwrap_or(12.0));
         let rofi_radius = mode_el
             .and_then(|m| m.corner_radius)
             .unwrap_or(el.corner_radius);
@@ -2148,9 +2148,9 @@ impl Launcher {
             div().into_any()
         };
 
-        // `[element].padding` is `[horizontal, vertical]` (see `render_row`).
-        let pad_h = el.padding.first().copied().unwrap_or(8.0);
-        let pad_v = el.padding.get(1).copied().unwrap_or(10.0);
+        // `[element].padding` is `[vertical, horizontal]`.
+        let pad_v = el.padding.first().copied().unwrap_or(8.0);
+        let pad_h = el.padding.get(1).copied().unwrap_or(12.0);
         // Shrink padding by border width on the selected cell so the total
         // cell height stays constant.
         let effective_pad_v = if is_selected && el.border_width > 0.0 {
@@ -2247,10 +2247,9 @@ impl Launcher {
             ))
         };
 
-        // `[element].padding` is `[horizontal, vertical]` — the order every
-        // shipped theme is written in.
-        let pad_h = el.padding.first().copied().unwrap_or(8.0);
-        let pad_v = el.padding.get(1).copied().unwrap_or(12.0);
+        // `[element].padding` is `[vertical, horizontal]` — standard CSS order.
+        let pad_v = el.padding.first().copied().unwrap_or(8.0);
+        let pad_h = el.padding.get(1).copied().unwrap_or(12.0);
 
         // When a border is drawn, shrink padding by the same amount so the
         // total row height (content + padding + border) stays constant.
