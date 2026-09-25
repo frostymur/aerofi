@@ -29,6 +29,24 @@ macro_rules! apply_margin {
     };
 }
 
+/// Apply padding to `$el` from an optional array. Mirrors `apply_margin!`:
+/// one value = all sides, two = `[vertical, horizontal]`, four =
+/// `[top, right, bottom, left]`. Any other length is ignored.
+macro_rules! apply_padding {
+    ($el:expr, $padding:expr) => {
+        if let Some(p) = $padding {
+            match p.len() {
+                1 => $el.p(px(p[0])),
+                2 => $el.py(px(p[0])).px(px(p[1])),
+                4 => $el.pt(px(p[0])).pr(px(p[1])).pb(px(p[2])).pl(px(p[3])),
+                _ => $el,
+            }
+        } else {
+            $el
+        }
+    };
+}
+
 /// Apply a border to `el`. `width` sets all four sides as the default; the
 /// per-side overrides (`top`/`right`/`bottom`/`left`) take precedence where
 /// they are `Some`. `color` tints every visible side (GPUI uses a single
@@ -460,11 +478,7 @@ impl Launcher {
             container = container.gap(px(g));
         }
 
-        if let Some(pad) = padding {
-            let v = pad.first().copied().unwrap_or(0.0);
-            let h = pad.get(1).copied().unwrap_or(v);
-            container = container.px(px(h)).py(px(v));
-        }
+        container = apply_padding!(container, padding);
 
         container = match align {
             Some("center") => container.items_center(),
@@ -565,11 +579,9 @@ impl Launcher {
             .items_center()
             .justify_center();
 
-        if let Some(pad) = padding {
-            let v = pad.first().copied().unwrap_or(4.0);
-            let h = pad.get(1).copied().unwrap_or(v);
-            btn = btn.px(px(h)).py(px(v));
-        } else {
+        btn = apply_padding!(btn, padding);
+        if padding.is_none() {
+            // Default button padding: 8pt horizontal, 4pt vertical.
             btn = btn.px(px(8.0)).py(px(4.0));
         }
 

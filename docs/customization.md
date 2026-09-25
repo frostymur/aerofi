@@ -541,6 +541,8 @@ Widgets are defined either using table syntax `[widgets.<id>]` or array syntax `
 | **`button`** | Clickable action button | `text`, `icon`, `action` (target name), `hotkey`, `close` (default `true`; set `false` to keep the launcher open after the action), `background`, `hover_background`, `hover_color`, `color`, `border_color`, `border_width`, `border_top`/`border_right`/`border_bottom`/`border_left`, `shadow`, `radius`, `padding`, `margin`, `font_size`, `font_weight`, `gap` |
 
 > [!TIP]
+> **Spacing** — `margin` and `padding` both accept a 1-, 2-, or 4-value array: one value applies to all sides, two are `[vertical, horizontal]`, and four are `[top, right, bottom, left]`. A `divider`'s `margin` is a single number applied vertically only.
+>
 > **Borders & per-side control** — `border_width` sets all four sides at once (a border only renders when a side's effective width is `> 0`). To style just one edge (a header's bottom rule, a card's top accent, …), set `border_top`/`border_right`/`border_bottom`/`border_left`; each overrides that single side while the others fall back to `border_width`. `border_color` tints every visible side (GPUI uses a single border colour). On a `button`, a `border_color` with no width still implies a 1px border.
 >
 > **Shadows** — `shadow = true` adds a soft drop shadow (`shadow_md`) under `box`, `image`, and `button` widgets, useful for floating panels and cards on a frosted window.

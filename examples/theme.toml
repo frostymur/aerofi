@@ -371,8 +371,9 @@ error_dot = "$urgent"
 # type = "box"
 # orientation = "horizontal"   # "horizontal" | "vertical"
 # gap = 8.0                    # spacing between children (points)
-# padding = [4.0, 8.0]         # [vertical, horizontal]
-# margin = [4.0, 0.0]          # [vertical, horizontal] (outer spacing)
+# padding = [4.0, 8.0]         # 1 = all, 2 = [v,h], 4 = [t,r,b,l]
+# margin = [4.0, 0.0]          # outer spacing. 1 value = all sides,
+#                              # 2 = [vertical, horizontal], 4 = [t,r,b,l]
 # align = "center"             # "left" | "center" | "end"
 # background = "$surface"      # Hex / $alias
 # radius = 8.0
@@ -429,7 +430,7 @@ error_dot = "$urgent"
 # type = "divider"
 # color = "$border"
 # thickness = 1.0
-# margin = 8.0                  # shorthand for [vertical, horizontal]
+# margin = 8.0                  # vertical spacing above/below (points)
 #
 # [widgets.example_button]
 # type = "button"
@@ -451,7 +452,7 @@ error_dot = "$urgent"
 # border_left = 0.0
 # shadow = true                 # drop shadow
 # radius = 6.0
-# padding = [4.0, 8.0]          # [vertical, horizontal]
+# padding = [4.0, 8.0]          # 1 = all, 2 = [v,h], 4 = [t,r,b,l]
 # margin = [4.0, 0.0]           # [vertical, horizontal]
 # font_size = 11.0
 # font_weight = "medium"

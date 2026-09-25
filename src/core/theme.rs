@@ -1613,7 +1613,7 @@ orientation = "horizontal"
             type = "box"
             orientation = "horizontal"
             gap = 8.0
-            padding = [8.0, 12.0]
+            padding = [4.0, 8.0, 12.0, 16.0]
             children = ["logo", "greeting", "flex", "btn"]
         "##;
 
@@ -1692,9 +1692,17 @@ orientation = "horizontal"
         }
 
         // Verify Box children
-        if let WidgetDef::Box { children, gap, .. } = &parsed.widgets[7] {
+        if let WidgetDef::Box {
+            children,
+            gap,
+            padding,
+            ..
+        } = &parsed.widgets[7]
+        {
             assert_eq!(children, &["logo", "greeting", "flex", "btn"]);
             assert_eq!(*gap, Some(8.0));
+            // Padding accepts a 4-value `[top, right, bottom, left]` array.
+            assert_eq!(padding.as_deref(), Some(&[4.0, 8.0, 12.0, 16.0][..]));
         } else {
             panic!("expected Box widget");
         }
