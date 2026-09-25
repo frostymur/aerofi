@@ -81,18 +81,15 @@ pub enum WidgetDef {
         width: Option<f32>,
         height: Option<f32>,
         radius: Option<f32>,
-        /// Stretch the image across the container's full width (overrides
-        /// `width`). Pair with a fixed `height` for banner-style images.
         #[serde(default)]
         w_full: Option<bool>,
-        /// Stretch the image across the container's full height (overrides
-        /// `height`). With `w_full` the image cover-fills the container at
-        /// any window size — the artwork-pane use case.
         #[serde(default)]
         h_full: Option<bool>,
         margin: Option<Vec<f32>>,
         border_color: Option<String>,
         border_width: Option<f32>,
+        #[serde(default)]
+        shadow: Option<bool>,
     },
     Spacer {
         #[serde(default)]
@@ -117,6 +114,8 @@ pub enum WidgetDef {
         radius: Option<f32>,
         border_color: Option<String>,
         border_width: Option<f32>,
+        #[serde(default)]
+        shadow: Option<bool>,
         width: Option<f32>,
         height: Option<f32>,
         flex: Option<bool>,
@@ -136,6 +135,8 @@ pub enum WidgetDef {
         hover_color: Option<String>,
         border_color: Option<String>,
         border_width: Option<f32>,
+        #[serde(default)]
+        shadow: Option<bool>,
         radius: Option<f32>,
         padding: Option<Vec<f32>>,
         margin: Option<Vec<f32>>,
@@ -1721,6 +1722,7 @@ orientation = "horizontal"
             hover_color: None,
             border_color: None,
             border_width: None,
+            shadow: None,
             radius: None,
             padding: None,
             margin: None,

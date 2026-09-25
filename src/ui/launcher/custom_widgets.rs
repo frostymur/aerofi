@@ -102,6 +102,7 @@ impl Launcher {
                 margin,
                 border_color,
                 border_width,
+                shadow,
                 ..
             } => self.render_widget_image(
                 path,
@@ -113,6 +114,7 @@ impl Launcher {
                 margin.as_deref(),
                 border_color.as_deref(),
                 *border_width,
+                *shadow,
             ),
             WidgetDef::Spacer { .. } => self.render_widget_spacer(),
             WidgetDef::Divider {
@@ -131,6 +133,7 @@ impl Launcher {
                 radius,
                 border_color,
                 border_width,
+                shadow,
                 width,
                 height,
                 flex,
@@ -146,6 +149,7 @@ impl Launcher {
                 *radius,
                 border_color.as_deref(),
                 *border_width,
+                *shadow,
                 *width,
                 *height,
                 *flex,
@@ -165,6 +169,7 @@ impl Launcher {
                 hover_color,
                 border_color,
                 border_width,
+                shadow,
                 radius,
                 padding,
                 margin,
@@ -184,6 +189,7 @@ impl Launcher {
                 hover_color.as_deref(),
                 border_color.as_deref(),
                 *border_width,
+                *shadow,
                 *radius,
                 padding.as_deref(),
                 margin.as_deref(),
@@ -283,6 +289,7 @@ impl Launcher {
         margin: Option<&[f32]>,
         border_color: Option<&str>,
         border_width: Option<f32>,
+        shadow: Option<bool>,
     ) -> gpui::AnyElement {
         let resolved = expand_tilde_path(path);
         let mut el = img(std::path::PathBuf::from(resolved));
@@ -307,6 +314,9 @@ impl Launcher {
             if let Some(bc) = border_color.and_then(parse_hex_color_alpha) {
                 el = el.border_color(rgba(bc));
             }
+        }
+        if shadow.unwrap_or(false) {
+            el = el.shadow_md();
         }
 
         apply_margin!(el.object_fit(gpui::ObjectFit::Cover), margin).into_any()
@@ -344,6 +354,7 @@ impl Launcher {
         radius: Option<f32>,
         border_color: Option<&str>,
         border_width: Option<f32>,
+        shadow: Option<bool>,
         width: Option<f32>,
         height: Option<f32>,
         flex: Option<bool>,
@@ -401,6 +412,9 @@ impl Launcher {
                 container = container.border_color(rgba(bc));
             }
         }
+        if shadow.unwrap_or(false) {
+            container = container.shadow_md();
+        }
 
         // Recurse into children: supports built-ins (InputBar, ListView) as well as custom widgets.
         for child_id in children {
@@ -446,6 +460,7 @@ impl Launcher {
         hover_color: Option<&str>,
         border_color: Option<&str>,
         border_width: Option<f32>,
+        shadow: Option<bool>,
         radius: Option<f32>,
         padding: Option<&[f32]>,
         margin: Option<&[f32]>,
@@ -506,6 +521,9 @@ impl Launcher {
         if let Some(bc) = border_color.and_then(parse_hex_color) {
             let bw = border_width.unwrap_or(1.0);
             btn = btn.border(px(bw)).border_color(rgb(bc));
+        }
+        if shadow.unwrap_or(false) {
+            btn = btn.shadow_md();
         }
 
         let sz = font_size.unwrap_or(t.font.size);

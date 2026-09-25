@@ -378,6 +378,7 @@ error_dot = "$urgent"
 # radius = 8.0
 # border_color = "$border"     # requires border_width > 0
 # border_width = 1.0
+# shadow = true                # drop shadow (Tailwind shadow_md style)
 # width = 400.0                # fixed size (points); unset = content-sized
 # height = 24.0
 # flex = true                  # expand to fill the remaining space
@@ -410,6 +411,7 @@ error_dot = "$urgent"
 # h_full = true               # stretch to fill the container's height
 # border_color = "$border"
 # border_width = 1.0
+# shadow = true               # drop shadow
 # margin = [4.0, 0.0]         # [vertical, horizontal]
 #
 # [widgets.example_spacer]
@@ -435,6 +437,7 @@ error_dot = "$urgent"
 # hover_color = "$accent"
 # border_color = "$border"
 # border_width = 1.0
+# shadow = true                 # drop shadow
 # radius = 6.0
 # padding = [4.0, 8.0]          # [vertical, horizontal]
 # margin = [4.0, 0.0]           # [vertical, horizontal]

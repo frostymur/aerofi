@@ -532,13 +532,13 @@ Widgets are defined either using table syntax `[widgets.<id>]` or array syntax `
 
 | Type | Description | Key Properties |
 |---|---|---|
-| **`box`** | Container for grouping widgets | `orientation` ("horizontal" / "vertical"), `gap`, `padding`, `margin`, `align` ("left", "center", "end"), `background`, `radius`, `border_color`, `border_width`, `width`, `height`, `flex`, `children` |
+| **`box`** | Container for grouping widgets | `orientation` ("horizontal" / "vertical"), `gap`, `padding`, `margin`, `align` ("left", "center", "end"), `background`, `radius`, `border_color`, `border_width`, `shadow` (drop shadow), `width`, `height`, `flex`, `children` |
 | **`text`** | Static typography label | `text`, `color`, `font_size`, `font_weight` (name or number 100–900), `align`, `margin` |
 | **`icon`** | Symbol or emoji | `icon`, `size`, `color`, `margin` |
-| **`image`** | Image asset | `path`, `width`, `height`, `radius`, `w_full`, `h_full` (stretch to fill the container, overriding fixed pixel dimensions), `margin`, `border_color`, `border_width` |
+| **`image`** | Image asset | `path`, `width`, `height`, `radius`, `w_full`, `h_full` (stretch to fill the container, overriding fixed pixel dimensions), `margin`, `border_color`, `border_width`, `shadow` |
 | **`spacer`** | Flexible expanding space | Expands horizontally or vertically to push siblings apart |
 | **`divider`** | Separator rule | `color`, `thickness`, `margin` |
-| **`button`** | Clickable action button | `text`, `icon`, `action` (target name), `hotkey`, `close` (default `true`; set `false` to keep the launcher open after the action), `background`, `hover_background`, `hover_color`, `color`, `border_color`, `border_width`, `radius`, `padding`, `margin`, `font_size`, `font_weight`, `gap` |
+| **`button`** | Clickable action button | `text`, `icon`, `action` (target name), `hotkey`, `close` (default `true`; set `false` to keep the launcher open after the action), `background`, `hover_background`, `hover_color`, `color`, `border_color`, `border_width`, `shadow`, `radius`, `padding`, `margin`, `font_size`, `font_weight`, `gap` |
 
 ---
 
