@@ -141,6 +141,12 @@ pub fn set_corner_radius(corner_radius: f32) {
 thread_local! {
     static CENTER_OFFSET: std::cell::RefCell<(f64, f64)> =
         const { std::cell::RefCell::new((0.0, 0.0)) };
+    /// When `Some(h)`, the window's *top* edge is pinned to where a window of
+    /// height `h` would sit if centred — so a variable-height window grows and
+    /// shrinks *downward* instead of its top (the search bar) bobbing as the
+    /// height changes. `None` centres the window normally.
+    static ANCHOR_TOP_HEIGHT: std::cell::RefCell<Option<f64>> =
+        const { std::cell::RefCell::new(None) };
 }
 
 /// Synchronously set the NSWindow's content size.
@@ -388,12 +394,13 @@ pub fn screen_height() -> f32 {
 /// queues the resize for after the render pass. Both the caller and the
 /// trampoline run on the main thread, so `CENTER_OFFSET` carries the
 /// offsets without a heap allocation.
-pub fn center_window(x_offset: f64, y_offset: f64) {
+pub fn center_window(x_offset: f64, y_offset: f64, anchor_height: Option<f64>) {
     let ptr = NS_WINDOW.load(Ordering::SeqCst);
     if ptr.is_null() {
         return;
     }
     CENTER_OFFSET.with(|o| *o.borrow_mut() = (x_offset, y_offset));
+    ANCHOR_TOP_HEIGHT.with(|a| *a.borrow_mut() = anchor_height);
     // GCD trampoline — dispatch_async on the main queue defers this until
     // after the current run-loop iteration (i.e. after GPUI's resize fires).
     extern "C" fn do_center(ctx: *mut std::ffi::c_void) {
@@ -416,12 +423,27 @@ pub fn center_window(x_offset: f64, y_offset: f64) {
                 let screen_frame: NSRect = msg_send![screen, frame];
                 let window_frame: NSRect = msg_send![ns_window, frame];
                 let (ox, oy) = CENTER_OFFSET.with(|o| *o.borrow());
+                let anchor_h = ANCHOR_TOP_HEIGHT.with(|a| *a.borrow());
                 let new_x = screen_frame.origin.x
                     + (screen_frame.size.width - window_frame.size.width) / 2.0
                     + ox;
-                let new_y = screen_frame.origin.y
-                    + (screen_frame.size.height - window_frame.size.height) / 2.0
-                    + oy;
+                // Cocoa y grows upward from the screen's bottom edge, and
+                // `setFrameOrigin` sets the window's *bottom* corner. Centring
+                // on the current height makes the top edge move as the window
+                // resizes; when an anchor height is set, pin the top edge to
+                // the centred position of that height so the window grows
+                // downward and top-pinned content (the search bar) stays put.
+                let new_y = match anchor_h {
+                    Some(h) => {
+                        screen_frame.origin.y + (screen_frame.size.height + h) / 2.0 + oy
+                            - window_frame.size.height
+                    }
+                    None => {
+                        screen_frame.origin.y
+                            + (screen_frame.size.height - window_frame.size.height) / 2.0
+                            + oy
+                    }
+                };
                 let new_origin = NSPoint::new(new_x, new_y);
                 let _: () = msg_send![ns_window, setFrameOrigin: new_origin];
             } else {

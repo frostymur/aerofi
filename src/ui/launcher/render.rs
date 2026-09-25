@@ -108,7 +108,28 @@ impl Render for Launcher {
         }
         if self.needs_center || size_changed {
             self.needs_center = false;
-            crate::sys::appkit::center_window(t.window.x_offset as f64, t.window.y_offset as f64);
+            // In `require_input` search states the window height tracks the
+            // result count, so centring it would make the search bar bob up
+            // and down on every keystroke. Anchor the top edge to the
+            // centred position of the nominal height instead, so the search
+            // bar stays exactly where it is in the non-require_input theme
+            // and the window grows/shrinks downward.
+            let is_search_state = matches!(
+                &self.state,
+                LauncherState::Search
+                    | LauncherState::ArgumentInput { .. }
+                    | LauncherState::Confirming { .. }
+            );
+            let anchor_height = if require_input && is_search_state {
+                Some(t.window.height.resolve(screen_h) as f64)
+            } else {
+                None
+            };
+            crate::sys::appkit::center_window(
+                t.window.x_offset as f64,
+                t.window.y_offset as f64,
+                anchor_height,
+            );
         }
         // Reveal the window once a size transition (search ↔ Rofi) has fully
         // landed: `pending_reveal` was set when the window was dropped to
