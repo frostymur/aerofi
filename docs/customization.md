@@ -294,9 +294,8 @@ border_color = "$border"
 x_offset = 0.0
 y_offset = -40.0
 
-# Optional background image:
+# Optional background image (covers the full window):
 # background_image = "~/.config/aerofi/themes/wallpaper.jpg"
-# background_position = "cover" # "cover" (default), "left", "right"
 ```
 
 ### Full-Window Script View (`[script_view]`)

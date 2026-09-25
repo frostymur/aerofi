@@ -355,10 +355,6 @@ pub struct WindowConfig {
     pub y_offset: f32,
     pub background: String,
     pub background_image: Option<String>,
-    /// Position of the background image: `"cover"` (full background),
-    /// `"left"`, or `"right"` (image as a side panel). Unknown values fall
-    /// back to `"cover"`.
-    pub background_position: Option<String>,
     pub blur: bool,
     /// Window background opacity: `1.0` = fully opaque, `0.0` = fully
     /// transparent. The default (0.80) keeps enough of the dark background
@@ -379,7 +375,6 @@ impl Default for WindowConfig {
             y_offset: 0.0,
             background: "#1a1a1a".to_string(),
             background_image: None,
-            background_position: None,
             blur: true,
             background_opacity: Some(0.80),
             corner_radius: 16.0,

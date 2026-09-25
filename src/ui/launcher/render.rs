@@ -261,49 +261,13 @@ impl Render for Launcher {
         match t.window.background_image.as_deref() {
             Some(bg_path) => {
                 let resolved = expand_tilde_path(bg_path);
-                let position = t.window.background_position.as_deref().unwrap_or("cover");
-                match position {
-                    "left" => {
-                        root = root.child(
-                            div()
-                                .flex()
-                                .flex_row()
-                                .size_full()
-                                .child(
-                                    img(std::path::PathBuf::from(&resolved))
-                                        .h_full()
-                                        .w(px(t.window.width.resolve(screen_w) * 0.4))
-                                        .object_fit(gpui::ObjectFit::Cover),
-                                )
-                                .child(content.flex_1()),
-                        );
-                    }
-                    "right" => {
-                        root = root.child(
-                            div()
-                                .flex()
-                                .flex_row()
-                                .size_full()
-                                .child(content.flex_1())
-                                .child(
-                                    img(std::path::PathBuf::from(&resolved))
-                                        .h_full()
-                                        .w(px(t.window.width.resolve(screen_w) * 0.4))
-                                        .object_fit(gpui::ObjectFit::Cover),
-                                ),
-                        );
-                    }
-                    _ => {
-                        // "cover" or unknown: full background
-                        root = root.child(
-                            img(std::path::PathBuf::from(&resolved))
-                                .absolute()
-                                .size_full()
-                                .object_fit(gpui::ObjectFit::Cover),
-                        );
-                        root = root.child(content);
-                    }
-                }
+                root = root.child(
+                    img(std::path::PathBuf::from(&resolved))
+                        .absolute()
+                        .size_full()
+                        .object_fit(gpui::ObjectFit::Cover),
+                );
+                root = root.child(content);
             }
             None => {
                 root = root.child(content);

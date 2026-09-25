@@ -92,11 +92,8 @@ border_color = "$border"
 x_offset = 0.0
 y_offset = 0.0
 
-# Optional background image overlay:
+# Optional background image overlay (covers the full window):
 # background_image = "~/.config/aerofi/themes/wallpaper.jpg"
-# Position: "cover" (full background), "left" or "right" (side panel).
-# Unknown values fall back to "cover".
-# background_position = "cover"
 
 
 # ------------------------------------------------------------------------------
