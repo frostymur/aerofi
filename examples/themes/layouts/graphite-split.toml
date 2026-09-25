@@ -84,8 +84,8 @@ children = ["art_image"]
 [widgets.art_image]
 type = "image"
 path = "./themes/images/chainsawman_sketch.jpg"
-width = 380.0
-height = 480.0
+w_full = true
+h_full = true
 
 # Right pane: solid graphite background, search bar on top, list below.
 [widgets.right_panel]

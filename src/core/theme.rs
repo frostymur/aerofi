@@ -30,7 +30,6 @@ pub enum Widget {
 pub enum BuiltinWidget {
     InputBar,
     ListView,
-    Banner,
 }
 
 /// Deserialise a `BuiltinWidget` from its case-sensitive name.
@@ -42,9 +41,8 @@ where
     match s.as_str() {
         "InputBar" => Ok(BuiltinWidget::InputBar),
         "ListView" => Ok(BuiltinWidget::ListView),
-        "Banner" => Ok(BuiltinWidget::Banner),
         _ => Err(serde::de::Error::custom(format!(
-            "unknown builtin widget: {s} (valid: InputBar, ListView, Banner)"
+            "unknown builtin widget: {s} (valid: InputBar, ListView)"
         ))),
     }
 }
@@ -81,6 +79,15 @@ pub enum WidgetDef {
         width: Option<f32>,
         height: Option<f32>,
         radius: Option<f32>,
+        /// Stretch the image across the container's full width (overrides
+        /// `width`). Pair with a fixed `height` for banner-style images.
+        #[serde(default)]
+        w_full: Option<bool>,
+        /// Stretch the image across the container's full height (overrides
+        /// `height`). With `w_full` the image cover-fills the container at
+        /// any window size — the artwork-pane use case.
+        #[serde(default)]
+        h_full: Option<bool>,
     },
     Spacer {
         #[serde(default)]
@@ -348,8 +355,9 @@ pub struct WindowConfig {
     pub y_offset: f32,
     pub background: String,
     pub background_image: Option<String>,
-    /// Position of the background image: `"cover"` (full), `"left"`,
-    /// `"right"`, or `"center"`.
+    /// Position of the background image: `"cover"` (full background),
+    /// `"left"`, or `"right"` (image as a side panel). Unknown values fall
+    /// back to `"cover"`.
     pub background_position: Option<String>,
     pub blur: bool,
     /// Window background opacity: `1.0` = fully opaque, `0.0` = fully
@@ -455,26 +463,6 @@ impl Default for ContainerConfig {
                 Widget::Builtin(BuiltinWidget::ListView),
             ],
             gap: None,
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Banner
-// ---------------------------------------------------------------------------
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(default)]
-pub struct BannerConfig {
-    pub image_path: Option<String>,
-    pub height: f32,
-}
-
-impl Default for BannerConfig {
-    fn default() -> Self {
-        Self {
-            image_path: None,
-            height: 120.0,
         }
     }
 }
@@ -750,7 +738,6 @@ pub struct ThemeConfig {
     pub script_view: ScriptViewConfig,
     pub presets: PresetsConfig,
     pub mainbox: ContainerConfig,
-    pub banner: Option<BannerConfig>,
     pub inputbar: InputBarConfig,
     pub listview: ListViewConfig,
     pub element: ElementConfig,
@@ -778,7 +765,6 @@ impl Default for ThemeConfig {
             script_view: ScriptViewConfig::default(),
             presets: PresetsConfig::default(),
             mainbox: ContainerConfig::default(),
-            banner: None,
             inputbar: InputBarConfig::default(),
             listview: ListViewConfig::default(),
             element: ElementConfig::default(),
@@ -1573,6 +1559,14 @@ orientation = "horizontal"
             radius = 24.0
 
             [[widgets]]
+            id = "banner_img"
+            type = "image"
+            path = "~/.config/aerofi/themes/banner.jpg"
+            radius = 8.0
+            w_full = true
+            h_full = true
+
+            [[widgets]]
             id = "btn"
             type = "button"
             icon = "⚡"
@@ -1602,14 +1596,45 @@ orientation = "horizontal"
             widgets: Vec<WidgetDef>,
         }
         let parsed: Partial = toml::from_str(toml).expect("should parse");
-        assert_eq!(parsed.widgets.len(), 7);
+        assert_eq!(parsed.widgets.len(), 8);
         assert_eq!(parsed.widgets[0].id(), "greeting");
         assert_eq!(parsed.widgets[1].id(), "logo");
         assert_eq!(parsed.widgets[2].id(), "flex");
         assert_eq!(parsed.widgets[3].id(), "sep");
         assert_eq!(parsed.widgets[4].id(), "avatar");
-        assert_eq!(parsed.widgets[5].id(), "btn");
-        assert_eq!(parsed.widgets[6].id(), "header");
+        assert_eq!(parsed.widgets[5].id(), "banner_img");
+        assert_eq!(parsed.widgets[6].id(), "btn");
+        assert_eq!(parsed.widgets[7].id(), "header");
+
+        // Image widget: fixed size (w_full absent) and full-width variant.
+        if let WidgetDef::Image {
+            width,
+            w_full,
+            h_full,
+            ..
+        } = &parsed.widgets[4]
+        {
+            assert_eq!(*width, Some(48.0));
+            assert_eq!(*w_full, None);
+            assert_eq!(*h_full, None);
+        } else {
+            panic!("expected Image widget");
+        }
+        if let WidgetDef::Image {
+            width,
+            height,
+            w_full,
+            h_full,
+            ..
+        } = &parsed.widgets[5]
+        {
+            assert_eq!(*width, None);
+            assert_eq!(*height, None);
+            assert_eq!(*w_full, Some(true));
+            assert_eq!(*h_full, Some(true));
+        } else {
+            panic!("expected Image widget");
+        }
 
         // Verify Button widget
         if let WidgetDef::Button {
@@ -1618,7 +1643,7 @@ orientation = "horizontal"
             text,
             radius,
             ..
-        } = &parsed.widgets[5]
+        } = &parsed.widgets[6]
         {
             assert_eq!(action.as_deref(), Some("reload"));
             assert_eq!(icon.as_deref(), Some("⚡"));
@@ -1629,7 +1654,7 @@ orientation = "horizontal"
         }
 
         // Verify Box children
-        if let WidgetDef::Box { children, gap, .. } = &parsed.widgets[6] {
+        if let WidgetDef::Box { children, gap, .. } = &parsed.widgets[7] {
             assert_eq!(children, &["logo", "greeting", "flex", "btn"]);
             assert_eq!(*gap, Some(8.0));
         } else {

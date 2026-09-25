@@ -94,7 +94,8 @@ y_offset = 0.0
 
 # Optional background image overlay:
 # background_image = "~/.config/aerofi/themes/wallpaper.jpg"
-# Position: "cover", "left", "right", or "center"
+# Position: "cover" (full background), "left" or "right" (side panel).
+# Unknown values fall back to "cover".
 # background_position = "cover"
 
 
@@ -153,7 +154,6 @@ orientation = "vertical"
 # Built-in identifiers:
 #   "InputBar"   - The search query input field
 #   "ListView"   - The scrollable list of filtered results
-#   "Banner"     - Top decorative image banner (if configured)
 # Custom widgets:
 #   Any custom widget ID defined under [widgets.<id>] can be included here!
 children = [
@@ -167,16 +167,6 @@ children = [
 # when unset.
 # Type: Float (f32)
 # gap = 8.0
-
-
-# ------------------------------------------------------------------------------
-# [banner] - Optional Image Banner (Optional)
-# ------------------------------------------------------------------------------
-[banner]
-# Path to image file (PNG, JPEG, etc.).
-# image_path = "~/.config/aerofi/themes/banner.png"
-# Height in points.
-height = 80.0
 
 
 # ------------------------------------------------------------------------------
@@ -413,9 +403,12 @@ error_dot = "$urgent"
 # [widgets.example_image]
 # type = "image"
 # path = "~/.config/aerofi/themes/logo.png"
-# width = 48.0
+# width = 48.0                # fixed width (points)
 # height = 48.0
 # radius = 8.0
+# w_full = true               # stretch across the container instead of
+#                             # `width`
+# h_full = true               # stretch to fill the container's height
 #
 # [widgets.example_spacer]
 # type = "spacer"               # expands along the parent's orientation

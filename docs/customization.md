@@ -299,20 +299,6 @@ y_offset = -40.0
 # background_position = "cover" # "cover" (default), "left", "right"
 ```
 
-### Image Banner (`[banner]`)
-
-The built-in `Banner` widget (listed in `[mainbox].children`) renders a
-full-width decorative image, cropped to fill (`cover`) and rounded. It is
-only drawn when `[banner].image_path` is set — otherwise the widget is
-skipped and takes no space.
-
-```toml
-[banner]
-# Image file (PNG, JPEG, …). "~" expands to your home directory.
-# image_path = "~/.config/aerofi/themes/banner.png"
-height = 80.0                         # Banner height in points (default: 120.0)
-```
-
 ### Full-Window Script View (`[script_view]`)
 
 The full-window script view is what you see when a script takes over the
@@ -387,7 +373,7 @@ aerofi allows you to completely rearrange the main UI layout!
 orientation = "vertical"
 
 # List of widgets rendered inside the window.
-# Can include built-in widgets ("InputBar", "ListView", "Banner")
+# Can include built-in widgets ("InputBar", "ListView")
 # OR any custom widget ID defined under [widgets.<id>].
 children = [
     "header_bar",
@@ -550,7 +536,7 @@ Widgets are defined either using table syntax `[widgets.<id>]` or array syntax `
 | **`box`** | Container for grouping widgets | `orientation` ("horizontal" / "vertical"), `gap`, `padding`, `align` ("left", "center", "end"), `background`, `radius`, `width`, `height`, `flex`, `children` |
 | **`text`** | Static typography label | `text`, `color`, `font_size`, `font_weight` (name or number 100–900), `align` |
 | **`icon`** | Symbol or emoji | `icon`, `size`, `color` |
-| **`image`** | Image asset | `path`, `width`, `height`, `radius` |
+| **`image`** | Image asset | `path`, `width`, `height`, `radius`, `w_full`, `h_full` (stretch to fill the container, overriding fixed pixel dimensions) |
 | **`spacer`** | Flexible expanding space | Expands horizontally or vertically to push siblings apart |
 | **`divider`** | Separator rule | `color`, `thickness`, `margin` |
 | **`button`** | Clickable action button | `text`, `icon`, `action` (target name), `hotkey`, `close` (default `true`; set `false` to keep the launcher open after the action), `background`, `hover_background`, `color`, `radius`, `padding`, `gap` |

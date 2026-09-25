@@ -76,8 +76,10 @@ impl Launcher {
                 width,
                 height,
                 radius,
+                w_full,
+                h_full,
                 ..
-            } => self.render_widget_image(path, *width, *height, *radius),
+            } => self.render_widget_image(path, *width, *height, *radius, *w_full, *h_full),
             WidgetDef::Spacer { .. } => self.render_widget_spacer(),
             WidgetDef::Divider {
                 color,
@@ -223,14 +225,22 @@ impl Launcher {
         width: Option<f32>,
         height: Option<f32>,
         radius: Option<f32>,
+        w_full: Option<bool>,
+        h_full: Option<bool>,
     ) -> gpui::AnyElement {
         let resolved = expand_tilde_path(path);
         let mut el = img(std::path::PathBuf::from(resolved));
 
-        if let Some(w) = width {
+        // `w_full`/`h_full` win over fixed sizes: the image stretches with
+        // its container instead of using hardcoded pixel dimensions.
+        if w_full.unwrap_or(false) {
+            el = el.w_full();
+        } else if let Some(w) = width {
             el = el.w(px(w));
         }
-        if let Some(h) = height {
+        if h_full.unwrap_or(false) {
+            el = el.h_full();
+        } else if let Some(h) = height {
             el = el.h(px(h));
         }
         if let Some(r) = radius {

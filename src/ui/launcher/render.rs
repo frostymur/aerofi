@@ -194,19 +194,6 @@ impl Render for Launcher {
                         }
                         _ => {}
                     },
-                    Widget::Builtin(BuiltinWidget::Banner) => {
-                        if let Some(path) = t.banner.as_ref().and_then(|b| b.image_path.as_ref()) {
-                            let resolved = expand_tilde_path(path);
-                            let height = t.banner.as_ref().map(|b| b.height).unwrap_or(120.0);
-                            inner_box = inner_box.child(
-                                img(std::path::PathBuf::from(resolved))
-                                    .w_full()
-                                    .h(px(height))
-                                    .object_fit(gpui::ObjectFit::Cover)
-                                    .rounded_md(),
-                            );
-                        }
-                    }
                     Widget::Custom(id) => {
                         if let Some(element) = self.render_custom_widget(id, cx) {
                             inner_box = inner_box.child(element);
