@@ -787,6 +787,11 @@ impl Launcher {
         self.pending_reveal = false;
         self.reveal_wait_frames = 0;
         crate::sys::appkit::invalidate_reveal_safety_net();
+        // Cancelling the reveal dance must also undo its alpha drop —
+        // otherwise a reload whose reveal was cancelled here would leave
+        // `alpha = 0` with nothing ever restoring it, and the next show
+        // would present an invisible window.
+        crate::sys::appkit::set_window_alpha(1.0);
         // Best-effort: ask the allocator to munmap the session's freed
         // pages while we are hidden. Modern macOS often releases nothing
         // (see sys::memory); harmless either way.
@@ -803,6 +808,14 @@ impl Launcher {
         // Lift the hidden GPU working-set budget before the first frame so
         // the driver keeps the re-faulted buffers resident.
         crate::sys::gpu::restore_gpu_memory();
+        // Visibility contract: if no reveal dance is in flight, the window
+        // must not be left transparent — a reload's alpha-0 whose reveal was
+        // cancelled by a hide would otherwise survive into this show and the
+        // user would see nothing. A pending dance skips this and reveals via
+        // the normal render path once the frame has landed.
+        if !self.pending_reveal {
+            crate::sys::appkit::set_window_alpha(1.0);
+        }
         // Inline daemons buffered their ticks while the window was hidden
         // (the main thread was never woken for them); apply the latest of
         // each before the first frame so subtitles aren't stale.
