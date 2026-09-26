@@ -61,6 +61,8 @@ height = "50.2%"
 
 # Shrink the window height automatically to fit the number of search results.
 # Inherits from `[listview] require_input` by default if unset.
+# Note: Designed for standard vertical layouts. Not compatible with custom `[widgets]` 
+# layouts (like horizontal splits or fixed-size artwork panels).
 # Type: Boolean
 # auto_height = true
 
@@ -244,6 +246,8 @@ empty_text = "No matching items found"
 empty_text_color = "$subtle"
 
 # When true, the listview is collapsed until the user starts typing.
+# Note: Designed for standard vertical layouts. Not compatible with custom `[widgets]` 
+# layouts (like horizontal splits or fixed-size artwork panels).
 # Type: Boolean (Optional)
 # require_input = false
 

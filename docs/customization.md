@@ -299,6 +299,8 @@ y_offset = -40.0
 # background_image = "~/.config/aerofi/themes/wallpaper.jpg"
 ```
 
+> **Note:** `auto_height` and `require_input` calculate the window size based on a standard vertical layout. They are not compatible with custom `[widgets]` layouts (like horizontal splits or fixed-size artwork panels) and will cause visual clipping if used together.
+
 ### Full-Window Script View (`[script_view]`)
 
 The full-window script view is what you see when a script takes over the
