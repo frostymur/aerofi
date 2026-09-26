@@ -1,13 +1,16 @@
 //! GPUI rendering for the launcher: the `Render` impl and all private
 //! view-building helpers (inputbar, listview, grid, full-output, markdown).
 
+use std::collections::HashMap;
+
 use gpui::{
     Context, CursorStyle, Render, Window, WindowBackgroundAppearance, div, img, prelude::*, px,
     rgba, size, uniform_list,
 };
 
 use crate::core::item::Target;
-use crate::core::theme::{BuiltinWidget, ThemeConfig, Widget, parse_hex_color_alpha};
+use crate::core::theme::{BuiltinWidget, ThemeConfig, Widget, WidgetDef, parse_hex_color_alpha};
+use crate::core::widget::WidgetRegistry;
 
 use super::helpers::{
     apply_md_style, expand_tilde_path, format_combo, is_image_path, is_primary_click,
@@ -31,11 +34,7 @@ impl Render for Launcher {
         // Determine whether the list should be visible.
         let require_input = t.listview.require_input.unwrap_or(false);
         let auto_height = t.window.auto_height.unwrap_or(require_input);
-        let should_show_list = if require_input {
-            !self.query.trim().is_empty() && !self.filtered.is_empty()
-        } else {
-            true
-        };
+        let should_show_list = self.list_visible();
 
         let ib_height = t.inputbar.height;
 
@@ -72,6 +71,7 @@ impl Render for Launcher {
                 };
                 search_fit_height(
                     &t,
+                    &self.widget_registry,
                     &SearchFit {
                         show_search,
                         should_show_list,
@@ -83,6 +83,7 @@ impl Render for Launcher {
                         element_font_size: self.element_font_val.1,
                         screen_h,
                     },
+                    &self.image_dims,
                 )
             }
         };
@@ -345,25 +346,59 @@ pub(super) struct SearchFit {
 
 /// Window height for the `Search` / `ArgumentInput` / `Confirming` states.
 ///
-/// Pure function of the theme and current state (no `&self`, no GPUI) so the
-/// sizing math can be unit-tested. The list/grid heights mirror the exact
-/// row and cell heights `render_row` / `render_grid_cell` lay out:
+/// Pure function of the theme, widget registry, current state and
+/// pre-resolved image dimensions (no GPUI, no I/O) so the sizing math can
+/// be unit-tested.
+///
+/// Instead of assuming a fixed `InputBar + ListView` stack, it measures the
+/// same widget tree the renderer walks: a vertical box stacks its rendered
+/// children plus gaps, a horizontal box takes the tallest child, and
+/// fixed-size widgets (artwork, footers, buttons) contribute their own
+/// size — so `auto_height` works with custom `[widgets]` layouts. The
+/// scrollable list is capped by the configured window height (long lists
+/// scroll), while the fixed chrome sets a floor the window never shrinks
+/// below, so artwork and footer bars are never clipped.
+///
+/// The list/grid heights mirror the exact row and cell heights
+/// `render_row` / `render_grid_cell` lay out:
 /// - list row: `2·pad + max(icon, text_h) + 2·border`
 /// - grid cell: `2·pad + icon + icon_gap + text_h + 2·border`, packed into
 ///   `len.div_ceil(columns)` rows
-///
-/// Dropping the text-line/border terms under-sized the window and clipped
-/// the last row; counting items instead of grid rows pinned the window to
-/// its full height in grid themes.
-pub(super) fn search_fit_height(t: &ThemeConfig, state: &SearchFit) -> f32 {
+pub(super) fn search_fit_height(
+    t: &ThemeConfig,
+    reg: &WidgetRegistry,
+    state: &SearchFit,
+    image_dims: &HashMap<String, (u32, u32)>,
+) -> f32 {
     let window_h = t.window.height.resolve(state.screen_h);
     if !(state.require_input || state.auto_height) {
         return window_h;
     }
 
-    let pad_v = t.window.padding;
-    let margin_bottom = t.inputbar.margin.get(2).copied().unwrap_or(8.0);
-    let mainbox_gap = t.mainbox.gap.unwrap_or(t.listview.spacing);
+    let pad2 = t.window.padding * 2.0;
+    // `None` means the list is not rendered this frame: it contributes no
+    // height and no gap to its container.
+    let list_slot = state.should_show_list.then_some(list_height(t, state));
+    // Fixed chrome (bar, header/footer, artwork) — the floor the window
+    // must never shrink below.
+    let chrome = mainbox_height(t, reg, state, image_dims, None);
+    if state.auto_height {
+        let total = mainbox_height(t, reg, state, image_dims, list_slot);
+        (chrome + pad2).max((total + pad2).min(window_h))
+    } else {
+        // `require_input` without auto-height: the configured height, but
+        // never below the chrome (which wrapped argument chips can make
+        // taller than nominal).
+        window_h.max(chrome + pad2)
+    }
+}
+
+/// Height of the results list/grid for `state.filtered_len` items — the
+/// same row and cell metrics `render_row` / `render_grid_cell` lay out.
+/// Dropping the text-line/border terms under-sizes the window and clips
+/// the last row; counting items instead of grid rows over-sizes it in
+/// grid themes.
+fn list_height(t: &ThemeConfig, state: &SearchFit) -> f32 {
     let spacing = t.listview.spacing;
     let el = &t.element;
     let el_pad_v = el.padding.first().copied().unwrap_or(8.0);
@@ -371,46 +406,219 @@ pub(super) fn search_fit_height(t: &ThemeConfig, state: &SearchFit) -> f32 {
     let list_text_h = state.element_font_size * 1.2;
     let grid_text_h = (state.element_font_size - 1.5).max(11.0) * 1.2;
 
-    if !state.should_show_list {
-        // Compact: the bar only (its bottom margin is not counted — the bar
-        // sits centred in the padding), or just the window padding when the
-        // bar is hidden as well.
-        let bar_h = if state.show_search { state.ib_h } else { 0.0 };
-        return bar_h + pad_v * 2.0;
-    }
-
-    if state.auto_height {
-        let (rows, row_h) = if state.columns > 1 {
-            (
-                state.filtered_len.div_ceil(state.columns),
-                el_pad_v * 2.0 + el.icon_size + el.icon_gap + grid_text_h + el.border_width * 2.0,
-            )
-        } else {
-            (
-                state.filtered_len,
-                el_pad_v * 2.0 + el.icon_size.max(list_text_h) + el.border_width * 2.0,
-            )
-        };
-        let list_h = rows as f32 * row_h + (rows.saturating_sub(1) as f32) * spacing;
-        // The bar's bottom margin and the mainbox gap between bar and list
-        // exist only while the bar is rendered.
-        let bar_block = if state.show_search {
-            state.ib_h + margin_bottom + mainbox_gap
-        } else {
-            0.0
-        };
-        return (bar_block + list_h + pad_v * 2.0).min(window_h);
-    }
-
-    // `require_input` without auto-height: expand straight to the configured
-    // height, but never below the bar (which wrapped argument chips can make
-    // taller than nominal).
-    let bar_block = if state.show_search {
-        state.ib_h + margin_bottom
+    if state.columns > 1 {
+        let rows = state.filtered_len.div_ceil(state.columns);
+        let cell_h =
+            el_pad_v * 2.0 + el.icon_size + el.icon_gap + grid_text_h + el.border_width * 2.0;
+        rows as f32 * cell_h + (rows.saturating_sub(1)) as f32 * spacing
     } else {
-        0.0
-    };
-    window_h.max(bar_block + pad_v * 2.0)
+        let row_h = el_pad_v * 2.0 + el.icon_size.max(list_text_h) + el.border_width * 2.0;
+        state.filtered_len as f32 * row_h + (state.filtered_len.saturating_sub(1)) as f32 * spacing
+    }
+}
+
+/// Content height of `[mainbox]` (window padding excluded). `list_slot` is
+/// `Some(h)` while the ListView renders at height `h`, `None` when it is
+/// absent from the layout (hidden by `require_input`).
+fn mainbox_height(
+    t: &ThemeConfig,
+    reg: &WidgetRegistry,
+    state: &SearchFit,
+    image_dims: &HashMap<String, (u32, u32)>,
+    list_slot: Option<f32>,
+) -> f32 {
+    let horizontal = t.mainbox.orientation != "vertical";
+    let gap = t.mainbox.gap.unwrap_or(t.listview.spacing);
+    let mut sum = 0.0f32;
+    let mut max_h = 0.0f32;
+    let mut rendered = 0usize;
+    for child in &t.mainbox.children {
+        let h = match child {
+            Widget::Builtin(BuiltinWidget::InputBar) => {
+                state.show_search.then_some(inputbar_height(t, state))
+            }
+            Widget::Builtin(BuiltinWidget::ListView) => list_slot,
+            Widget::Custom(id) => widget_height(t, reg, state, image_dims, list_slot, id),
+        };
+        if let Some(h) = h {
+            rendered += 1;
+            sum += h;
+            max_h = max_h.max(h);
+        }
+    }
+    // A horizontal container is as tall as its tallest child; the gaps
+    // between its children run along the horizontal axis and don't add
+    // height.
+    if horizontal {
+        max_h
+    } else {
+        sum + gap * (rendered.saturating_sub(1)) as f32
+    }
+}
+
+/// Height of one child slot: a built-in name (matched case-insensitively,
+/// like `render_widget_box`) or a custom widget id. `None` means the slot
+/// is not rendered.
+fn widget_height(
+    t: &ThemeConfig,
+    reg: &WidgetRegistry,
+    state: &SearchFit,
+    image_dims: &HashMap<String, (u32, u32)>,
+    list_slot: Option<f32>,
+    id: &str,
+) -> Option<f32> {
+    if id.eq_ignore_ascii_case("inputbar") {
+        return state.show_search.then_some(inputbar_height(t, state));
+    }
+    if id.eq_ignore_ascii_case("listview") {
+        return list_slot;
+    }
+    reg.get(id).and_then(|def| def_height(t, reg, state, image_dims, list_slot, def))
+}
+
+/// Intrinsic height of a custom widget definition, mirroring
+/// `render_widget_def`'s layout rules: a box stacks its children or takes
+/// the tallest one; a fixed `height` is authoritative; a `flex` box
+/// measures as its content ("fill the remainder" resolves to the content
+/// size in an auto-height window).
+fn def_height(
+    t: &ThemeConfig,
+    reg: &WidgetRegistry,
+    state: &SearchFit,
+    image_dims: &HashMap<String, (u32, u32)>,
+    list_slot: Option<f32>,
+    def: &WidgetDef,
+) -> Option<f32> {
+    match def {
+        WidgetDef::Box {
+            orientation,
+            gap,
+            padding,
+            margin,
+            height,
+            border_width,
+            border_top,
+            border_bottom,
+            children,
+            ..
+        } => {
+            if let Some(h) = height {
+                return Some(h + v_extent(margin.as_deref()));
+            }
+            let horizontal = orientation.as_deref().unwrap_or("horizontal") != "vertical";
+            let mut sum = 0.0f32;
+            let mut max_h = 0.0f32;
+            let mut rendered = 0usize;
+            for child in children {
+                if let Some(h) = widget_height(t, reg, state, image_dims, list_slot, child) {
+                    rendered += 1;
+                    sum += h;
+                    max_h = max_h.max(h);
+                }
+            }
+            let g = gap.unwrap_or(0.0);
+            let content = if horizontal {
+                max_h
+            } else {
+                sum + g * (rendered.saturating_sub(1)) as f32
+            };
+            Some(
+                content
+                    + v_extent(padding.as_deref())
+                    + v_border(*border_width, *border_top, *border_bottom)
+                    + v_extent(margin.as_deref()),
+            )
+        }
+        WidgetDef::Image {
+            path,
+            width,
+            height,
+            h_full,
+            margin,
+            border_width,
+            border_top,
+            border_bottom,
+            ..
+        } => {
+            let h = if h_full.unwrap_or(false) {
+                // Stretches to the container: no intrinsic height.
+                0.0
+            } else if let Some(h) = height {
+                *h
+            } else if let Some(w) = width {
+                // Scaled to the fixed width by the image's aspect ratio
+                // (falls back to a square when dimensions are unknown).
+                match image_dims.get(path) {
+                    Some((nw, nh)) if *nw > 0 => *w * (*nh as f32) / (*nw as f32),
+                    _ => *w,
+                }
+            } else {
+                image_dims.get(path).map(|(_, nh)| *nh as f32).unwrap_or(0.0)
+            };
+            Some(
+                h + v_border(*border_width, *border_top, *border_bottom)
+                    + v_extent(margin.as_deref()),
+            )
+        }
+        WidgetDef::Text { font_size, margin, .. } => {
+            Some(font_size.unwrap_or(t.font.size) * 1.2 + v_extent(margin.as_deref()))
+        }
+        WidgetDef::Icon { icon, size, margin, .. } => {
+            let sz = size.unwrap_or(t.element.icon_size);
+            // Image icons render at exactly `size`; glyph icons as a
+            // centred line of text (~1.2em).
+            let h = if is_image_path(icon) { sz } else { sz * 1.2 };
+            Some(h + v_extent(margin.as_deref()))
+        }
+        WidgetDef::Spacer { .. } => Some(0.0),
+        WidgetDef::Divider { thickness, margin, .. } => {
+            // `.h(thickness).my(margin)`.
+            Some(thickness.unwrap_or(1.0) + margin.unwrap_or(4.0) * 2.0)
+        }
+        WidgetDef::Button {
+            font_size,
+            padding,
+            margin,
+            ..
+        } => {
+            // The text line (an icon never exceeds the font size) drives
+            // the content height; the default vertical padding is 4pt per
+            // side (see `render_widget_button`).
+            let sz = font_size.unwrap_or(t.font.size);
+            let pad = match padding.as_deref() {
+                Some(p) => v_extent(Some(p)),
+                None => 8.0,
+            };
+            Some(sz * 1.2 + pad + v_extent(margin.as_deref()))
+        }
+    }
+}
+
+/// Vertical footprint of the input bar: its height plus its bottom margin
+/// (the renderer applies only the bottom margin — see `render_inputbar`).
+fn inputbar_height(t: &ThemeConfig, state: &SearchFit) -> f32 {
+    state.ib_h + t.inputbar.margin.get(2).copied().unwrap_or(8.0)
+}
+
+/// Vertical extent of a padding/margin array, mirroring the
+/// `apply_padding!` / `apply_margin!` macros: one value = all sides, two =
+/// `[vertical, horizontal]`, four = `[top, right, bottom, left]`.
+fn v_extent(values: Option<&[f32]>) -> f32 {
+    match values {
+        Some(v) => match v.len() {
+            1 | 2 => v[0] * 2.0,
+            4 => v[0] + v[2],
+            _ => 0.0,
+        },
+        None => 0.0,
+    }
+}
+
+/// Top + bottom border widths: `border_width` sets all four sides and the
+/// per-side overrides take precedence (mirrors `apply_border`).
+fn v_border(width: Option<f32>, top: Option<f32>, bottom: Option<f32>) -> f32 {
+    let base = width.unwrap_or(0.0);
+    top.unwrap_or(base) + bottom.unwrap_or(base)
 }
 
 impl Launcher {
@@ -2848,8 +3056,122 @@ impl Launcher {
 
 #[cfg(test)]
 mod fit_tests {
+    use std::collections::HashMap;
+
     use super::{SearchFit, search_fit_height};
-    use crate::core::theme::{Dimension, ThemeConfig};
+    use crate::core::theme::{BuiltinWidget, Dimension, ThemeConfig, Widget, WidgetDef};
+    use crate::core::widget::WidgetRegistry;
+
+    /// Measure with an empty widget registry and no image dimensions (the
+    /// default mainbox only references built-ins).
+    fn measure(t: &ThemeConfig, state: &SearchFit) -> f32 {
+        let reg = WidgetRegistry::from_theme(&t.widgets);
+        search_fit_height(t, &reg, state, &HashMap::new())
+    }
+
+    fn box_def(
+        id: &str,
+        orientation: &str,
+        gap: Option<f32>,
+        padding: Option<&[f32]>,
+        children: Vec<&str>,
+    ) -> WidgetDef {
+        WidgetDef::Box {
+            id: id.to_string(),
+            orientation: Some(orientation.to_string()),
+            gap,
+            padding: padding.map(<[f32]>::to_vec),
+            margin: None,
+            align: None,
+            background: None,
+            radius: None,
+            border_color: None,
+            border_width: None,
+            border_top: None,
+            border_right: None,
+            border_bottom: None,
+            border_left: None,
+            shadow: None,
+            width: None,
+            height: None,
+            flex: None,
+            children: children.into_iter().map(String::from).collect(),
+        }
+    }
+
+    fn button_def(id: &str, font_size: f32, padding: Option<&[f32]>) -> WidgetDef {
+        WidgetDef::Button {
+            id: id.to_string(),
+            text: Some(id.to_string()),
+            icon: None,
+            action: Some("noop".to_string()),
+            hotkey: None,
+            color: None,
+            background: None,
+            hover_background: None,
+            hover_color: None,
+            border_color: None,
+            border_width: None,
+            border_top: None,
+            border_right: None,
+            border_bottom: None,
+            border_left: None,
+            shadow: None,
+            radius: None,
+            padding: padding.map(<[f32]>::to_vec),
+            margin: None,
+            font_size: Some(font_size),
+            font_weight: None,
+            gap: None,
+            close: None,
+        }
+    }
+
+    fn text_def(id: &str, font_size: f32) -> WidgetDef {
+        WidgetDef::Text {
+            id: id.to_string(),
+            text: Some(id.to_string()),
+            color: None,
+            font_size: Some(font_size),
+            font_weight: None,
+            align: None,
+            margin: None,
+        }
+    }
+
+    fn icon_def(id: &str, icon: &str, size: f32) -> WidgetDef {
+        WidgetDef::Icon {
+            id: id.to_string(),
+            icon: icon.to_string(),
+            size: Some(size),
+            color: None,
+            margin: None,
+        }
+    }
+
+    fn spacer_def(id: &str) -> WidgetDef {
+        WidgetDef::Spacer { id: id.to_string() }
+    }
+
+    fn image_def(id: &str, path: &str, width: Option<f32>, height: Option<f32>) -> WidgetDef {
+        WidgetDef::Image {
+            id: id.to_string(),
+            path: path.to_string(),
+            width,
+            height,
+            radius: None,
+            w_full: None,
+            h_full: None,
+            margin: None,
+            border_color: None,
+            border_width: None,
+            border_top: None,
+            border_right: None,
+            border_bottom: None,
+            border_left: None,
+            shadow: None,
+        }
+    }
 
     /// Deterministic theme: fixed 500pt window so `screen_h` is irrelevant.
     fn fit_theme() -> ThemeConfig {
@@ -2893,7 +3215,7 @@ mod fit_tests {
     #[test]
     fn list_mode_fits_rows_exactly() {
         let t = fit_theme();
-        let h = search_fit_height(&t, &fit(true, true, true, true, 1, 3, 17.0));
+        let h = measure(&t, &fit(true, true, true, true, 1, 3, 17.0));
         // bar(40) + margin(8) + gap(12) + [3·36 + 2·6] + pad(20) = 200
         assert!((h - 200.0).abs() < 1e-3, "got {h}");
     }
@@ -2904,7 +3226,7 @@ mod fit_tests {
     fn list_mode_counts_element_borders() {
         let mut t = fit_theme();
         t.element.border_width = 1.0;
-        let h = search_fit_height(&t, &fit(true, true, true, true, 1, 3, 17.0));
+        let h = measure(&t, &fit(true, true, true, true, 1, 3, 17.0));
         // row = 2·6 + 24 + 2·1 = 38 → 40+8+12 + [3·38 + 2·6] + 20 = 206
         assert!((h - 206.0).abs() < 1e-3, "got {h}");
     }
@@ -2914,7 +3236,7 @@ mod fit_tests {
     fn list_mode_uses_taller_text_line() {
         let t = fit_theme();
         // font 30 → text_h 36 > icon 24 → row = 12 + 36 = 48
-        let h = search_fit_height(&t, &fit(true, true, true, true, 1, 2, 30.0));
+        let h = measure(&t, &fit(true, true, true, true, 1, 2, 30.0));
         // 40+8+12 + [2·48 + 6] + 20 = 182
         assert!((h - 182.0).abs() < 1e-3, "got {h}");
     }
@@ -2924,7 +3246,7 @@ mod fit_tests {
     fn grid_mode_counts_rows_not_items() {
         let t = fit_theme();
         // cell = 2·6 + 24 + 4 + (17-1.5)·1.2 + 0 = 58.6; 8 items / 4 cols = 2 rows
-        let h = search_fit_height(&t, &fit(true, true, true, true, 4, 8, 17.0));
+        let h = measure(&t, &fit(true, true, true, true, 4, 8, 17.0));
         // 40+8+12 + [2·58.6 + 6] + 20 = 203.2
         assert!((h - 203.2).abs() < 1e-3, "got {h}");
     }
@@ -2934,7 +3256,7 @@ mod fit_tests {
     fn grid_mode_partial_last_row() {
         let t = fit_theme();
         // 10 items / 4 cols = 3 rows
-        let h = search_fit_height(&t, &fit(true, true, true, true, 4, 10, 17.0));
+        let h = measure(&t, &fit(true, true, true, true, 4, 10, 17.0));
         // 40+8+12 + [3·58.6 + 2·6] + 20 = 267.8
         assert!((h - 267.8).abs() < 1e-3, "got {h}");
     }
@@ -2943,26 +3265,28 @@ mod fit_tests {
     #[test]
     fn hidden_bar_drops_bar_and_gap() {
         let t = fit_theme();
-        let with_bar = search_fit_height(&t, &fit(true, true, true, true, 1, 3, 17.0));
-        let without_bar = search_fit_height(&t, &fit(false, true, true, true, 1, 3, 17.0));
+        let with_bar = measure(&t, &fit(true, true, true, true, 1, 3, 17.0));
+        let without_bar = measure(&t, &fit(false, true, true, true, 1, 3, 17.0));
         // bar(40) + margin(8) + gap(12) = 60 less
         assert!((with_bar - without_bar - 60.0).abs() < 1e-3);
         assert!((without_bar - 140.0).abs() < 1e-3, "got {without_bar}");
     }
 
-    /// Compact (list hidden) with the bar: bar + padding only (no margin).
+    /// Compact (list hidden) with the bar: the bar's full vertical
+    /// footprint (height + bottom margin) plus the window padding.
     #[test]
     fn compact_shows_bar_only() {
         let t = fit_theme();
-        let h = search_fit_height(&t, &fit(true, false, true, true, 1, 0, 17.0));
-        assert!((h - 60.0).abs() < 1e-3, "got {h}");
+        let h = measure(&t, &fit(true, false, true, true, 1, 0, 17.0));
+        // bar(40) + margin(8) + pad(20) = 68
+        assert!((h - 68.0).abs() < 1e-3, "got {h}");
     }
 
     /// Compact with the bar hidden too: only the window padding remains.
     #[test]
     fn compact_without_bar_is_padding_only() {
         let t = fit_theme();
-        let h = search_fit_height(&t, &fit(false, false, true, true, 1, 0, 17.0));
+        let h = measure(&t, &fit(false, false, true, true, 1, 0, 17.0));
         assert!((h - 20.0).abs() < 1e-3, "got {h}");
     }
 
@@ -2970,7 +3294,7 @@ mod fit_tests {
     #[test]
     fn fits_are_capped_at_window_height() {
         let t = fit_theme();
-        let h = search_fit_height(&t, &fit(true, true, true, true, 1, 1000, 17.0));
+        let h = measure(&t, &fit(true, true, true, true, 1, 1000, 17.0));
         assert!((h - 500.0).abs() < 1e-3, "got {h}");
     }
 
@@ -2978,7 +3302,7 @@ mod fit_tests {
     #[test]
     fn require_input_without_auto_height_is_full() {
         let t = fit_theme();
-        let h = search_fit_height(&t, &fit(true, true, false, true, 1, 3, 17.0));
+        let h = measure(&t, &fit(true, true, false, true, 1, 3, 17.0));
         assert!((h - 500.0).abs() < 1e-3, "got {h}");
     }
 
@@ -2986,7 +3310,7 @@ mod fit_tests {
     #[test]
     fn no_fitting_is_full_height() {
         let t = fit_theme();
-        let h = search_fit_height(&t, &fit(true, true, false, false, 1, 3, 17.0));
+        let h = measure(&t, &fit(true, true, false, false, 1, 3, 17.0));
         assert!((h - 500.0).abs() < 1e-3, "got {h}");
     }
 
@@ -2994,7 +3318,356 @@ mod fit_tests {
     #[test]
     fn auto_height_without_require_input_fits() {
         let t = fit_theme();
-        let h = search_fit_height(&t, &fit(true, true, true, false, 1, 3, 17.0));
+        let h = measure(&t, &fit(true, true, true, false, 1, 3, 17.0));
         assert!((h - 200.0).abs() < 1e-3, "got {h}");
+    }
+
+    /// A horizontal footer bar (text + spacer + two buttons) below the list
+    /// adds its own height plus one mainbox gap to the standard fit.
+    #[test]
+    fn footer_bar_is_counted() {
+        let mut t = fit_theme();
+        t.widgets = vec![
+            box_def(
+                "footer",
+                "horizontal",
+                Some(8.0),
+                Some(&[8.0, 4.0]),
+                vec!["hint", "flex", "btn_a", "btn_b"],
+            ),
+            text_def("hint", 11.0),
+            spacer_def("flex"),
+            button_def("btn_a", 11.0, Some(&[4.0, 8.0])),
+            button_def("btn_b", 11.0, Some(&[4.0, 8.0])),
+        ];
+        t.mainbox.children = vec![
+            Widget::Builtin(BuiltinWidget::InputBar),
+            Widget::Builtin(BuiltinWidget::ListView),
+            Widget::Custom("footer".into()),
+        ];
+        // footer = max(text 13.2, spacer 0, buttons 13.2 + 8) + pad 16 = 37.2
+        // 48 + 12 + 120 + 12 + 37.2 = 229.2 → + pad 20 = 249.2
+        let h = measure(&t, &fit(true, true, true, true, 1, 3, 17.0));
+        assert!((h - 249.2).abs() < 1e-3, "got {h}");
+    }
+
+    /// A header bar (icon + title + spacer) above the input bar is counted
+    /// the same way.
+    #[test]
+    fn header_bar_is_counted() {
+        let mut t = fit_theme();
+        t.widgets = vec![
+            box_def(
+                "header",
+                "horizontal",
+                Some(8.0),
+                Some(&[4.0, 4.0]),
+                vec!["logo", "title", "flex"],
+            ),
+            icon_def("logo", "⚡", 14.0),
+            text_def("title", 12.0),
+            spacer_def("flex"),
+        ];
+        t.mainbox.children = vec![
+            Widget::Custom("header".into()),
+            Widget::Builtin(BuiltinWidget::InputBar),
+            Widget::Builtin(BuiltinWidget::ListView),
+        ];
+        // header = max(glyph 16.8, text 14.4, spacer 0) + pad 8 = 24.8
+        // 24.8 + 12 + 48 + 12 + 120 = 216.8 → + pad 20 = 236.8
+        let h = measure(&t, &fit(true, true, true, true, 1, 3, 17.0));
+        assert!((h - 236.8).abs() < 1e-3, "got {h}");
+    }
+
+    /// Horizontal split with a fixed 480pt artwork: the window never shrinks
+    /// below the artwork (it even grows past the configured 300pt height),
+    /// and long lists scroll instead of stretching the window.
+    #[test]
+    fn split_layout_artwork_is_never_clipped() {
+        let mut t = fit_theme();
+        t.window.height = Dimension::Points(300.0);
+        t.window.padding = 0.0;
+        t.mainbox.orientation = "horizontal".into();
+        t.mainbox.gap = Some(0.0);
+        t.mainbox.children = vec![
+            Widget::Custom("left".into()),
+            Widget::Custom("right".into()),
+        ];
+        t.widgets = vec![
+            box_def("left", "vertical", None, None, vec!["art"]),
+            image_def("art", "art.jpg", Some(380.0), Some(480.0)),
+            box_def(
+                "right",
+                "vertical",
+                Some(8.0),
+                Some(&[16.0, 10.0]),
+                vec!["InputBar", "ListView"],
+            ),
+        ];
+        // left = 480 (fixed art). right = 16 + 48 (bar) + 8 + list + 16.
+        // idle (list hidden): max(480, 80) = 480 — above the 300pt config.
+        let idle = measure(&t, &fit(true, false, true, true, 1, 0, 17.0));
+        assert!((idle - 480.0).abs() < 1e-3, "idle got {idle}");
+        // 5 results: right = 292 < 480 → the artwork still dominates.
+        let typing = measure(&t, &fit(true, true, true, true, 1, 5, 17.0));
+        assert!((typing - 480.0).abs() < 1e-3, "typing got {typing}");
+        // 15 results: right = 712 > 480, but the chrome floor (480) and the
+        // 300pt cap keep the window at 480 — the list scrolls.
+        let long = measure(&t, &fit(true, true, true, true, 1, 15, 17.0));
+        assert!((long - 480.0).abs() < 1e-3, "long got {long}");
+    }
+
+    /// Horizontal split with the bar in its own pane: idle height comes from
+    /// the bar pane's padding + bar + gap + spacer; typing grows the window
+    /// via the list pane.
+    #[test]
+    fn split_layout_idle_height_comes_from_bar_pane() {
+        let mut t = fit_theme();
+        t.window.padding = 0.0;
+        t.mainbox.orientation = "horizontal".into();
+        t.mainbox.gap = Some(0.0);
+        t.mainbox.children = vec![
+            Widget::Custom("left".into()),
+            Widget::Custom("right".into()),
+        ];
+        t.widgets = vec![
+            box_def(
+                "left",
+                "vertical",
+                Some(12.0),
+                Some(&[20.0, 24.0]),
+                vec!["InputBar", "flex"],
+            ),
+            spacer_def("flex"),
+            box_def(
+                "right",
+                "vertical",
+                Some(8.0),
+                Some(&[8.0, 10.0]),
+                vec!["ListView"],
+            ),
+        ];
+        // idle: left = 20 + 48 + 12 + 0 (spacer) + 20 = 100; right = 16.
+        let idle = measure(&t, &fit(true, false, true, true, 1, 0, 17.0));
+        assert!((idle - 100.0).abs() < 1e-3, "idle got {idle}");
+        // 5 results: right = 8 + 204 + 8 = 220 → window grows past the bar.
+        let typing = measure(&t, &fit(true, true, true, true, 1, 5, 17.0));
+        assert!((typing - 220.0).abs() < 1e-3, "typing got {typing}");
+    }
+
+    /// A box with a fixed `height` is authoritative: its content (13.2pt of
+    /// text) does not shrink the 100pt frame.
+    #[test]
+    fn fixed_height_box_is_authoritative() {
+        let mut t = fit_theme();
+        t.widgets = vec![
+            box_def("panel", "vertical", None, None, vec!["hint"]),
+            text_def("hint", 11.0),
+        ];
+        if let Some(WidgetDef::Box { height, .. }) = t.widgets.first_mut() {
+            *height = Some(100.0);
+        }
+        t.mainbox.children = vec![
+            Widget::Builtin(BuiltinWidget::InputBar),
+            Widget::Builtin(BuiltinWidget::ListView),
+            Widget::Custom("panel".into()),
+        ];
+        // 48 + 12 + 120 + 12 + 100 = 292 → + pad 20 = 312
+        let h = measure(&t, &fit(true, true, true, true, 1, 3, 17.0));
+        assert!((h - 312.0).abs() < 1e-3, "got {h}");
+    }
+
+    /// Nested boxes: padding, gaps and content of every level add up.
+    #[test]
+    fn nested_boxes_sum_padding_and_gaps() {
+        let mut t = fit_theme();
+        t.widgets = vec![
+            box_def("panel", "vertical", Some(4.0), Some(&[6.0, 6.0]), vec!["strip", "hint"]),
+            box_def(
+                "strip",
+                "horizontal",
+                Some(8.0),
+                Some(&[2.0, 2.0]),
+                vec!["btn_a", "btn_b"],
+            ),
+            text_def("hint", 11.0),
+            button_def("btn_a", 11.0, Some(&[4.0, 8.0])),
+            button_def("btn_b", 11.0, Some(&[4.0, 8.0])),
+        ];
+        t.mainbox.children = vec![
+            Widget::Builtin(BuiltinWidget::InputBar),
+            Widget::Builtin(BuiltinWidget::ListView),
+            Widget::Custom("panel".into()),
+        ];
+        // strip = max(21.2, 21.2) + pad 4 = 25.2
+        // panel = 25.2 + gap 4 + text 13.2 + pad 12 = 54.4
+        // 48 + 12 + 120 + 12 + 54.4 = 246.4 → + pad 20 = 266.4
+        let h = measure(&t, &fit(true, true, true, true, 1, 3, 17.0));
+        assert!((h - 266.4).abs() < 1e-3, "got {h}");
+    }
+
+    /// An image constrained by `width` only is measured by its aspect ratio
+    /// (dimensions pre-resolved at theme load).
+    #[test]
+    fn width_only_image_uses_aspect_ratio() {
+        let mut t = fit_theme();
+        t.window.padding = 0.0;
+        t.mainbox.orientation = "horizontal".into();
+        t.mainbox.gap = Some(0.0);
+        t.mainbox.children = vec![
+            Widget::Custom("left".into()),
+            Widget::Custom("right".into()),
+        ];
+        t.widgets = vec![
+            box_def("left", "vertical", None, None, vec!["img"]),
+            image_def("img", "/img.png", Some(100.0), None),
+            box_def("right", "vertical", None, None, vec!["ListView"]),
+        ];
+        let reg = WidgetRegistry::from_theme(&t.widgets);
+        let mut dims = HashMap::new();
+        dims.insert("/img.png".to_string(), (200, 300));
+        // image = 100 * 300 / 200 = 150 → window = max(150, 0) = 150
+        let h = search_fit_height(&t, &reg, &fit(true, false, true, true, 1, 0, 17.0), &dims);
+        assert!((h - 150.0).abs() < 1e-3, "got {h}");
+    }
+
+    /// Hiding the bar drops its height and one gap in custom layouts too.
+    #[test]
+    fn hidden_bar_drops_footer_gap_too() {
+        let mut t = fit_theme();
+        t.widgets = vec![
+            box_def(
+                "footer",
+                "horizontal",
+                Some(8.0),
+                Some(&[8.0, 4.0]),
+                vec!["hint", "flex", "btn_a", "btn_b"],
+            ),
+            text_def("hint", 11.0),
+            spacer_def("flex"),
+            button_def("btn_a", 11.0, Some(&[4.0, 8.0])),
+            button_def("btn_b", 11.0, Some(&[4.0, 8.0])),
+        ];
+        t.mainbox.children = vec![
+            Widget::Builtin(BuiltinWidget::InputBar),
+            Widget::Builtin(BuiltinWidget::ListView),
+            Widget::Custom("footer".into()),
+        ];
+        let with_bar = measure(&t, &fit(true, true, true, true, 1, 3, 17.0));
+        let without_bar = measure(&t, &fit(false, true, true, true, 1, 3, 17.0));
+        // bar(48) + gap(12) = 60 less; 120 + 12 + 37.2 + 20 = 189.2
+        assert!((with_bar - without_bar - 60.0).abs() < 1e-3);
+        assert!((without_bar - 189.2).abs() < 1e-3, "got {without_bar}");
+    }
+
+    /// `require_input` without auto-height keeps the configured height, but
+    /// grows when the fixed chrome is taller than it.
+    #[test]
+    fn require_input_without_auto_height_floor_is_chrome() {
+        let mut t = fit_theme();
+        t.window.height = Dimension::Points(80.0);
+        t.widgets = vec![
+            box_def(
+                "footer",
+                "horizontal",
+                Some(8.0),
+                Some(&[8.0, 4.0]),
+                vec!["hint", "flex", "btn_a", "btn_b"],
+            ),
+            text_def("hint", 11.0),
+            spacer_def("flex"),
+            button_def("btn_a", 11.0, Some(&[4.0, 8.0])),
+            button_def("btn_b", 11.0, Some(&[4.0, 8.0])),
+        ];
+        t.mainbox.children = vec![
+            Widget::Builtin(BuiltinWidget::InputBar),
+            Widget::Builtin(BuiltinWidget::ListView),
+            Widget::Custom("footer".into()),
+        ];
+        // chrome = 48 + 12 + 37.2 = 97.2 → window = max(80, 97.2 + 20) = 117.2
+        let h = measure(&t, &fit(true, true, false, true, 1, 3, 17.0));
+        assert!((h - 117.2).abs() < 1e-3, "got {h}");
+    }
+
+    /// An unknown widget id is skipped: no height and no gap for it.
+    #[test]
+    fn unknown_widget_is_skipped() {
+        let mut t = fit_theme();
+        t.mainbox.children = vec![
+            Widget::Builtin(BuiltinWidget::InputBar),
+            Widget::Builtin(BuiltinWidget::ListView),
+            Widget::Custom("missing".into()),
+        ];
+        let h = measure(&t, &fit(true, true, true, true, 1, 3, 17.0));
+        assert!((h - 200.0).abs() < 1e-3, "got {h}");
+    }
+
+    fn example_split_state(
+        t: &ThemeConfig,
+        should_show_list: bool,
+        filtered_len: usize,
+    ) -> SearchFit {
+        SearchFit {
+            show_search: true,
+            should_show_list,
+            auto_height: true,
+            require_input: true,
+            ib_h: t.inputbar.height,
+            columns: t.listview.columns,
+            filtered_len,
+            element_font_size: t.font.size,
+            screen_h: 1000.0,
+        }
+    }
+
+    /// End-to-end over the bundled catppuccin split layout (bar pane + list
+    /// pane, zero window padding): idle height is exactly the bar pane
+    /// (padding + bar + gap + spacer); typing grows the window via the list
+    /// pane.
+    #[test]
+    fn example_catppuccin_split_layout_measures() {
+        let content = include_str!("../../../examples/themes/layouts/catppuccin-split.toml");
+        let mut t: ThemeConfig = toml::from_str(content).expect("should parse");
+        t.listview.require_input = Some(true);
+        t.window.auto_height = Some(true);
+        let reg = WidgetRegistry::from_theme(&t.widgets);
+        let dims = HashMap::new();
+
+        // left pane = 20 + 46 (bar, margin 0) + 12 (gap) + 0 (spacer) + 20 = 98
+        let idle = search_fit_height(&t, &reg, &example_split_state(&t, false, 0), &dims);
+        assert!((idle - 98.0).abs() < 1e-3, "idle got {idle}");
+
+        // row = 2·8 + max(24, 18) = 40; 5 rows = 232;
+        // right pane = 8 + 232 + 8 = 248
+        let typing = search_fit_height(&t, &reg, &example_split_state(&t, true, 5), &dims);
+        assert!((typing - 248.0).abs() < 1e-3, "typing got {typing}");
+    }
+
+    /// End-to-end over the bundled graphite split layout. Its artwork is
+    /// `w_full`/`h_full` — it stretches to the container and has no intrinsic
+    /// height, so it never drives the window size: the list pane does. The
+    /// idle window is just the bar pane; a long list grows to the configured
+    /// (percent) height and stops there (the list scrolls, the art stretches
+    /// to whatever height the window ends up).
+    #[test]
+    fn example_graphite_split_layout_stretch_art() {
+        let content = include_str!("../../../examples/themes/layouts/graphite-split.toml");
+        let mut t: ThemeConfig = toml::from_str(content).expect("should parse");
+        t.listview.require_input = Some(true);
+        t.window.auto_height = Some(true);
+        let reg = WidgetRegistry::from_theme(&t.widgets);
+        let dims = HashMap::new();
+        // "50.2%" of a 1000pt screen.
+        let window_h = t.window.height.resolve(1000.0);
+        assert!((window_h - 502.0).abs() < 1e-3);
+
+        // idle: the stretch art contributes 0; right pane = 10 + 46 (bar) + 10.
+        let idle = search_fit_height(&t, &reg, &example_split_state(&t, false, 0), &dims);
+        assert!((idle - 66.0).abs() < 1e-3, "idle got {idle}");
+
+        // row = 40; 15 rows = 712; right pane = 10 + 46 + 8 + 712 + 10 = 786
+        // → capped at the configured 502.
+        let long = search_fit_height(&t, &reg, &example_split_state(&t, true, 15), &dims);
+        assert!((long - 502.0).abs() < 1e-3, "long got {long}");
     }
 }

@@ -515,8 +515,12 @@ impl Launcher {
             } else if child_id.eq_ignore_ascii_case("listview") {
                 match &self.state {
                     crate::ui::launcher::types::LauncherState::Search => {
-                        let columns = self.theme.listview.columns.max(1);
-                        container = container.child(self.render_listview(cx, columns));
+                        // Mirrors the mainbox: `require_input` hides the list
+                        // until a query matches, even inside custom boxes.
+                        if self.list_visible() {
+                            let columns = self.theme.listview.columns.max(1);
+                            container = container.child(self.render_listview(cx, columns));
+                        }
                     }
                     crate::ui::launcher::types::LauncherState::Confirming { target, .. } => {
                         container = container.child(self.render_confirmation(target, cx));
