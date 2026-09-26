@@ -649,28 +649,32 @@ impl Launcher {
     fn refilter(&mut self, cx: Option<&mut Context<Self>>) {
         // A new query changes every row's highlight ranges; drop the memo.
         self.highlight_cache.borrow_mut().clear();
-        // Clear any previous plugin items and release excess capacity.
-        self.all.truncate(self.base_count);
-        if self.all.capacity() > self.base_count * 2 {
-            self.all.shrink_to(self.base_count);
-        }
 
         if let Some((plugin, remainder)) = self.plugin_manager.match_prefix(&self.query) {
             let remainder = remainder.to_string();
 
             if let Some(cx) = cx {
-                // Show base app/script matches until the debounced plugin
-                // results arrive, so `filtered` never points at truncated
-                // rows in the meantime.
-                self.search.search(
-                    &self.query,
-                    &self.all[..self.base_count],
-                    &self.history,
-                    self.app_config.general.matching,
-                    self.app_config.general.ranking,
-                    &mut self.filtered,
-                );
-                self.filtered.truncate(self.app_config.general.max_results);
+                // Keep the previous plugin rows (and the `filtered` pointing
+                // at them) until the debounced results replace them. Clearing
+                // the list for the ~90 ms + process round-trip left
+                // `filtered` briefly empty, and require_input themes then
+                // collapsed the window to the bar on every plugin keystroke
+                // — the "flicker". `filtered` stays valid because the old
+                // rows are not truncated here; the result-apply below swaps
+                // them in atomically.
+                if self.all.len() <= self.base_count {
+                    // First plugin query: no previous rows to keep — show
+                    // base app/script matches until the results arrive.
+                    self.search.search(
+                        &self.query,
+                        &self.all[..self.base_count],
+                        &self.history,
+                        self.app_config.general.matching,
+                        self.app_config.general.ranking,
+                        &mut self.filtered,
+                    );
+                    self.filtered.truncate(self.app_config.general.max_results);
+                }
 
                 // Every keystroke re-enters this branch and drops the
                 // previous task, so the plugin is queried at most once per
@@ -730,6 +734,7 @@ impl Launcher {
                     },
                 ));
             } else {
+                self.all.truncate(self.base_count);
                 let parsed = plugin.query_parsed(&remainder);
                 self.all.extend(parsed);
 
@@ -737,6 +742,11 @@ impl Launcher {
                 self.filtered = (self.base_count..self.all.len()).collect();
             }
         } else {
+            // Clear any previous plugin items and release excess capacity.
+            self.all.truncate(self.base_count);
+            if self.all.capacity() > self.base_count * 2 {
+                self.all.shrink_to(self.base_count);
+            }
             self.search.search(
                 &self.query,
                 &self.all[..self.base_count],
