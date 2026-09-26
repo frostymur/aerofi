@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::core::config::AppConfig;
 use crate::core::history::History;
-use crate::core::item::Target;
+use crate::core::item::{BuiltinAction, Target};
 use crate::core::theme::ThemeConfig;
 use crate::sys::appkit;
 use crate::ui::launcher::Launcher;
@@ -101,13 +101,17 @@ pub fn launch_global_target(target: &Target) {
         // Builtin actions mutate the launcher itself and have no effect in
         // the fire-and-forget executor (it would silently drop them), so
         // route them through the view — otherwise global bindings like
-        // `"ctrl+alt+r" = "Reload Configuration"` never fire.
-        if matches!(target, Target::Builtin { .. }) {
+        // `"ctrl+alt+r" = "Reload Configuration"` never fire. The `match`
+        // is exhaustive so a new `BuiltinAction` variant is a compile error
+        // here rather than a silently-misrouted hotkey.
+        if let Target::Builtin { action, .. } = target {
             if let Some(rr) = RENDER_REQUEST.with(|r| r.borrow().clone()) {
                 let view = rr.view.clone();
                 rr.app.update(|cx| {
                     view.update(cx, |launcher, cx| {
-                        launcher.reload();
+                        match action {
+                            BuiltinAction::ReloadConfig => launcher.reload(),
+                        }
                         cx.notify();
                     });
                 });
