@@ -103,8 +103,12 @@ pub struct Launcher {
     pub(super) reveal_wait_frames: u32,
     /// Manager for dynamic `.dylib` plugins.
     pub(super) plugin_manager: crate::core::plugin_manager::PluginManager,
-    /// Active plugin search task.
-    pub(super) plugin_search_task: Option<gpui::Task<()>>,
+    /// Plugin search worker (started lazily on the first plugin query).
+    pub(super) plugin_search: Option<PluginSearchPump>,
+    /// Generation of the newest plugin search; results for older
+    /// generations are dropped (superseded by a newer query, or invalidated
+    /// by leaving plugin mode / a reload / a hide).
+    pub(super) plugin_gen: u64,
     /// Pending background icon-extraction task (startup), if any.
     pub(super) icon_task: Option<gpui::Task<()>>,
     /// Number of base items (apps/scripts/builtins). Plugin items are appended after this.
@@ -191,7 +195,8 @@ impl Launcher {
             button_hotkeys,
             rofi_session: None,
             plugin_manager: crate::core::plugin_manager::PluginManager::load_all(),
-            plugin_search_task: None,
+            plugin_search: None,
+            plugin_gen: 0,
             icon_task: None,
             base_count,
             needs_center: false,
@@ -676,64 +681,29 @@ impl Launcher {
                     self.filtered.truncate(self.app_config.general.max_results);
                 }
 
-                // Every keystroke re-enters this branch and drops the
-                // previous task, so the plugin is queried at most once per
-                // typing pause instead of spawning a process per key.
-                self.plugin_search_task = Some(cx.spawn(
-                    |view: gpui::WeakEntity<Self>, cx: &mut gpui::AsyncApp| {
-                        // Clone into an owned handle so the future is 'static.
-                        let mut cx = cx.clone();
-                        async move {
-                            cx.background_executor()
-                                .timer(std::time::Duration::from_millis(90))
-                                .await;
-                            // The query may have changed (or the view been dropped)
-                            // while the debounce was pending.
-                            let Some((plugin, remainder)) = view
-                                .update(&mut cx, |this, _| {
-                                    this.plugin_manager
-                                        .match_prefix(&this.query)
-                                        .map(|(p, r)| (p, r.to_string()))
-                                })
-                                .ok()
-                                .flatten()
-                            else {
-                                return;
-                            };
-
-                            let (tx, rx) = futures::channel::oneshot::channel();
-                            let plugin_clone = plugin.clone();
-                            let remainder_str = remainder;
-
-                            std::thread::Builder::new()
-                                .name("aerofi-plugin-search".into())
-                                .spawn(move || {
-                                    let mut parsed = plugin_clone.query_parsed(&remainder_str);
-                                    // Swap full-resolution image paths for
-                                    // bounded thumbnails before the rows hit
-                                    // the renderer (first use decodes here,
-                                    // off the main thread).
-                                    crate::sys::icons::thumbnail_image_icons(&mut parsed);
-                                    let _ = tx.send(parsed);
-                                })
-                                .unwrap();
-
-                            if let Ok(parsed_items) = rx.await {
-                                let _ = view.update(&mut cx, |this, cx| {
-                                    this.all.truncate(this.base_count);
-                                    this.all.extend(parsed_items);
-                                    this.filtered = (this.base_count..this.all.len()).collect();
-                                    if this.selected >= this.filtered.len() {
-                                        this.selected = 0;
-                                    }
-                                    this.list.scroll_to_item(0, ScrollStrategy::Top);
-                                    cx.notify();
-                                });
-                            }
-                        }
-                    },
-                ));
+                // Hand the query to the single coalescing worker instead of
+                // spawning a thread + plugin process per typing pause. Only
+                // the newest request of a burst is ever executed, at most
+                // one process runs at a time, and superseded results are
+                // dropped by generation — no orphaned subprocesses.
+                if self.plugin_search.is_none() {
+                    self.plugin_search = Some(Self::start_plugin_search_pump(cx.entity(), cx));
+                }
+                self.plugin_gen = self.plugin_gen.wrapping_add(1);
+                let _ = self
+                    .plugin_search
+                    .as_mut()
+                    .expect("pump just started")
+                    .tx
+                    .send(PluginSearchRequest {
+                        generation: self.plugin_gen,
+                        plugin,
+                        remainder,
+                    });
             } else {
+                // A synchronous query applies its result directly; invalidate
+                // anything still in flight on the async worker.
+                self.plugin_gen = self.plugin_gen.wrapping_add(1);
                 self.all.truncate(self.base_count);
                 let parsed = plugin.query_parsed(&remainder);
                 self.all.extend(parsed);
@@ -742,6 +712,8 @@ impl Launcher {
                 self.filtered = (self.base_count..self.all.len()).collect();
             }
         } else {
+            // Left plugin mode: invalidate any pending async result.
+            self.plugin_gen = self.plugin_gen.wrapping_add(1);
             // Clear any previous plugin items and release excess capacity.
             self.all.truncate(self.base_count);
             if self.all.capacity() > self.base_count * 2 {
@@ -788,6 +760,10 @@ impl Launcher {
         // Stop the live-search pump thread (dropping the sender makes its
         // recv() return and the thread exits).
         self.rofi_live_search.take();
+        // Invalidate in-flight plugin searches: the next show re-filters
+        // synchronously, so a stale result arriving late must not overwrite
+        // the fresh state.
+        self.plugin_gen = self.plugin_gen.wrapping_add(1);
         // Drop the last session's memoized Pango parses (see `rofi_leave`).
         self.pango_cache.borrow_mut().clear();
         self.sticky_metatags = None;
@@ -2264,6 +2240,89 @@ impl Launcher {
         }
     }
 
+    /// Spawn the plugin search worker thread and return its control handle.
+    /// The thread exits when the returned `PluginSearchPump` is dropped
+    /// (its sender half), mirroring [`Self::start_live_search_pump`].
+    fn start_plugin_search_pump(
+        view: gpui::Entity<Launcher>,
+        cx: &mut Context<Self>,
+    ) -> PluginSearchPump {
+        let (query_tx, query_rx) = mpsc::channel::<PluginSearchRequest>();
+        // The worker is a plain OS thread (it blocks on the channel and runs
+        // plugin subprocesses), so it can't hold GPUI handles; finished
+        // results are handed to a GPUI-side task over this channel. Dropping
+        // `result_tx` (when the worker exits) ends the task.
+        let (mut result_tx, mut result_rx) =
+            futures::channel::mpsc::channel::<PluginSearchApply>(8);
+
+        let _ = std::thread::Builder::new()
+            .name("aerofi-plugin-search".to_string())
+            .stack_size(256 * 1024)
+            .spawn(move || {
+                // Coalesce to the newest request: block for the first one,
+                // then absorb anything newer within the 90 ms typing-pause
+                // window. Only the latest query of a burst is ever executed,
+                // so at most one plugin subprocess runs at a time and none
+                // is left orphaned with a result nobody applies.
+                let debounce = Duration::from_millis(90);
+                loop {
+                    let req = match query_rx.recv() {
+                        Ok(req) => req,
+                        Err(_) => break, // handle dropped
+                    };
+                    let mut req = req;
+                    let deadline = Instant::now() + debounce;
+                    while let Ok(later) =
+                        query_rx.recv_timeout(deadline.saturating_duration_since(Instant::now()))
+                    {
+                        req = later;
+                    }
+
+                    let mut parsed = req.plugin.query_parsed(&req.remainder);
+                    // Swap full-resolution image paths for bounded
+                    // thumbnails before the rows hit the renderer (first use
+                    // decodes here, off the main thread).
+                    crate::sys::icons::thumbnail_image_icons(&mut parsed);
+                    if result_tx
+                        .try_send(PluginSearchApply {
+                            generation: req.generation,
+                            parsed,
+                        })
+                        .is_err()
+                    {
+                        break; // GPUI side is gone
+                    }
+                }
+            });
+
+        let cx_async = cx.to_async();
+        cx.spawn(move |_, _: &mut gpui::AsyncApp| async move {
+            while let Ok(apply) = result_rx.recv().await {
+                cx_async.update(|cx| {
+                    view.update(cx, |launcher, cx| {
+                        // Drop superseded or invalidated results (a newer
+                        // query was enqueued, or the search state was reset
+                        // by leaving plugin mode / a reload / a hide).
+                        if apply.generation != launcher.plugin_gen {
+                            return;
+                        }
+                        launcher.all.truncate(launcher.base_count);
+                        launcher.all.extend(apply.parsed);
+                        launcher.filtered = (launcher.base_count..launcher.all.len()).collect();
+                        if launcher.selected >= launcher.filtered.len() {
+                            launcher.selected = 0;
+                        }
+                        launcher.list.scroll_to_item(0, ScrollStrategy::Top);
+                        cx.notify();
+                    });
+                });
+            }
+        })
+        .detach();
+
+        PluginSearchPump { tx: query_tx }
+    }
+
     /// Send a live-search query to the script, then drain its output until
     /// the script goes quiet. Returns `None` if the script produced nothing
     /// within the first-line deadline (the UI stays on its current rows).
@@ -2433,4 +2492,29 @@ struct LiveSearchApply {
     session: Arc<Mutex<RofiSession>>,
     /// `true` if a newer query was enqueued while this round was draining.
     stale: bool,
+}
+
+/// Handle for the single plugin search worker thread.
+///
+/// Dropping the value (with the `Launcher`) drops the sender half, which
+/// makes the worker's `recv()` return and the thread exit.
+pub(super) struct PluginSearchPump {
+    /// Sender half: each plugin query pushes a request.
+    tx: mpsc::Sender<PluginSearchRequest>,
+}
+
+/// One enqueued plugin query, handed to the worker thread.
+struct PluginSearchRequest {
+    /// `Launcher::plugin_gen` at enqueue time; the GPUI side drops results
+    /// for anything older.
+    generation: u64,
+    plugin: Arc<crate::core::plugin_manager::LoadedPlugin>,
+    remainder: String,
+}
+
+/// One finished plugin search round, handed from the worker thread to the
+/// GPUI-side task that applies it on the main thread.
+struct PluginSearchApply {
+    generation: u64,
+    parsed: Vec<Target>,
 }
