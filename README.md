@@ -31,7 +31,7 @@
  
 ---
 
-AeroFi is a modern modal launcher designed for speed-obsessed macOS users. It bridges the gap between lightweight Unix `dmenu`/`rofi` tools and feature-rich productivity shells like Raycast, giving you rich UI components with zero configuration bloat.
+Aerofi is a modern modal launcher designed for speed-obsessed macOS users. It bridges the gap between lightweight Unix `dmenu`/`rofi` tools and feature-rich productivity shells like Raycast, giving you rich UI components with zero configuration bloat.
 
 ## ⚡️ Core Pillars
 
@@ -39,7 +39,7 @@ AeroFi is a modern modal launcher designed for speed-obsessed macOS users. It br
 Pure Rust and GPUI at its core. Experience instant cold starts, true zero-lag typing, and native Metal rendering without Electron, WebViews, or heavy runtimes.
 
 ### 2. Plug & Play Scripting
-No bulky SDKs or complex API wrappers. Your scripts (Bash, Python, Go) simply pipe structured text to `stdout`. AeroFi instantly turns it into a rich, interactive dashboard with live filtering and state management.
+No bulky SDKs or complex API wrappers. Your scripts (Bash, Python, Go) simply pipe structured text to `stdout`. Aerofi instantly turns it into a rich, interactive dashboard with live filtering and state management.
 
 ### 3. Semantic TOML Themes & Dynamic Shells
 Strict separation of concerns: scripts don't know about pixels, they just request a layout (e.g. `# @aerofi.preset grid`). Your TOML theme takes over, automatically adapting the **Dynamic Window Shell** (resizing the window, padding, and icons) to perfectly fit the mode. No ugly CSS/RASI complexity.
@@ -48,13 +48,25 @@ Strict separation of concerns: scripts don't know about pixels, they just reques
 
 ## 🥊 How It Compares
 
-| Feature | Rofi / dmenu | Alfred | Raycast | AeroFi |
+| Feature | Rofi / dmenu | Alfred | Raycast | Aerofi |
 |---------|--------------|--------|---------|--------|
 | **Platform** | Linux (X11/Wayland) | macOS | macOS | **macOS** |
 | **Engine & Speed** | C / C++ (CPU Render) | Objective-C / AppKit (Native) | React / Node.js (Heavy SDK) | **Rust + GPUI Metal (Zero-Lag)** |
 | **Configuration** | Complex RASI / CSS | Closed GUI / Preferences | Closed GUI / App Settings | **Clean TOML Design Tokens** |
 | **Scripting Model** | One-shot stdout | JSON stdout / Scripts | Heavy TS / React Extensions | **Two-way IPC Protocol (No SDKs)** |
 | **Window Geometry** | Static window size | Fixed bar + dropdown | Fixed app frame | **Dynamic Window Shell** (Adapts to preset) |
+| **Memory (idle)** | ~10–40 MB | 50–90 MB | 250+ MB | **30–55 MB** |
+| **macOS Permissions** | None (Linux) | Accessibility | Accessibility + Screen Recording | **None (Carbon hotkeys)** |
+
+---
+
+## 🧩 The Missing Glue for macOS Ricing
+
+Aerofi is designed to act as the Unix-style orchestrator for your custom macOS setup without requiring heavy background daemons:
+
+- **AeroSpace / yabai**: Pipe `aerospace list-windows` into Aerofi for an instant, blurred window switcher.
+- **Native Carbon Hotkeys**: Binds global shortcuts directly via Carbon API — no `skhd` or invasive Accessibility permissions required.
+- **Ecosystem Sync**: Trigger scripts that update your Aerofi TOML palette while reloading **SketchyBar**, **Ghostty**, and **Jankyborders** simultaneously.
 
 ---
 
@@ -106,7 +118,7 @@ cargo build --release
 ## Key Features
 
 **Performance**
-- 🪶 ~40 MB memory footprint
+- 🪶 30–55 MB memory footprint
 - 🚀 Instant startup and 120 FPS Metal rendering
 
 **Compatibility**
@@ -205,6 +217,9 @@ Real-world scripts available in [`examples/scripts/`](examples/scripts/):
 
 Copy any script to `~/.config/aerofi/scripts/` to use it immediately.
 
+> [!TIP]
+> **Migrating from Raycast?** Aerofi offers drop-in compatibility with hundreds of open-source [Raycast Script Commands](https://github.com/raycast/script-commands). Just drop your existing `.sh` or `.py` files into `~/.config/aerofi/scripts/`.
+
 > Read the [Scripting & Rofi Protocol Guide](docs/scripts.md) and the [Multi-Step Guide](docs/multi-step-scripts.md), and check out [`examples/scripts/`](examples/scripts/) for working implementations.
 
 ---
@@ -218,6 +233,10 @@ aerofi is inspired by rofi's Unix philosophy but built specifically for macOS:
 - Compatible with community script ecosystems
 
 You can port rofi scripts to aerofi with minimal changes.
+
+## Why not just run Rofi via X11 on macOS?
+
+Running Linux Rofi on macOS requires heavy X11 translation layers (like XQuartz) which consume 200MB+ RAM, break native Retina scaling, lack macOS window blur, and drain battery. Aerofi gives you the exact same Rofi stdin/stdout philosophy, but built directly on macOS Metal GPU APIs for native feel and instant rendering.
 
 ---
 
@@ -247,6 +266,14 @@ second window. Apps that enforce a single instance may ignore `Shift+Enter`.
 - **Examples**: [examples/scripts/](./examples/scripts/) for working scripts
 - **Issues**: [GitHub Issues](https://github.com/frostymur/aerofi/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/frostymur/aerofi/discussions)
+
+## 💬 Community & Showcase
+
+Got a custom theme or an awesome IPC script? 
+
+- 🎨 **[Share your theme in Discussions](https://github.com/frostymur/aerofi/discussions/categories/themes)**
+- 💡 **[Showcase your scripts](https://github.com/frostymur/aerofi/discussions/categories/scripts)**
+- 🐛 **[Report a bug](https://github.com/frostymur/aerofi/issues)**
 
 ## Contributing
 
