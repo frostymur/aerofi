@@ -48,13 +48,13 @@ Strict separation of concerns: scripts don't know about pixels, they just reques
 
 ## 🥊 How It Compares
 
-| Feature | Rofi / dmenu | Raycast / Alfred | AeroFi |
-|---------|--------------|------------------|--------|
-| **Platform** | Linux (X11/Wayland) | macOS | **macOS** |
-| **Engine & Speed** | C / C++ (CPU Render) | React / WebViews (Heavy) | **Rust + GPUI Metal (Zero-Lag)** |
-| **Configuration** | Complex RASI / CSS | Closed GUI / App Settings | **Clean TOML Design Tokens** |
-| **Scripting Model** | One-shot stdout | Heavy TS / JS Extensions | **Two-way IPC Protocol (No SDKs)** |
-| **Window Geometry** | Static window size | Fixed app frame | **Dynamic Window Shell** (Adapts to preset) |
+| Feature | Rofi / dmenu | Alfred | Raycast | AeroFi |
+|---------|--------------|--------|---------|--------|
+| **Platform** | Linux (X11/Wayland) | macOS | macOS | **macOS** |
+| **Engine & Speed** | C / C++ (CPU Render) | Objective-C / AppKit (Native) | React / Node.js (Heavy SDK) | **Rust + GPUI Metal (Zero-Lag)** |
+| **Configuration** | Complex RASI / CSS | Closed GUI / Preferences | Closed GUI / App Settings | **Clean TOML Design Tokens** |
+| **Scripting Model** | One-shot stdout | JSON stdout / Scripts | Heavy TS / React Extensions | **Two-way IPC Protocol (No SDKs)** |
+| **Window Geometry** | Static window size | Fixed bar + dropdown | Fixed app frame | **Dynamic Window Shell** (Adapts to preset) |
 
 ---
 
