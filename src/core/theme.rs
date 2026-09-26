@@ -1179,6 +1179,23 @@ mod tests {
     }
 
     #[test]
+    fn window_auto_height_defaults_and_parses() {
+        // Unset → None, which render.rs treats as "inherit require_input" —
+        // the backward-compatibility contract for pre-`auto_height` themes.
+        let t: ThemeConfig = toml::from_str("[window]\nwidth = 400.0").expect("parse");
+        assert_eq!(t.window.auto_height, None);
+
+        // Explicit values round-trip.
+        let t: ThemeConfig =
+            toml::from_str("[window]\nwidth = 400.0\nauto_height = true").expect("parse");
+        assert_eq!(t.window.auto_height, Some(true));
+
+        let t: ThemeConfig =
+            toml::from_str("[window]\nwidth = 400.0\nauto_height = false").expect("parse");
+        assert_eq!(t.window.auto_height, Some(false));
+    }
+
+    #[test]
     fn example_tokyo_night_theme_is_valid() {
         let content = r##"
 name    = "Tokyo Night"
