@@ -7,7 +7,7 @@ use gpui::{
 };
 
 use crate::core::item::Target;
-use crate::core::theme::{BuiltinWidget, Widget, parse_hex_color_alpha};
+use crate::core::theme::{BuiltinWidget, ThemeConfig, Widget, parse_hex_color_alpha};
 
 use super::helpers::{
     apply_md_style, expand_tilde_path, format_combo, is_image_path, is_primary_click,
@@ -38,8 +38,6 @@ impl Render for Launcher {
         };
 
         let ib_height = t.inputbar.height;
-        let pad_v = t.window.padding;
-        let margin_bottom = t.inputbar.margin.get(2).copied().unwrap_or(8.0);
 
         let screen_w = window
             .display(cx)
@@ -58,55 +56,34 @@ impl Render for Launcher {
             LauncherState::Search
             | LauncherState::ArgumentInput { .. }
             | LauncherState::Confirming { .. } => {
-                if require_input || auto_height {
-                    // Argument chips wrap onto extra rows in narrow bars, so
-                    // the bar — and the window that fits to it — may need to
-                    // be taller than its nominal height.
-                    let ib_h = if let LauncherState::ArgumentInput {
-                        target,
-                        args,
-                        values,
-                        ..
-                    } = &self.state
-                    {
-                        self.estimate_argument_bar_height(screen_w, target, args, values)
-                    } else {
-                        ib_height
-                    };
-
-                    if !should_show_list {
-                        // Compact (list hidden): the input bar's bottom gap is
-                        // dropped too (see `render_inputbar`), leaving only the
-                        // window padding above and below so the bar sits centred.
-                        ib_h + pad_v * 2.0
-                    } else if auto_height {
-                        let item_h = t.element.padding.first().copied().unwrap_or(8.0) * 2.0
-                            + t.element.icon_size;
-                        // Exact list height: `spacing` sits *between* rows (not
-                        // after the last one), and the input bar is separated
-                        // from the list by the mainbox gap. Omitting that gap
-                        // clipped the last row whenever `mainbox.gap` exceeded
-                        // `listview.spacing` (the old formula only fit because
-                        // the gap defaulted to `spacing`).
-                        let n = self.filtered.len();
-                        let list_h =
-                            (n as f32) * item_h + (n.saturating_sub(1)) as f32 * t.listview.spacing;
-                        let mainbox_gap = t.mainbox.gap.unwrap_or(t.listview.spacing);
-                        let total = ib_h + margin_bottom + mainbox_gap + list_h + pad_v * 2.0;
-                        total.min(t.window.height.resolve(screen_h))
-                    } else {
-                        // require_input is true, but auto_height is false:
-                        // expand directly to the full configured window height.
-                        // We still take the max with `ib_h` + margins in case
-                        // wrapped argument chips need more space than nominal.
-                        t.window
-                            .height
-                            .resolve(screen_h)
-                            .max(ib_h + margin_bottom + pad_v * 2.0)
-                    }
+                // Argument chips wrap onto extra rows in narrow bars, so the
+                // bar — and the window that fits to it — may need to be
+                // taller than its nominal height.
+                let ib_h = if let LauncherState::ArgumentInput {
+                    target,
+                    args,
+                    values,
+                    ..
+                } = &self.state
+                {
+                    self.estimate_argument_bar_height(screen_w, target, args, values)
                 } else {
-                    t.window.height.resolve(screen_h)
-                }
+                    ib_height
+                };
+                search_fit_height(
+                    &t,
+                    &SearchFit {
+                        show_search,
+                        should_show_list,
+                        auto_height,
+                        require_input,
+                        ib_h,
+                        columns,
+                        filtered_len: self.filtered.len(),
+                        element_font_size: self.element_font_val.1,
+                        screen_h,
+                    },
+                )
             }
         };
 
@@ -330,6 +307,101 @@ impl Render for Launcher {
 
         root
     }
+}
+
+/// State-dependent inputs for [`search_fit_height`]. The resolved booleans
+/// (not the raw theme fields) are passed in so this stays a pure function of
+/// "what is on screen right now".
+pub(super) struct SearchFit {
+    /// Whether the input bar is rendered. A script's `show_search false`
+    /// metatag removes it — together with the mainbox gap that followed it.
+    pub show_search: bool,
+    /// Whether the results list is rendered this frame.
+    pub should_show_list: bool,
+    /// Resolved auto-height: fit the window to the results list.
+    pub auto_height: bool,
+    /// Resolved `listview.require_input`.
+    pub require_input: bool,
+    /// Input bar height (already wrapped-chip-adjusted for `ArgumentInput`).
+    pub ib_h: f32,
+    /// Effective list columns (1 = list mode, >1 = grid mode).
+    pub columns: usize,
+    /// Number of visible items (`filtered.len()`).
+    pub filtered_len: usize,
+    /// Element font size (`element_font_val.1`), for text-line metrics.
+    pub element_font_size: f32,
+    /// Screen height the window `Dimension` resolves against.
+    pub screen_h: f32,
+}
+
+/// Window height for the `Search` / `ArgumentInput` / `Confirming` states.
+///
+/// Pure function of the theme and current state (no `&self`, no GPUI) so the
+/// sizing math can be unit-tested. The list/grid heights mirror the exact
+/// row and cell heights `render_row` / `render_grid_cell` lay out:
+/// - list row: `2·pad + max(icon, text_h) + 2·border`
+/// - grid cell: `2·pad + icon + icon_gap + text_h + 2·border`, packed into
+///   `len.div_ceil(columns)` rows
+///
+/// Dropping the text-line/border terms under-sized the window and clipped
+/// the last row; counting items instead of grid rows pinned the window to
+/// its full height in grid themes.
+pub(super) fn search_fit_height(t: &ThemeConfig, state: &SearchFit) -> f32 {
+    let window_h = t.window.height.resolve(state.screen_h);
+    if !(state.require_input || state.auto_height) {
+        return window_h;
+    }
+
+    let pad_v = t.window.padding;
+    let margin_bottom = t.inputbar.margin.get(2).copied().unwrap_or(8.0);
+    let mainbox_gap = t.mainbox.gap.unwrap_or(t.listview.spacing);
+    let spacing = t.listview.spacing;
+    let el = &t.element;
+    let el_pad_v = el.padding.first().copied().unwrap_or(8.0);
+    // Same text-line metrics as `render_row` / `render_grid_cell`.
+    let list_text_h = state.element_font_size * 1.2;
+    let grid_text_h = (state.element_font_size - 1.5).max(11.0) * 1.2;
+
+    if !state.should_show_list {
+        // Compact: the bar only (its bottom margin is not counted — the bar
+        // sits centred in the padding), or just the window padding when the
+        // bar is hidden as well.
+        let bar_h = if state.show_search { state.ib_h } else { 0.0 };
+        return bar_h + pad_v * 2.0;
+    }
+
+    if state.auto_height {
+        let (rows, row_h) = if state.columns > 1 {
+            (
+                state.filtered_len.div_ceil(state.columns),
+                el_pad_v * 2.0 + el.icon_size + el.icon_gap + grid_text_h + el.border_width * 2.0,
+            )
+        } else {
+            (
+                state.filtered_len,
+                el_pad_v * 2.0 + el.icon_size.max(list_text_h) + el.border_width * 2.0,
+            )
+        };
+        let list_h = rows as f32 * row_h + (rows.saturating_sub(1) as f32) * spacing;
+        // The bar's bottom margin and the mainbox gap between bar and list
+        // exist only while the bar is rendered.
+        let bar_block = if state.show_search {
+            state.ib_h + margin_bottom + mainbox_gap
+        } else {
+            0.0
+        };
+        return (bar_block + list_h + pad_v * 2.0).min(window_h);
+    }
+
+    // `require_input` without auto-height: expand straight to the configured
+    // height, but never below the bar (which wrapped argument chips can make
+    // taller than nominal).
+    let bar_block = if state.show_search {
+        state.ib_h + margin_bottom
+    } else {
+        0.0
+    };
+    window_h.max(bar_block + pad_v * 2.0)
 }
 
 impl Launcher {
@@ -2732,5 +2804,158 @@ impl Launcher {
             .map(|combo| format_combo(&combo))
             .collect::<Vec<_>>();
         (!labels.is_empty()).then(|| labels.join("  "))
+    }
+}
+
+#[cfg(test)]
+mod fit_tests {
+    use super::{SearchFit, search_fit_height};
+    use crate::core::theme::{Dimension, ThemeConfig};
+
+    /// Deterministic theme: fixed 500pt window so `screen_h` is irrelevant.
+    fn fit_theme() -> ThemeConfig {
+        let mut t = ThemeConfig::default();
+        t.window.height = Dimension::Points(500.0);
+        t.window.padding = 10.0;
+        t.inputbar.height = 40.0;
+        t.inputbar.margin = vec![0.0, 0.0, 8.0, 0.0]; // bottom = 8
+        t.mainbox.gap = Some(12.0);
+        t.listview.spacing = 6.0;
+        t.element.padding = vec![6.0, 10.0];
+        t.element.icon_size = 24.0;
+        t.element.icon_gap = 4.0;
+        t.element.border_width = 0.0;
+        t
+    }
+
+    fn fit(
+        show_search: bool,
+        show_list: bool,
+        auto_height: bool,
+        require_input: bool,
+        columns: usize,
+        n: usize,
+        font: f32,
+    ) -> SearchFit {
+        SearchFit {
+            show_search,
+            should_show_list: show_list,
+            auto_height,
+            require_input,
+            ib_h: 40.0,
+            columns,
+            filtered_len: n,
+            element_font_size: font,
+            screen_h: 1000.0,
+        }
+    }
+
+    /// List mode, font (20.4) shorter than icon (24): row = 2·6 + 24 + 0 = 36.
+    #[test]
+    fn list_mode_fits_rows_exactly() {
+        let t = fit_theme();
+        let h = search_fit_height(&t, &fit(true, true, true, true, 1, 3, 17.0));
+        // bar(40) + margin(8) + gap(12) + [3·36 + 2·6] + pad(20) = 200
+        assert!((h - 200.0).abs() < 1e-3, "got {h}");
+    }
+
+    /// Fix A: element borders were omitted from the row height, under-sizing
+    /// the window and clipping the last row.
+    #[test]
+    fn list_mode_counts_element_borders() {
+        let mut t = fit_theme();
+        t.element.border_width = 1.0;
+        let h = search_fit_height(&t, &fit(true, true, true, true, 1, 3, 17.0));
+        // row = 2·6 + 24 + 2·1 = 38 → 40+8+12 + [3·38 + 2·6] + 20 = 206
+        assert!((h - 206.0).abs() < 1e-3, "got {h}");
+    }
+
+    /// Fix A: a font taller than the icon drives the row height.
+    #[test]
+    fn list_mode_uses_taller_text_line() {
+        let t = fit_theme();
+        // font 30 → text_h 36 > icon 24 → row = 12 + 36 = 48
+        let h = search_fit_height(&t, &fit(true, true, true, true, 1, 2, 30.0));
+        // 40+8+12 + [2·48 + 6] + 20 = 182
+        assert!((h - 182.0).abs() < 1e-3, "got {h}");
+    }
+
+    /// Fix B: grid themes pack `n.div_ceil(columns)` rows, not `n`.
+    #[test]
+    fn grid_mode_counts_rows_not_items() {
+        let t = fit_theme();
+        // cell = 2·6 + 24 + 4 + (17-1.5)·1.2 + 0 = 58.6; 8 items / 4 cols = 2 rows
+        let h = search_fit_height(&t, &fit(true, true, true, true, 4, 8, 17.0));
+        // 40+8+12 + [2·58.6 + 6] + 20 = 203.2
+        assert!((h - 203.2).abs() < 1e-3, "got {h}");
+    }
+
+    /// Fix B: a partially-filled last row still occupies a full row.
+    #[test]
+    fn grid_mode_partial_last_row() {
+        let t = fit_theme();
+        // 10 items / 4 cols = 3 rows
+        let h = search_fit_height(&t, &fit(true, true, true, true, 4, 10, 17.0));
+        // 40+8+12 + [3·58.6 + 2·6] + 20 = 267.8
+        assert!((h - 267.8).abs() < 1e-3, "got {h}");
+    }
+
+    /// Fix C: `show_search false` removes the bar, its margin and the gap.
+    #[test]
+    fn hidden_bar_drops_bar_and_gap() {
+        let t = fit_theme();
+        let with_bar = search_fit_height(&t, &fit(true, true, true, true, 1, 3, 17.0));
+        let without_bar = search_fit_height(&t, &fit(false, true, true, true, 1, 3, 17.0));
+        // bar(40) + margin(8) + gap(12) = 60 less
+        assert!((with_bar - without_bar - 60.0).abs() < 1e-3);
+        assert!((without_bar - 140.0).abs() < 1e-3, "got {without_bar}");
+    }
+
+    /// Compact (list hidden) with the bar: bar + padding only (no margin).
+    #[test]
+    fn compact_shows_bar_only() {
+        let t = fit_theme();
+        let h = search_fit_height(&t, &fit(true, false, true, true, 1, 0, 17.0));
+        assert!((h - 60.0).abs() < 1e-3, "got {h}");
+    }
+
+    /// Compact with the bar hidden too: only the window padding remains.
+    #[test]
+    fn compact_without_bar_is_padding_only() {
+        let t = fit_theme();
+        let h = search_fit_height(&t, &fit(false, false, true, true, 1, 0, 17.0));
+        assert!((h - 20.0).abs() < 1e-3, "got {h}");
+    }
+
+    /// Long lists cap at the configured window height.
+    #[test]
+    fn fits_are_capped_at_window_height() {
+        let t = fit_theme();
+        let h = search_fit_height(&t, &fit(true, true, true, true, 1, 1000, 17.0));
+        assert!((h - 500.0).abs() < 1e-3, "got {h}");
+    }
+
+    /// require_input without auto-height: full height, never below the bar.
+    #[test]
+    fn require_input_without_auto_height_is_full() {
+        let t = fit_theme();
+        let h = search_fit_height(&t, &fit(true, true, false, true, 1, 3, 17.0));
+        assert!((h - 500.0).abs() < 1e-3, "got {h}");
+    }
+
+    /// Neither flag: plain full height, no fitting at all.
+    #[test]
+    fn no_fitting_is_full_height() {
+        let t = fit_theme();
+        let h = search_fit_height(&t, &fit(true, true, false, false, 1, 3, 17.0));
+        assert!((h - 500.0).abs() < 1e-3, "got {h}");
+    }
+
+    /// Decoupled case: auto-height on without require-input (list always shown).
+    #[test]
+    fn auto_height_without_require_input_fits() {
+        let t = fit_theme();
+        let h = search_fit_height(&t, &fit(true, true, true, false, 1, 3, 17.0));
+        assert!((h - 200.0).abs() < 1e-3, "got {h}");
     }
 }
