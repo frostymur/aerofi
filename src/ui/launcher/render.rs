@@ -473,7 +473,8 @@ fn widget_height(
     if id.eq_ignore_ascii_case("listview") {
         return list_slot;
     }
-    reg.get(id).and_then(|def| def_height(t, reg, state, image_dims, list_slot, def))
+    reg.get(id)
+        .and_then(|def| def_height(t, reg, state, image_dims, list_slot, def))
 }
 
 /// Intrinsic height of a custom widget definition, mirroring
@@ -553,17 +554,22 @@ fn def_height(
                     _ => *w,
                 }
             } else {
-                image_dims.get(path).map(|(_, nh)| *nh as f32).unwrap_or(0.0)
+                image_dims
+                    .get(path)
+                    .map(|(_, nh)| *nh as f32)
+                    .unwrap_or(0.0)
             };
             Some(
                 h + v_border(*border_width, *border_top, *border_bottom)
                     + v_extent(margin.as_deref()),
             )
         }
-        WidgetDef::Text { font_size, margin, .. } => {
-            Some(font_size.unwrap_or(t.font.size) * 1.2 + v_extent(margin.as_deref()))
-        }
-        WidgetDef::Icon { icon, size, margin, .. } => {
+        WidgetDef::Text {
+            font_size, margin, ..
+        } => Some(font_size.unwrap_or(t.font.size) * 1.2 + v_extent(margin.as_deref())),
+        WidgetDef::Icon {
+            icon, size, margin, ..
+        } => {
             let sz = size.unwrap_or(t.element.icon_size);
             // Image icons render at exactly `size`; glyph icons as a
             // centred line of text (~1.2em).
@@ -571,7 +577,9 @@ fn def_height(
             Some(h + v_extent(margin.as_deref()))
         }
         WidgetDef::Spacer { .. } => Some(0.0),
-        WidgetDef::Divider { thickness, margin, .. } => {
+        WidgetDef::Divider {
+            thickness, margin, ..
+        } => {
             // `.h(thickness).my(margin)`.
             Some(thickness.unwrap_or(1.0) + margin.unwrap_or(4.0) * 2.0)
         }
@@ -3482,7 +3490,13 @@ mod fit_tests {
     fn nested_boxes_sum_padding_and_gaps() {
         let mut t = fit_theme();
         t.widgets = vec![
-            box_def("panel", "vertical", Some(4.0), Some(&[6.0, 6.0]), vec!["strip", "hint"]),
+            box_def(
+                "panel",
+                "vertical",
+                Some(4.0),
+                Some(&[6.0, 6.0]),
+                vec!["strip", "hint"],
+            ),
             box_def(
                 "strip",
                 "horizontal",
