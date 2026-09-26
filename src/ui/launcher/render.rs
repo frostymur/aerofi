@@ -359,6 +359,11 @@ pub(super) struct SearchFit {
 /// scroll), while the fixed chrome sets a floor the window never shrinks
 /// below, so artwork and footer bars are never clipped.
 ///
+/// With `require_input` the window collapses to the chrome while the list
+/// is hidden (before the first matching keystroke), regardless of
+/// `auto_height`; once the list appears, `auto_height` fits it (capped at
+/// the configured height) and without it the configured height is used.
+///
 /// The list/grid heights mirror the exact row and cell heights
 /// `render_row` / `render_grid_cell` lay out:
 /// - list row: `2·pad + max(icon, text_h) + 2·border`
@@ -376,14 +381,18 @@ pub(super) fn search_fit_height(
     }
 
     let pad2 = t.window.padding * 2.0;
-    // `None` means the list is not rendered this frame: it contributes no
-    // height and no gap to its container.
-    let list_slot = state.should_show_list.then_some(list_height(t, state));
     // Fixed chrome (bar, header/footer, artwork) — the floor the window
     // must never shrink below.
     let chrome = mainbox_height(t, reg, state, image_dims, None);
+    if !state.should_show_list {
+        // `require_input` idle (list hidden): the window collapses to the
+        // chrome, independent of `auto_height` — no height and no gaps for
+        // the absent list slot.
+        return chrome + pad2;
+    }
+    let list_h = list_height(t, state);
     if state.auto_height {
-        let total = mainbox_height(t, reg, state, image_dims, list_slot);
+        let total = mainbox_height(t, reg, state, image_dims, Some(list_h));
         (chrome + pad2).max((total + pad2).min(window_h))
     } else {
         // `require_input` without auto-height: the configured height, but
@@ -3310,6 +3319,47 @@ mod fit_tests {
     #[test]
     fn require_input_without_auto_height_is_full() {
         let t = fit_theme();
+        let h = measure(&t, &fit(true, true, false, true, 1, 3, 17.0));
+        assert!((h - 500.0).abs() < 1e-3, "got {h}");
+    }
+
+    /// Regression: require_input without auto-height still collapses the
+    /// window to the chrome while the list is hidden (idle) — auto_height
+    /// only changes what happens once the list appears.
+    #[test]
+    fn require_input_without_auto_height_collapses_idle() {
+        let t = fit_theme();
+        // bar(40) + margin(8) + pad(20) = 68 — not the 500pt window height.
+        let h = measure(&t, &fit(true, false, false, true, 1, 0, 17.0));
+        assert!((h - 68.0).abs() < 1e-3, "got {h}");
+    }
+
+    /// Same collapse in a custom layout: the chrome includes the footer bar.
+    #[test]
+    fn require_input_without_auto_height_collapses_to_chrome() {
+        let mut t = fit_theme();
+        t.widgets = vec![
+            box_def(
+                "footer",
+                "horizontal",
+                Some(8.0),
+                Some(&[8.0, 4.0]),
+                vec!["hint", "flex", "btn_a", "btn_b"],
+            ),
+            text_def("hint", 11.0),
+            spacer_def("flex"),
+            button_def("btn_a", 11.0, Some(&[4.0, 8.0])),
+            button_def("btn_b", 11.0, Some(&[4.0, 8.0])),
+        ];
+        t.mainbox.children = vec![
+            Widget::Builtin(BuiltinWidget::InputBar),
+            Widget::Builtin(BuiltinWidget::ListView),
+            Widget::Custom("footer".into()),
+        ];
+        // chrome = bar(48) + gap(12) + footer(37.2) = 97.2 → + pad 20
+        let h = measure(&t, &fit(true, false, false, true, 1, 0, 17.0));
+        assert!((h - 117.2).abs() < 1e-3, "got {h}");
+        // ...and typing expands to the full configured height.
         let h = measure(&t, &fit(true, true, false, true, 1, 3, 17.0));
         assert!((h - 500.0).abs() < 1e-3, "got {h}");
     }

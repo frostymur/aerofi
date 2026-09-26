@@ -246,9 +246,11 @@ highlight_matches = true
 empty_text = "No matching items found"
 empty_text_color = "$subtle"
 
-# When true, the listview is collapsed until the user starts typing. The
-# collapse/expand works with any `[widgets]` layout: the window resizes to the
-# remaining chrome (e.g. a sidebar or artwork pane) plus the input bar.
+# When true, the listview is collapsed until the user starts typing: the
+# window shrinks to the remaining chrome (input bar, header/footer, artwork)
+# and grows back when results appear — with auto_height it fits the list,
+# without it the configured [window] height is used. Works with any
+# `[widgets]` layout.
 # Type: Boolean (Optional)
 # require_input = false
 

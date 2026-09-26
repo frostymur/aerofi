@@ -363,10 +363,13 @@ y_offset = -40.0
 > custom layouts. The window shrinks to fit the content, capped at the configured
 > `height` (longer lists scroll), and it never shrinks below the fixed chrome:
 > artwork panels, footer bars, and other fixed-size widgets are never clipped.
-> `require_input` alone keeps the configured height and only grows the window when
-> the fixed chrome (e.g. wrapped argument chips) is taller than it. Images with
-> `w_full`/`h_full` stretch to their container and add no height — give an image an
-> explicit `height` if you want the artwork to set a minimum window height.
+> `require_input` collapses the window to the fixed chrome while the list is
+> hidden (before the first matching keystroke); once results appear, the
+> window either fits the list (`auto_height`) or uses the configured `height`
+> (growing only when the chrome, e.g. wrapped argument chips, is taller).
+> Images with `w_full`/`h_full` stretch to their container and add no height
+> — give an image an explicit `height` if you want the artwork to set a
+> minimum window height.
 
 ### Full-Window Script View (`[script_view]`)
 
