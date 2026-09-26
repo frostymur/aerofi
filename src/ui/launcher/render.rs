@@ -105,13 +105,22 @@ impl Render for Launcher {
         if size_changed {
             window.resize(size(px(win_width), px(target_height)));
             self.last_window_size = Some((win_width, target_height));
-            // Force exactly one follow-up frame to paint against the updated
-            // native viewport size. Without this, GPUI leaves the uncovered
-            // region stale if the app is otherwise idle.
+            // The native resize is async: a single immediate repaint can land
+            // before macOS finishes it, so GPUI would paint the old-size frame
+            // and the OS would stretch that stale texture (the "stretched
+            // content" glitch while typing). Pulse a few repaints over ~80 ms
+            // so one lands after the resize and repaints at the new viewport size.
             cx.spawn(|view: gpui::WeakEntity<Self>, cx: &mut gpui::AsyncApp| {
                 let mut cx = cx.clone();
                 async move {
-                    let _ = view.update(&mut cx, |_, cx| cx.notify());
+                    for _ in 0..5 {
+                        cx.background_executor()
+                            .timer(std::time::Duration::from_millis(16))
+                            .await;
+                        if view.update(&mut cx, |_, cx| cx.notify()).is_err() {
+                            break;
+                        }
+                    }
                 }
             })
             .detach();
