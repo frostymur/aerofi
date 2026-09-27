@@ -21,10 +21,10 @@ static VISIBLE: AtomicBool = AtomicBool::new(false);
 
 /// Handle used to ask the GPUI loop to redraw the launcher.
 ///
-/// A system-level `NSApp.hide`/`unhide` is not observed by GPUI, so after the
-/// window is re-shown its surface can be stale/empty. We ask the loop to re-render
-/// explicitly. Both the hotkey handler and the GPUI loop run on the main thread,
-/// so a `thread_local` (not a `static`) is enough to share this.
+/// Re-showing a hidden window via `makeKeyAndOrderFront` can present a stale
+/// surface, so we ask the loop to re-render explicitly. Both the hotkey
+/// handler and the GPUI loop run on the main thread, so a `thread_local`
+/// (not a `static`) is enough to share this.
 #[derive(Clone)]
 struct RenderRequest {
     app: AsyncApp,
@@ -52,15 +52,17 @@ pub fn is_visible() -> bool {
     VISIBLE.load(Ordering::SeqCst)
 }
 
-/// Hide the launcher window, returning focus to the previously active app.
-/// Must be called on the main thread.
+/// Hide the launcher window. The app was never activated (the launcher is a
+/// non-activating panel), so the previously focused app simply stays in the
+/// foreground — no focus hand-off and no workspace jump. Must be called on
+/// the main thread.
 pub fn hide() {
     VISIBLE.store(false, Ordering::SeqCst);
     appkit::hide_application();
 }
 
-/// Hide only the launcher window, but keep the application active.
-/// Used for compact scripts so the Toast window remains visible.
+/// Hide the launcher window while leaving the Toast window (if any) visible.
+/// Used for compact scripts.
 pub fn hide_launcher_only() {
     VISIBLE.store(false, Ordering::SeqCst);
     // The launcher (and its inline subtitles) is off-screen; stop pacing.
@@ -77,7 +79,8 @@ pub fn toggle() {
         VISIBLE.store(true, Ordering::SeqCst);
         notify_show();
         appkit::show_application();
-        // GPUI doesn't observe the system un-hide, so force a fresh frame.
+        // Re-showing a hidden window can present a stale surface; force a
+        // fresh frame.
         request_render();
     }
 }
@@ -144,7 +147,7 @@ pub fn launch_global_target(target: &Target) {
     });
 }
 
-/// Show the launcher window (AppKit only: un-hide the app, mark visible).
+/// Show the launcher window (AppKit only: order the panel in and make it key).
 ///
 /// Intended for a Rofi session launched while hidden (global hotkey): the
 /// launcher calls this once it has entered Rofi mode and pre-sized the hidden

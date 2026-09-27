@@ -480,26 +480,34 @@ pub fn hide_from_dock() {
     app.setActivationPolicy(NSApplicationActivationPolicy::Accessory);
 }
 
-/// Hide the whole application, returning focus to the previously active app
-/// (e.g. the terminal). Must be called on the main thread.
+/// Hide the launcher window without touching application activation.
+///
+/// The launcher is a non-activating NSPanel (`WindowKind::PopUp`): it never
+/// makes aerofi the active app, so there is no app state to hide. We must not
+/// call `NSApp.hide` here — it would re-activate the previously frontmost
+/// app, and macOS would follow that app's key window to its Space, which
+/// under a tiling WM (e.g. AeroSpace) looks like an involuntary workspace
+/// jump on dismiss. A plain `orderOut` leaves the previous app exactly where
+/// it was: focus simply stays there.
+///
+/// Must be called on the main thread.
 pub fn hide_application() {
-    let Some(mtm) = MainThreadMarker::new() else {
-        return;
-    };
-    let app = NSApplication::sharedApplication(mtm);
-    app.hide(None);
+    hide_launcher_window();
 }
 
-/// Show and focus the application window. Must be called on the main thread.
-#[allow(deprecated)] // `activateIgnoringOtherApps` is the correct "steal focus" call here.
+/// Show and focus the launcher window. Must be called on the main thread.
+///
+/// `makeKeyAndOrderFront` alone is sufficient: the window is a non-activating
+/// NSPanel (`WindowKind::PopUp`), so it can become the key window and receive
+/// all keystrokes without activating the aerofi app. Deliberately NOT
+/// calling `NSApp.activate` here: activating would deactivate the previous
+/// app, and hiding the launcher would then re-activate it, dragging the user
+/// to that app's Space (an involuntary workspace jump under tiling WMs).
 pub fn show_application() {
-    let Some(mtm) = MainThreadMarker::new() else {
+    let Some(_mtm) = MainThreadMarker::new() else {
         return;
     };
     unsafe {
-        let app = NSApplication::sharedApplication(mtm);
-        app.unhide(None);
-        app.activateIgnoringOtherApps(true);
         let ptr = NS_WINDOW.load(Ordering::SeqCst);
         if !ptr.is_null() {
             let window: &NSWindow = &*(ptr as *const NSWindow);
@@ -508,8 +516,8 @@ pub fn show_application() {
     }
 }
 
-/// Hide only the main launcher window, leaving the application active so other
-/// windows (like the toast window) can remain visible.
+/// Order the main launcher window out of the screen, leaving other windows
+/// (like the toast window) untouched. Must be called on the main thread.
 pub fn hide_launcher_window() {
     let Some(_mtm) = MainThreadMarker::new() else {
         return;

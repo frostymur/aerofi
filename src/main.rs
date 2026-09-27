@@ -147,7 +147,8 @@ fn main() {
             eprintln!("aerofi: failed to register global hotkeys: {e}");
         }
 
-        // Start hidden: drop textures and yield focus back to the terminal.
+        // Start hidden: drop textures; the launcher never activates the app,
+        // so focus stays with whatever was focused before.
         view.update(cx, |launcher, cx| {
             launcher.on_hide();
             cx.notify();
