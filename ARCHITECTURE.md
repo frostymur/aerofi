@@ -44,13 +44,11 @@ enforces separation of concerns *within* the launcher crate.
 
 ## Validated performance baseline
 
-Current operational baseline: **~50 MB RSS idle, ~60 MB RSS active, ~0.1% CPU idle**, fully interactive GPUI window. Treat this as the baseline to protect:
+Current operational baseline: **25–35 MB RSS (idle and active alike), ~0.1% CPU idle**, fully interactive GPUI window. Treat this as the baseline to protect:
 
-- Idle/backgrounded RSS: keep around ~50 MB (textures dropped and Metal buffers compressed once hidden).
-- Active/foreground RSS: keep around ~60 MB with the search index and applications loaded.
-- Font/glyph overhead: each font face loaded into the GPUI text system (the theme `family`, every `fallback` entry, and any Nerd Font face pulled in to render a PUA icon glyph) is retained for the process lifetime and typically adds roughly **8–10 MB** per Nerd Font face, paid when the first glyph from that face renders rather than at startup. A shorter `fallback` list and a single Nerd Font keep this down.
+- RSS: stays in the 25–35 MB range whether backgrounded (textures dropped, Metal buffers compressed once hidden) or active (search index and applications loaded).
 
-Any PR that grows active RSS by more than ~10% needs a one-line justification in the PR description. Measure with Activity Monitor or `footprint <pid>`, before and after hiding the window.
+Any PR that grows RSS by more than ~10% needs a one-line justification in the PR description. Measure with Activity Monitor or `footprint <pid>`, before and after hiding the window.
 
 ## Hotkey subsystem
 

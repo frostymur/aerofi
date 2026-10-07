@@ -8,7 +8,7 @@
 [![CI](https://img.shields.io/github/actions/workflow/status/frostymur/aerofi/ci.yml?branch=main&style=flat-square&label=ci)](https://github.com/frostymur/aerofi/actions)
 [![Platform](https://img.shields.io/badge/platform-macOS%2013%2B-lightgrey?style=flat-square&logo=apple)](https://apple.com)
 [![Language](https://img.shields.io/badge/language-Rust%202024-orange?style=flat-square&logo=rust)](https://www.rust-lang.org)
-[![Memory](https://img.shields.io/badge/memory-~45MB%20RSS-brightgreen?style=flat-square)](ARCHITECTURE.md)
+[![Memory](https://img.shields.io/badge/memory-25-35MB%20RSS-brightgreen?style=flat-square)](ARCHITECTURE.md)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 
 <br />
@@ -35,7 +35,7 @@ Aerofi is a modern modal launcher designed for speed-obsessed macOS users. It br
 ## Features
 
 - Pure Rust + GPUI rendering on Metal: instant cold starts, zero-lag typing, 120 FPS — no Electron, no WebViews
-- 30–55 MB idle memory footprint
+- 25–35 MB memory footprint
 - Six execution modes: `silent`, `compact`, `inline`, `fullOutput`, `pipe`, and interactive `rofi`
 - Two-way stdin/stdout IPC: live lists, keyboard events, markdown previews — no SDKs, any language
 - Drop-in compatibility with [Raycast Script Commands](https://github.com/raycast/script-commands)
@@ -59,7 +59,7 @@ Aerofi is a modern modal launcher designed for speed-obsessed macOS users. It br
 | **Configuration** | Complex RASI / CSS | Closed GUI / Preferences | Closed GUI / App Settings | **Clean TOML Design Tokens** |
 | **Scripting Model** | One-shot stdout | JSON stdout / Scripts | Heavy TS / React Extensions | **Two-way IPC Protocol (No SDKs)** |
 | **Window Geometry** | Static window size | Fixed bar + dropdown | Fixed app frame | **Dynamic Window Shell** (Adapts to preset) |
-| **Memory (idle)** | ~10–40 MB | 50–90 MB | 250+ MB | **30–55 MB** |
+| **Memory (idle)** | ~10–40 MB | 50–90 MB | 250+ MB | **25–35 MB** |
 | **macOS Permissions** | None (Linux) | Accessibility | Accessibility + Screen Recording | **None (Carbon hotkeys)** |
 
 ---
