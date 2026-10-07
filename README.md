@@ -13,7 +13,7 @@
 
 <br />
 
-[Core Pillars](#️-core-pillars) •
+[Core Pillars](#core-pillars) •
 [Installation](#installation) •
 [Key Features](#key-features) •
 [Widgets & Theming](#declarative-widgets--theming) •
@@ -33,7 +33,7 @@
 
 Aerofi is a modern modal launcher designed for speed-obsessed macOS users. It bridges the gap between lightweight Unix `dmenu`/`rofi` tools and feature-rich productivity shells like Raycast, giving you rich UI components with zero configuration bloat.
 
-## ⚡️ Core Pillars
+## Core Pillars
 
 ### 1. GPU-Powered Performance
 Pure Rust and GPUI at its core. Experience instant cold starts, true zero-lag typing, and native Metal rendering without Electron, WebViews, or heavy runtimes.
@@ -46,7 +46,7 @@ Strict separation of concerns: scripts don't know about pixels, they just reques
 
 ---
 
-## 🥊 How It Compares
+## How It Compares
 
 | Feature | Rofi / dmenu | Alfred | Raycast | Aerofi |
 |---------|--------------|--------|---------|--------|
@@ -60,7 +60,7 @@ Strict separation of concerns: scripts don't know about pixels, they just reques
 
 ---
 
-## 🧩 The Missing Glue for macOS Ricing
+## The Missing Glue for macOS Ricing
 
 Aerofi is designed to act as the Unix-style orchestrator for your custom macOS setup without requiring heavy background daemons:
 
@@ -267,13 +267,13 @@ second window. Apps that enforce a single instance may ignore `Shift+Enter`.
 - **Issues**: [GitHub Issues](https://github.com/frostymur/aerofi/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/frostymur/aerofi/discussions)
 
-## 💬 Community & Showcase
+## Community & Showcase
 
 Got a custom theme or an awesome IPC script? 
 
-- 🎨 **[Share your theme in Discussions](https://github.com/frostymur/aerofi/discussions/categories/themes)**
-- 💡 **[Showcase your scripts](https://github.com/frostymur/aerofi/discussions/categories/scripts)**
-- 🐛 **[Report a bug](https://github.com/frostymur/aerofi/issues)**
+- **[Share your theme in Discussions](https://github.com/frostymur/aerofi/discussions/categories/themes)**
+- **[Showcase your scripts](https://github.com/frostymur/aerofi/discussions/categories/scripts)**
+- **[Report a bug](https://github.com/frostymur/aerofi/issues)**
 
 ## Contributing
 
