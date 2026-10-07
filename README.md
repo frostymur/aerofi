@@ -118,24 +118,24 @@ cargo build --release
 ## Key Features
 
 **Performance**
-- 🪶 30–55 MB memory footprint
-- 🚀 Instant startup and 120 FPS Metal rendering
+- 30–55 MB memory footprint
+- Instant startup and 120 FPS Metal rendering
 
 **Compatibility**
-- 📜 Huge ecosystem: drop in any Raycast script command or build your own with `@aerofi.*` tags
-- 🔑 Zero-friction Carbon hotkey (no Accessibility permissions required)
+- Huge ecosystem: drop in any Raycast script command or build your own with `@aerofi.*` tags
+- Zero-friction Carbon hotkey (no Accessibility permissions required)
 
 **Flexibility & Customization**
 - 6 execution modes: `silent`, `compact`, `inline`, `fullOutput`, `pipe`, and interactive `rofi`
-- 📌 Pinned items — keep favourite apps & scripts at the top of the results
-- 🧩 Declarative widget engine (custom headers, footers, action buttons, status pills)
-- 🎨 Deep TOML theming (frosted glass blur, fonts, `$palette` tokens, custom layouts)
-- 🔌 [Native C ABI plugins](docs/plugins.md) (Rust, C, C++, Swift)
+- Pinned items — keep favourite apps & scripts at the top of the results
+- Declarative widget engine (custom headers, footers, action buttons, status pills)
+- Deep TOML theming (frosted glass blur, fonts, `$palette` tokens, custom layouts)
+- [Native C ABI plugins](docs/plugins.md) (Rust, C, C++, Swift)
 
 **Developer-Friendly**
-- 💻 Open source (MIT license)
-- 📚 Full documentation & examples
-- 🚀 Active development
+- Open source (MIT license)
+- Full documentation & examples
+- Active development
 
 ---
 
