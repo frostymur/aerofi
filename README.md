@@ -27,7 +27,7 @@
 <video src="https://github.com/user-attachments/assets/86c5589b-b48e-42b3-9c22-341308eb0811" autoplay loop muted playsinline width="820"></video>
   <p><em>Recorded demo showing instant search, theming with custom theme_switcher script, clipboard manager script, and native file search plugin</em></p>
 </div>
- 
+
 ---
 
 Aerofi is a modern modal launcher designed for speed-obsessed macOS users. It bridges the gap between lightweight Unix `dmenu`/`rofi` tools and feature-rich productivity shells like Raycast, giving you rich UI components with zero configuration bloat.
