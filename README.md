@@ -13,9 +13,8 @@
 
 <br />
 
-[Core Pillars](#core-pillars) •
+[Features](#features) •
 [Installation](#installation) •
-[Key Features](#key-features) •
 [Widgets & Theming](#declarative-widgets--theming) •
 [Interactive Scripts](#interactive-rofi-scripts--ipc) •
 [Shortcuts](#default-shortcuts)
@@ -33,16 +32,21 @@
 
 Aerofi is a modern modal launcher designed for speed-obsessed macOS users. It bridges the gap between lightweight Unix `dmenu`/`rofi` tools and feature-rich productivity shells like Raycast, giving you rich UI components with zero configuration bloat.
 
-## Core Pillars
+## Features
 
-### 1. GPU-Powered Performance
-Pure Rust and GPUI at its core. Experience instant cold starts, true zero-lag typing, and native Metal rendering without Electron, WebViews, or heavy runtimes.
-
-### 2. Plug & Play Scripting
-No bulky SDKs or complex API wrappers. Your scripts (Bash, Python, Go) simply pipe structured text to `stdout`. Aerofi instantly turns it into a rich, interactive dashboard with live filtering and state management.
-
-### 3. Semantic TOML Themes & Dynamic Shells
-Strict separation of concerns: scripts don't know about pixels, they just request a layout (e.g. `# @aerofi.preset grid`). Your TOML theme takes over, automatically adapting the **Dynamic Window Shell** (resizing the window, padding, and icons) to perfectly fit the mode. No ugly CSS/RASI complexity.
+- Pure Rust + GPUI rendering on Metal: instant cold starts, zero-lag typing, 120 FPS — no Electron, no WebViews
+- 30–55 MB idle memory footprint
+- Six execution modes: `silent`, `compact`, `inline`, `fullOutput`, `pipe`, and interactive `rofi`
+- Two-way stdin/stdout IPC: live lists, keyboard events, markdown previews — no SDKs, any language
+- Drop-in compatibility with [Raycast Script Commands](https://github.com/raycast/script-commands)
+- Declarative widget engine (custom headers, footers, action buttons, status pills)
+- TOML theming: `$palette` tokens, frosted glass blur, fonts, modular `imports` to mix palettes and layouts
+- Dynamic Window Shell — the window resizes itself to fit the active preset
+- Native C ABI plugins ([docs](docs/plugins.md), Rust/C/C++/Swift)
+- Fuzzy / prefix / glob matching, frecency or lexical ranking, pinned items
+- Global hotkeys via the Carbon API — no Accessibility permissions
+- GitHub Flavored Markdown rendering inside the launcher
+- Multi-select with `Tab`, hover-to-select, clickable rows, instant live updates
 
 ---
 
@@ -112,30 +116,6 @@ cd aerofi
 cargo build --release
 ./target/release/aerofi
 ```
-
----
-
-## Key Features
-
-**Performance**
-- 30–55 MB memory footprint
-- Instant startup and 120 FPS Metal rendering
-
-**Compatibility**
-- Huge ecosystem: drop in any Raycast script command or build your own with `@aerofi.*` tags
-- Zero-friction Carbon hotkey (no Accessibility permissions required)
-
-**Flexibility & Customization**
-- 6 execution modes: `silent`, `compact`, `inline`, `fullOutput`, `pipe`, and interactive `rofi`
-- Pinned items — keep favourite apps & scripts at the top of the results
-- Declarative widget engine (custom headers, footers, action buttons, status pills)
-- Deep TOML theming (frosted glass blur, fonts, `$palette` tokens, custom layouts)
-- [Native C ABI plugins](docs/plugins.md) (Rust, C, C++, Swift)
-
-**Developer-Friendly**
-- Open source (MIT license)
-- Full documentation & examples
-- Active development
 
 ---
 
@@ -226,17 +206,15 @@ Copy any script to `~/.config/aerofi/scripts/` to use it immediately.
 
 ## For rofi Users
 
-aerofi is inspired by rofi's Unix philosophy but built specifically for macOS:
-- Same stdin/stdout piping model (`rofi` mode = rofi-compatible)
-- Native macOS experience (no X11 layers)
-- GPUI rendering (120 FPS, Metal acceleration)
-- Compatible with community script ecosystems
+aerofi keeps rofi's Unix philosophy — the same stdin/stdout piping model
+(`rofi` script mode), so community scripts port with minimal changes — but
+runs natively on macOS instead of through a Linux translation stack:
 
-You can port rofi scripts to aerofi with minimal changes.
-
-## Why not just run Rofi via X11 on macOS?
-
-Running Linux Rofi on macOS requires heavy X11 translation layers (like XQuartz) which consume 200MB+ RAM, break native Retina scaling, lack macOS window blur, and drain battery. Aerofi gives you the exact same Rofi stdin/stdout philosophy, but built directly on macOS Metal GPU APIs for native feel and instant rendering.
+- Linux rofi under XQuartz costs 200 MB+ RAM, breaks Retina scaling, lacks
+  window blur, and drains the battery; aerofi renders natively on Metal at
+  120 FPS
+- Global hotkeys come from the Carbon API — no Accessibility permissions
+  required (Raycast and Alfred both need them)
 
 ---
 
