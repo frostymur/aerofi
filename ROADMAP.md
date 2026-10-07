@@ -33,6 +33,23 @@ commitment — items may be reworked, split, or dropped.
   TODO in `core/scanner.rs`): new/removed scripts appear without a
   restart or manual Cmd+R.
 
+## Modes & navigation
+
+- [ ] **Global hotkey access to plugins.** Plugins are currently only
+  reached by typing their prefix. Allow `[bindings.global]` to name a
+  plugin directly (show the launcher with the prefix pre-filled), so
+  e.g. a file search is one hotkey — rofi-style mode hotkeys without
+  typing.
+- [ ] **Runtime source filter (Apps / Scripts / All).** A binding or
+  builtin action that filters the target list at runtime for
+  script-heavy setups, instead of hand-editing `[sources]` in the
+  config file (which some setups keep read-only, e.g. Nix-managed).
+- [ ] **Mode switcher (rofi-style tabs).** The larger follow-up built
+  on the two items above: a `mode-switcher` widget with tab buttons,
+  a `Button` selected/active state to show the current mode, and
+  named modes combining a source filter, a plugin, or a script
+  session.
+
 ## Widgets & theming
 
 - [ ] **Scrollbar / scroll position indicator.** Lists scroll without
