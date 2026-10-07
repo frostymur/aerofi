@@ -32,3 +32,21 @@ commitment — items may be reworked, split, or dropped.
 - [ ] **Filesystem watcher for script folders** (the `notify`-based
   TODO in `core/scanner.rs`): new/removed scripts appear without a
   restart or manual Cmd+R.
+
+## Widgets & theming
+
+- [ ] **Scrollbar / scroll position indicator.** Lists scroll without
+  a visible indicator (GPUI hides scrollbars, Zed-style). Add a
+  themable scrollbar (or at least a thin position bar) to
+  `[listview]` so long result sets show where the user is.
+- [ ] **Dynamic text widgets.** `text` widgets are static. Add
+  built-in dynamic values (e.g. a clock/date format) and a way to
+  pipe a script's output into a widget, turning footers into live
+  status bars (clock, system stats) without a second tool.
+- [ ] **Conditional widget visibility.** A `show_if`-style attribute
+  (e.g. query non-empty, Rofi mode, specific script) so buttons and
+  badges appear with context instead of always occupying layout
+  space.
+- [ ] **Gradients in color fields.** Colors currently accept flat
+  hex/rgb only. Support gradient values (stops + angle) for
+  backgrounds and borders.
