@@ -808,6 +808,12 @@ impl Launcher {
         for (path, text) in crate::core::scheduler::flush_pending_inline() {
             self.apply_inline_output(&path, Some(gpui::SharedString::from(text)));
         }
+        // Script-folder changes that arrived while the window was hidden
+        // (the main thread was never woken for them); apply them before
+        // the first frame so the list isn't stale.
+        if crate::core::script_watcher::take_pending() {
+            self.rescan_scripts();
+        }
         self.refilter(None);
         // refilter() resets the scroll to the top, but the selection
         // survived the hide/show cycle — restore the view to it so the
@@ -1146,6 +1152,8 @@ impl Launcher {
         // Reconcile inline-script daemons with the new target set (scripts
         // added/removed/re-intervalled by the reload).
         crate::core::scheduler::reconcile_daemons(&self.all);
+        // Re-point the script-folder watcher at the (possibly new) dirs.
+        crate::core::script_watcher::reconcile_dirs(&self.app_config.expanded_script_dirs());
         self.search = SearchIndex::new(&self.app_config.aliases, &self.app_config.pinned);
         self.plugin_manager = crate::core::plugin_manager::PluginManager::load_all();
         self.widget_registry = WidgetRegistry::from_theme(&theme.widgets);
@@ -1198,6 +1206,31 @@ impl Launcher {
         println!(
             "aerofi: configuration reloaded (theme: {})",
             self.app_config.theme
+        );
+    }
+
+    /// Rescan only the script targets after a script-folder change on disk
+    /// (the file watcher).
+    ///
+    /// The lightweight counterpart of [`Self::reload`]: re-reads the script
+    /// folders, splices the result into the base list (apps and builtins
+    /// stay put), and reconciles the inline-script daemons. It does not
+    /// re-read the config, rebuild the theme/fonts, or re-extract icons
+    /// (scripts resolve theirs at parse time).
+    pub(crate) fn rescan_scripts(&mut self) {
+        let new_scripts = crate::core::scanner::scan_scripts(&self.app_config);
+        let script_count = new_scripts.len();
+        self.base_count =
+            crate::core::scanner::replace_scripts(&mut self.all, self.base_count, new_scripts);
+        // New/re-intervalled inline scripts get their daemons immediately.
+        crate::core::scheduler::reconcile_daemons(&self.all);
+        self.refilter(None);
+        if self.selected >= self.filtered.len() {
+            self.selected = 0;
+        }
+        println!(
+            "aerofi: rescanned script folders ({} script(s))",
+            script_count
         );
     }
 
@@ -1515,6 +1548,7 @@ impl Launcher {
         // hotkey while the app was hidden), show it now — still at alpha 0.
         if from_hidden {
             crate::core::scheduler::notify_visibility(true);
+            crate::core::script_watcher::notify_visibility(true);
             self.on_show();
             crate::ui::window::show_window();
         }

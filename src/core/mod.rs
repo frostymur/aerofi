@@ -12,6 +12,7 @@ pub mod rofi_protocol;
 pub mod rofi_session;
 pub mod scanner;
 pub mod scheduler;
+pub mod script_watcher;
 pub mod search;
 pub mod theme;
 pub mod widget;

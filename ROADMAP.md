@@ -29,9 +29,10 @@ commitment — items may be reworked, split, or dropped.
 
 ## Core / indexer
 
-- [ ] **Filesystem watcher for script folders** (the `notify`-based
-  TODO in `core/scanner.rs`): new/removed scripts appear without a
-  restart or manual Cmd+R.
+- [x] **Filesystem watcher for script folders** (`notify`-based FSEvents
+  watcher, `core/script_watcher.rs`): new/removed scripts appear without
+  a restart or manual Cmd+R; `reconcile_daemons` keeps inline daemons in
+  sync.
 
 ## Modes & navigation
 

@@ -108,13 +108,17 @@ system_settings = true # macOS System Settings panes (reserved)
 ### Script Directories
 ```toml
 [scripts]
-# Folders scanned recursively for launchable scripts.
+# Folders scanned for launchable scripts (top-level files only).
 # Leading "~" expands to your home directory.
 dirs = [
     "~/.config/aerofi/scripts",
     "~/scripts"
 ]
 ```
+
+The folders are watched: new, removed, or modified scripts appear in the
+launcher without a reload (disable with `[general] watch_scripts = false`,
+applies after a restart).
 
 ### App Discovery & Filtering
 aerofi indexes standard application directories (`/Applications`, `/System/Applications`, and their `Utilities/` subdirectories such as Activity Monitor, Console, and Terminal) automatically.

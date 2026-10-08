@@ -38,6 +38,9 @@ matching = "fuzzy"
 # How results are ordered: "frecency" (default: fuzzy score + usage history)
 # or "lexical" (alphabetical; pinned items still lead).
 ranking = "frecency"
+# Rescan the script folders when files change, so new/removed scripts
+# appear without a reload (applies after a restart).
+watch_scripts = true
 
 [sources]
 # Which target sources the launcher indexes.
@@ -128,6 +131,9 @@ pub struct GeneralConfig {
     pub matching: MatchMode,
     /// Result ranking: `frecency` (default) or `lexical` (alphabetical).
     pub ranking: RankingMode,
+    /// Watch the script folders for changes so new/removed scripts appear
+    /// without a manual reload (Cmd+R).
+    pub watch_scripts: bool,
 }
 
 impl Default for GeneralConfig {
@@ -137,6 +143,7 @@ impl Default for GeneralConfig {
             background_new_instance: false,
             matching: MatchMode::Fuzzy,
             ranking: RankingMode::Frecency,
+            watch_scripts: true,
         }
     }
 }

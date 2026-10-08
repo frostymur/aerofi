@@ -44,6 +44,9 @@ toml = "0.8"
 # Home/config directory resolution
 dirs = "5.0"
 
+# Filesystem watching (FSEvents on macOS): live script-folder updates
+notify = "8"
+
 # macOS AppKit bindings (per PROJECT_RULES.md)
 # objc2-app-kit ships per-class feature gates; enable only classes we touch.
 objc2 = "0.5.2"

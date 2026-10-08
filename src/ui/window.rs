@@ -67,6 +67,7 @@ pub fn hide_launcher_only() {
     VISIBLE.store(false, Ordering::SeqCst);
     // The launcher (and its inline subtitles) is off-screen; stop pacing.
     crate::core::scheduler::notify_visibility(false);
+    crate::core::script_watcher::notify_visibility(false);
     appkit::hide_launcher_window();
 }
 
@@ -166,6 +167,7 @@ pub fn show_window() {
 pub fn notify_hide() {
     // Stop pacing the inline daemons; they stay asleep while hidden.
     crate::core::scheduler::notify_visibility(false);
+    crate::core::script_watcher::notify_visibility(false);
     let Some(rr) = RENDER_REQUEST.with(|r| r.borrow().clone()) else {
         return;
     };
@@ -183,6 +185,7 @@ pub fn notify_hide() {
 pub fn notify_show() {
     // Resume pacing and poke the daemons for fresh inline output.
     crate::core::scheduler::notify_visibility(true);
+    crate::core::script_watcher::notify_visibility(true);
     let Some(rr) = RENDER_REQUEST.with(|r| r.borrow().clone()) else {
         return;
     };

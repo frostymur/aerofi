@@ -21,9 +21,6 @@ const APP_DIRS: [&str; 4] = [
 /// Returns an empty `Vec` when the scripts source is disabled in the
 /// config. Missing folders are skipped (after logging); scripts from all
 /// folders are collected into a single name-sorted list.
-///
-/// TODO: watch the folders for changes (a notify-based watcher) so new
-/// scripts appear without a restart.
 pub fn scan_scripts(config: &AppConfig) -> Vec<Target> {
     if !config.sources.scripts {
         return Vec::new();
@@ -156,6 +153,25 @@ pub fn scan_all(config: &AppConfig) -> Vec<Target> {
     targets
 }
 
+/// Replace the `Target::Script` entries of the base list (the first
+/// `base_count` items of `all`) with freshly scanned `new_scripts` and
+/// re-sort the base. Plugin rows beyond `base_count` are kept in place.
+/// Returns the new base count. Used by the script-folder watcher's rescan
+/// (`Launcher::rescan_scripts`).
+pub(crate) fn replace_scripts(
+    all: &mut Vec<Target>,
+    base_count: usize,
+    new_scripts: Vec<Target>,
+) -> usize {
+    let plugin_tail: Vec<Target> = all.split_off(base_count);
+    all.retain(|t| !matches!(t, Target::Script { .. }));
+    all.extend(new_scripts);
+    sort_by_name(all);
+    let base = all.len();
+    all.extend(plugin_tail);
+    base
+}
+
 /// True when `name` matches `pattern`, case-insensitively. A pattern
 /// without wildcards must match the whole name; `*` matches any run of
 /// characters and `?` matches any single character.
@@ -195,7 +211,7 @@ pub(crate) fn glob_match_chars(pattern: &[char], name: &[char]) -> bool {
     pi == pattern.len()
 }
 
-fn sort_by_name(items: &mut [Target]) {
+pub(crate) fn sort_by_name(items: &mut [Target]) {
     items.sort_by(|a, b| a.name().cmp(b.name()));
 }
 
@@ -267,5 +283,47 @@ mod tests {
         // Test deduplication: explicit app already found shouldn't appear twice
         let explicit_matches = apps.iter().filter(|a| a.name() == "Explicit").count();
         assert_eq!(explicit_matches, 1);
+    }
+
+    #[test]
+    fn replace_scripts_swaps_scripts_and_preserves_plugin_tail() {
+        let temp = TempTestDir::new("splice");
+        let alpha = temp.path().join("alpha.sh");
+        let beta = temp.path().join("beta.sh");
+        std::fs::write(&alpha, "#!/bin/sh\necho alpha\n").unwrap();
+        std::fs::write(&beta, "#!/bin/sh\necho beta\n").unwrap();
+
+        let app = Target::App {
+            name: SharedString::from("Zed"),
+            path: Arc::from(PathBuf::from("/Applications/Zed.app")),
+            icon_path: None,
+        };
+        let mut all = vec![
+            app,
+            Target::script_from_file(&alpha).unwrap(),
+            Target::reload_config(),
+        ];
+        all.push(Target::PluginItem {
+            name: SharedString::from("Plugin row"),
+            subtitle: None,
+            icon: None,
+            plugin_id: SharedString::from("1"),
+            plugin_name: SharedString::from("demo"),
+        });
+        let base_count = 3;
+
+        // New scan after alpha.sh was deleted: only beta remains.
+        std::fs::remove_file(&alpha).unwrap();
+        let new_scripts = vec![Target::script_from_file(&beta).unwrap()];
+        let new_base = replace_scripts(&mut all, base_count, new_scripts);
+
+        assert_eq!(new_base, 3);
+        assert_eq!(all.len(), 4);
+        // The base is re-sorted (byte order: uppercase before lowercase).
+        assert_eq!(all[0].name(), "Reload Configuration");
+        assert_eq!(all[1].name(), "Zed");
+        assert_eq!(all[2].name(), "beta");
+        // The plugin row beyond base_count survives untouched.
+        assert!(matches!(all[3], Target::PluginItem { .. }));
     }
 }
