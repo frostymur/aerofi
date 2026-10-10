@@ -1,0 +1,39 @@
+#!/bin/sh
+# DCO sign-off hook for aerofi.
+#
+# Appends a `Signed-off-by:` trailer to every commit message unless one
+# is already present, so plain `git commit` — and tooling that commits on
+# your behalf (cargo release bump commits included) — is DCO-compliant
+# without remembering `-s`.
+#
+# Install once per clone:
+#   git config core.hooksPath scripts/git-hooks
+#
+# The trailer uses the commit's committer identity (the same one `-s`
+# would use). See CONTRIBUTING.md, "Contributor sign-off (DCO)".
+
+MSG="$1"
+REASON="$2"
+
+# Merge commits assemble their message from both parents; a trailer
+# there is noise, and merges are not themselves contributions.
+[ "$REASON" = "merge" ] && exit 0
+
+# Already signed (by hand, via -s, or by a previous amend)?
+grep -q '^Signed-off-by: ' "$MSG" && exit 0
+
+# Bail out if no usable identity is configured; a bogus
+# `name@hostname` sign-off is worse than a missing one.
+IDENT=$(git var GIT_COMMITTER_IDENT 2>/dev/null | sed 's/>.*$/>/')
+case "$IDENT" in
+    *" <"*) ;;
+    *) exit 0 ;;
+esac
+
+# Keep the trailer block well-formed: separate it from the message
+# body with a blank line.
+if [ -s "$MSG" ]; then
+    printf '\nSigned-off-by: %s\n' "$IDENT" >>"$MSG"
+else
+    printf 'Signed-off-by: %s\n' "$IDENT" >>"$MSG"
+fi

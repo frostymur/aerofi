@@ -14,6 +14,8 @@ full rationale and the current numbers to protect.
 ```bash
 git clone <repo>
 cd aerofi
+# Install the DCO auto sign-off hook (see "Contributor sign-off (DCO)"):
+git config core.hooksPath scripts/git-hooks
 cargo test --all-targets
 ```
 
@@ -109,9 +111,15 @@ adding a dependency, not after.
 
 ## Contributor sign-off (DCO)
 
-Commit with `git commit -s` so each commit carries a `Signed-off-by:` line
-confirming you have the right to submit the change under the project's
-license. No CLA.
+Every commit must carry a `Signed-off-by:` line confirming you have the
+right to submit the change under the project's license. No CLA.
+
+If you installed the hooks (see "Getting set up"), the
+`prepare-commit-msg` hook in `scripts/git-hooks/` appends the trailer
+automatically — including to commits made by tooling such as
+`cargo release`. Otherwise commit with `git commit -s`. The `DCO`
+workflow in CI rejects any commit landing on `main` without the
+trailer.
 
 ## Security
 

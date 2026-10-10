@@ -1,0 +1,42 @@
+name: DCO
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  dco:
+    name: Check Signed-off-by on all commits
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check sign-off
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            # Every non-merge commit the PR adds to main.
+            BASE=$(git merge-base "origin/${{ github.event.pull_request.base.ref }}" HEAD)
+            RANGE="${BASE}..HEAD"
+          else
+            # Push to main: every commit this push added.
+            BEFORE="${{ github.event.before }}"
+            if [ -n "$BEFORE" ] && git cat-file -e "$BEFORE" 2>/dev/null; then
+              RANGE="${BEFORE}..HEAD"
+            else
+              # New branch or history rewrite: check the newest 20.
+              RANGE="HEAD~19..HEAD"
+            fi
+          fi
+
+          FAILED=0
+          for SHA in $(git rev-list --no-merges "$RANGE"); do
+            if ! git log -1 --format=%B "$SHA" | grep -q '^Signed-off-by: '; then
+              echo "::error::commit $SHA missing DCO sign-off: $(git log -1 --format=%s "$SHA")"
+              FAILED=1
+            fi
+          done
+          exit "$FAILED"

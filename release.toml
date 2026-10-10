@@ -9,6 +9,9 @@ tag-name = "v{{version}}"
 
 # Commit message for the version bump
 pre-release-commit-message = "chore(core): bump version to {{version}}"
+# Note: cargo-release has no DCO option. The Signed-off-by trailer on
+# bump commits comes from the prepare-commit-msg hook in
+# scripts/git-hooks/ (install: git config core.hooksPath scripts/git-hooks).
 
 # Push the commit and tag to the remote
 push = true
