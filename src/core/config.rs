@@ -27,10 +27,15 @@ pinned = []
 [general]
 # Maximum number of results shown in the launcher list.
 max_results = 20
-# Launch new app instances (shift+enter) in the background (open -n -g):
-# the window opens on the current workspace without activating the app, so
-# macOS won't switch to another workspace where the app is already open.
-background_new_instance = false
+# How shift+enter launches a new window for a running app:
+# "smart" (default): asks the app itself to open a new window in its
+# existing process via AppleScript (no duplicate instance), falling back
+# to `open -n` for apps without a scripting dictionary (e.g. Chrome); the
+# AppleScript path always activates the app
+# "force": always launches a fresh instance via `open -n`
+# "background": `open -n -g` — the window appears on the current workspace
+# without activating the app (handy with tiling window managers)
+new_instance_mode = "smart"
 # How the filter query matches target names/aliases:
 # "fuzzy" (default, fzf-style), "prefix" (must start with the query),
 # or "glob" (* = any run of characters, ? = one character).
@@ -81,6 +86,9 @@ toggle = "opt+space"
 # System-wide shortcuts: run the named target directly, without opening the
 # launcher. Use opt (or cmd) to avoid app conflicts, e.g.:
 # "opt+d" = "Deploy"
+# A plugin name opens the launcher directly in that plugin's mode (the
+# prefix is pre-filled, no typing needed), e.g.:
+# "opt+f" = "file-search"
 # Registered at startup only (restart after editing); conflicting combos
 # are skipped with a warning.
 [bindings.global]
@@ -116,17 +124,36 @@ pub enum RankingMode {
     Lexical,
 }
 
+/// How Shift+Enter launches a new instance of a running app.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NewInstanceMode {
+    /// Ask the app itself to open a new window via AppleScript (same
+    /// process, no duplicate instance), falling back to `open -n` for apps
+    /// without a scripting dictionary (e.g. Chrome). The AppleScript path
+    /// always activates the app.
+    #[default]
+    Smart,
+    /// Always launch a fresh instance via `open -n`.
+    Force,
+    /// Launch a fresh instance via `open -n -g`: the window appears on the
+    /// current workspace without activating the app (handy with tiling
+    /// window managers). Uses a new process.
+    Background,
+}
+
 /// Launcher-wide behaviour.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct GeneralConfig {
     /// The maximum number of search results displayed in the UI.
     pub max_results: usize,
-    /// Launch new app instances (Shift+Enter) in the background via
-    /// `open -n -g`: the window appears on the current workspace without
-    /// activating the app, so macOS won't switch to another workspace where
-    /// the app is already open (useful with tiling window managers).
-    pub background_new_instance: bool,
+    /// How Shift+Enter launches a new instance of a running app: `smart`
+    /// (default) asks the app to open a new window in its existing process
+    /// via AppleScript and falls back to `open -n`; `force` always uses
+    /// `open -n`; `background` uses `open -n -g` so the window lands on the
+    /// current workspace without activating the app.
+    pub new_instance_mode: NewInstanceMode,
     /// Filter query matching mode: `fuzzy` (default), `prefix`, or `glob`.
     pub matching: MatchMode,
     /// Result ranking: `frecency` (default) or `lexical` (alphabetical).
@@ -140,7 +167,7 @@ impl Default for GeneralConfig {
     fn default() -> Self {
         Self {
             max_results: 20,
-            background_new_instance: false,
+            new_instance_mode: NewInstanceMode::Smart,
             matching: MatchMode::Fuzzy,
             ranking: RankingMode::Frecency,
             watch_scripts: true,
@@ -474,6 +501,7 @@ mod tests {
         assert_eq!(config.bindings.launcher.len(), 3);
         assert_eq!(config.bindings.global.len(), 2);
         assert_eq!(config.bindings.custom.len(), 3);
+        assert_eq!(config.general.new_instance_mode, NewInstanceMode::Smart);
     }
 
     #[test]
@@ -499,5 +527,26 @@ mod tests {
             expanded_apps[0],
             PathBuf::from("/System/Library/CoreServices/Finder.app")
         );
+    }
+
+    #[test]
+    fn new_instance_mode_parses_all_values() {
+        let c: AppConfig = toml::from_str(
+            r#"theme = "default"
+            [general]
+            new_instance_mode = "force"
+            "#,
+        )
+        .unwrap();
+        assert_eq!(c.general.new_instance_mode, NewInstanceMode::Force);
+
+        let c: AppConfig = toml::from_str(
+            r#"theme = "default"
+            [general]
+            new_instance_mode = "background"
+            "#,
+        )
+        .unwrap();
+        assert_eq!(c.general.new_instance_mode, NewInstanceMode::Background);
     }
 }

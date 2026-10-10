@@ -225,16 +225,21 @@ runs natively on macOS instead of through a Linux translation stack:
 | `Option+Space` | Global | Toggle aerofi launcher window |
 | `↑` / `↓` (or `Ctrl+P` / `Ctrl+N`) | Launcher | Navigate result list |
 | `Enter` | Launcher | Launch item (activates a running app) |
-| `Shift+Enter` | Launcher | Open a new instance of a running app (`open -n`) |
+| `Shift+Enter` | Launcher | Open a new window of a running app (AppleScript, `open -n` fallback) |
 | `Cmd+R` | Launcher | Reload configuration and rescan sources |
 | `Escape` | Launcher | Close aerofi window / Clear search |
 | `Tab` | Rofi Mode | Toggle multi-selection checkbox |
 | `Ctrl+D` | Rofi Mode | Secondary action (e.g. delete item) |
 
 **Launching applications.** `Enter` (or clicking a row) activates an app that is
-already running, matching macOS `open`. Press `Shift+Enter` to force a new
-instance (`open -n`) — handy for apps like Terminal or Finder when you want a
-second window. Apps that enforce a single instance may ignore `Shift+Enter`.
+already running, matching macOS `open`. Press `Shift+Enter` to open a new
+window: aerofi first asks the app itself via AppleScript (`make new window`,
+same process — no duplicate instance), and falls back to `open -n` for apps
+without a scripting dictionary (e.g. Chrome). This is handy for apps like
+Terminal or Finder when you want a second window. Set
+`[general] new_instance_mode = "force"` to always use `open -n`, or
+`"background"` to use `open -n -g` (window lands on the current workspace
+without activating the app).
 
 ---
 

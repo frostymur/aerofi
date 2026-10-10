@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use gpui::{Context, Font, ListAlignment, ListState, ScrollStrategy, UniformListScrollHandle, px};
 
-use crate::core::config::AppConfig;
+use crate::core::config::{AppConfig, NewInstanceMode};
 use crate::core::history::History;
 use crate::core::item::{BuiltinAction, ScriptMetatags, ScriptMode, Target};
 use crate::core::rofi_protocol::RofiCommand;
@@ -562,8 +562,8 @@ impl Launcher {
                 LauncherAction::None
             }
             ("enter" | "return", false) => {
-                // Plain Enter activates a running app; Shift+Enter opens a new
-                // instance (`open -n`).
+                // Plain Enter activates a running app; Shift+Enter smart-launches
+                // a new window (AppleScript, `open -n` fallback).
                 let action = self.execute_selected(ks.modifiers.shift);
                 // Full output keeps the window open, so preserve the query
                 // and selection for when the user comes back.
@@ -888,12 +888,21 @@ impl Launcher {
             }
             Target::App { path, .. } => {
                 let identifier = item.identifier();
-                crate::core::executor::open_app(
-                    path,
-                    item.name(),
-                    new_instance,
-                    new_instance && self.app_config.general.background_new_instance,
-                );
+                if new_instance {
+                    match self.app_config.general.new_instance_mode {
+                        NewInstanceMode::Smart => {
+                            crate::core::executor::smart_open_app(path, item.name())
+                        }
+                        NewInstanceMode::Force => {
+                            crate::core::executor::open_app(path, item.name(), true, false)
+                        }
+                        NewInstanceMode::Background => {
+                            crate::core::executor::open_app(path, item.name(), true, true)
+                        }
+                    }
+                } else {
+                    crate::core::executor::open_app(path, item.name(), false, false);
+                }
                 self.history.record_launch(identifier);
                 LauncherAction::Hide
             }
@@ -1291,6 +1300,32 @@ impl Launcher {
         (cmd || ctrl) && (ks.key.eq_ignore_ascii_case("r") || ks.key == "к" || ks.key == "К")
     }
 
+    /// Open a plugin by prefix: reset any transient state (Rofi session,
+    /// full output, argument input) and put the launcher in the plugin's
+    /// query mode — the same state the user would reach by typing the
+    /// prefix. Called from `window::open_plugin` (a global hotkey) and
+    /// from the `plugin:` button action.
+    pub(crate) fn open_plugin(&mut self, cx: &mut Context<Self>, prefix: &str) {
+        match &self.state {
+            LauncherState::RofiMode { .. } => {
+                // May hide the window again (a session launched from a
+                // hidden hotkey); the caller re-shows it if needed.
+                self.rofi_leave();
+            }
+            _ => {
+                self.back_from_full_output();
+                if !matches!(self.state, LauncherState::Search) {
+                    // ArgumentInput / Confirming: drop the transient dialog.
+                    self.state = LauncherState::Search;
+                }
+            }
+        }
+        self.query = prefix.to_string();
+        self.refilter(Some(cx));
+        self.selected = 0;
+        println!("aerofi: opened plugin mode (prefix: {prefix:?})");
+    }
+
     /// Execute an action triggered by a custom button widget. If rendered
     /// inside a list item row, `row_item` is provided to allow contextual
     /// actions like "run", "edit", or "copy".
@@ -1344,6 +1379,20 @@ impl Launcher {
                         let _ = child.wait();
                     }
                 });
+            return;
+        }
+
+        // Open a plugin by name. The launcher is the plugin's UI, so the
+        // window stays open regardless of the button's `close` attribute.
+        if let Some(plugin_name) = trimmed.strip_prefix("plugin:") {
+            let plugin_name = plugin_name.trim();
+            match self.plugin_manager.find_by_name(plugin_name) {
+                Some(plugin) => {
+                    self.open_plugin(cx, &plugin.prefix);
+                    cx.notify();
+                }
+                None => eprintln!("aerofi: warning: button plugin not found: {plugin_name}"),
+            }
             return;
         }
 

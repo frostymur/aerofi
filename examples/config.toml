@@ -36,13 +36,18 @@ theme = "tokyo-night"
 # Default: 20
 max_results = 20
 
-# Launch new app instances (shift+enter) in the background via `open -n -g`:
-# the window appears on the current workspace without activating the app, so
-# macOS won't switch to another workspace where the app is already open.
-# Useful with tiling window managers (Aerospace, yabai, ...).
-# Type: Boolean
-# Default: false
-background_new_instance = false
+# How shift+enter launches a new window for a running app:
+#   "smart" - ask the app itself to open a new window in its existing
+#             process via AppleScript (no duplicate instance), falling back
+#             to `open -n` for apps without a scripting dictionary (e.g.
+#             Chrome); the AppleScript path always activates the app
+#   "force" - always launch a fresh instance via `open -n`
+#   "background" - launch via `open -n -g`: the window appears on the
+#             current workspace without activating the app (useful with
+#             tiling window managers like Aerospace or yabai)
+# Type: String ("smart" | "force" | "background")
+# Default: "smart"
+new_instance_mode = "smart"
 
 # How the filter query matches target names (and aliases):
 #   "fuzzy"  - fzf-style subsequence match (nucleo scoring)

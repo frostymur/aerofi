@@ -209,6 +209,95 @@ pub fn open_app(path: &Path, name: &str, new_instance: bool, background: bool) {
         eprintln!("aerofi: failed to run {name}: {e}");
     }
 }
+/// AppleScript body that asks an app to open a new window in its *existing*
+/// process (no duplicate instance). Terminal is special-cased: its dictionary
+/// is unreliable for `make new window`, but `do script` (no arguments) always
+/// opens a fresh window.
+pub fn new_window_script(name: &str) -> String {
+    if name == "Terminal" {
+        "tell application \"Terminal\" to do script".to_string()
+    } else {
+        let escaped = name.replace('\\', "\\\\").replace('"', "\\\"");
+        format!("tell application \"{}\" to make new window", escaped)
+    }
+}
+
+/// Wait for `child` up to `timeout`; returns `true` only if it exited with
+/// status 0 in time. On timeout the child is killed: a wedged app must not
+/// hold the `open -n` fallback hostage.
+fn wait_timeout(child: &mut std::process::Child, timeout: std::time::Duration) -> bool {
+    use std::time::Instant;
+    let deadline = Instant::now() + timeout;
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return status.success(),
+            Ok(None) => {
+                if Instant::now() >= deadline {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return false;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            Err(_) => return false,
+        }
+    }
+}
+
+/// Synchronous smart launch (Shift+Enter). First asks the app itself to open
+/// a new window via AppleScript — same process, no duplicate instance, so a
+/// workspace full of existing windows stays intact. Apps without a scripting
+/// dictionary (Chrome, most Electron apps) reject the command, in which case
+/// we fall back to `open -n`.
+///
+/// Returns `true` when the AppleScript path succeeded. The AppleScript path
+/// always activates the app; users who want the new window to land on the
+/// current workspace without activation should use the "background" mode
+/// instead.
+fn smart_launch_sync(path: &Path, name: &str) -> bool {
+    let script = new_window_script(name);
+    let ok = match Command::new("osascript")
+        .arg("-e")
+        .arg(&script)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+    {
+        Ok(mut child) => wait_timeout(&mut child, std::time::Duration::from_secs(3)),
+        Err(e) => {
+            eprintln!("aerofi: failed to run osascript for {name}: {e}");
+            false
+        }
+    };
+    if !ok {
+        open_app(path, name, true, false);
+    }
+    ok
+}
+
+/// Smart launch (Shift+Enter) on a detached thread: osascript can take
+/// hundreds of milliseconds (or the full timeout against a wedged app), and
+/// the launcher window must hide immediately.
+pub fn smart_open_app(path: &Path, name: &str) {
+    let path = path.to_path_buf();
+    let name = name.to_string();
+    // Clones for the thread: the originals stay available for the
+    // inline fallback if the thread cannot start.
+    let thread_path = path.clone();
+    let thread_name = name.clone();
+    if let Err(e) = std::thread::Builder::new()
+        .name(format!("aerofi-smart-launch:{thread_name}"))
+        .stack_size(256 * 1024)
+        .spawn(move || {
+            let _ = smart_launch_sync(&thread_path, &thread_name);
+        })
+    {
+        // Thread couldn't start (e.g. OOM): do the launch inline rather
+        // than drop it silently.
+        eprintln!("aerofi: failed to spawn smart launch thread for {name}: {e}");
+        smart_launch_sync(&path, &name);
+    }
+}
 
 /// Run the script at `path` and capture its output with streaming readers
 /// whose memory use is bounded by `stdout_cap`, no matter how much the
@@ -666,5 +755,44 @@ mod tests {
         kill_all_scripts();
         assert!(lock_scripts().is_empty(), "registry not drained");
         let _ = child.wait();
+    }
+
+    #[test]
+    fn new_window_script_builds_applescript_per_app() {
+        assert_eq!(
+            new_window_script("Safari"),
+            "tell application \"Safari\" to make new window"
+        );
+        // Terminal is special-cased to its reliable `do script` command.
+        assert_eq!(
+            new_window_script("Terminal"),
+            "tell application \"Terminal\" to do script"
+        );
+        // Special characters in the bundle name must be escaped.
+        assert_eq!(
+            new_window_script("Qu\"ote"),
+            "tell application \"Qu\\\"ote\" to make new window"
+        );
+    }
+
+    #[test]
+    fn wait_timeout_kills_a_hanging_child() {
+        let mut child = std::process::Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .unwrap();
+        assert!(!wait_timeout(
+            &mut child,
+            std::time::Duration::from_millis(200)
+        ));
+    }
+
+    #[test]
+    fn smart_launch_falls_back_to_open_n_for_unscriptable_apps() {
+        // A nonexistent app name: osascript fails ("can't find
+        // application"), so the `open -n` fallback must be attempted (and
+        // itself fail harmlessly against the fake path).
+        let path = std::path::Path::new("/nonexistent-aerofi-test.app");
+        assert!(!smart_launch_sync(path, "aerofi-definitely-not-an-app-42"));
     }
 }

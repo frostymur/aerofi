@@ -69,7 +69,13 @@ GPUI is pinned to a specific git commit SHA in `Cargo.toml`, never `main` and ne
 - `pipe`: Captures stdout and copies it to the system clipboard.
 - `gui`: Two-way interactive Rofi-compatible streaming protocol via stdin/stdout (`\0prompt`, `\0message`, etc.).
 
-Applications open via `open <path>`.
+Applications open via `open <path>`; Shift+Enter smart-launches a new window
+in the app's existing process via AppleScript (`make new window`, Terminal
+uses `do script`), falling back to `open -n` for apps without a scripting
+dictionary; `[general] new_instance_mode` selects the strategy: "smart"
+(default, the AppleScript path above), "force" (always `open -n`) or
+"background" (`open -n -g`, new window on the current workspace without
+activation).
 
 ## Script metadata: Raycast Script Commands compatible, not extension compatible
 

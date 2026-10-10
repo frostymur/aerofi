@@ -80,11 +80,17 @@ theme = "tokyo-night"
 [general]
 # Maximum number of search results displayed simultaneously.
 max_results = 20
-# Launch new app instances (shift+enter) in the background (`open -n -g`):
-# the window opens on the current workspace without activating the app, so
-# macOS won't switch to another workspace where the app is already open.
-# Useful with tiling window managers (Aerospace, yabai, ...).
-background_new_instance = false
+# How shift+enter launches a new window for a running app:
+#   "smart"      — ask the app itself to open a new window in its existing
+#                  process via AppleScript (no duplicate instance), falling
+#                  back to `open -n` for apps without a scripting
+#                  dictionary (Chrome, most Electron apps); the AppleScript
+#                  path always activates the app
+#   "force"      — always launch a fresh instance via `open -n`
+#   "background" — launch via `open -n -g`: the window opens on the current
+#                  workspace without activating the app (useful with tiling
+#                  window managers like Aerospace or yabai)
+new_instance_mode = "smart"
 # How the filter query matches target names (and aliases):
 #   "fuzzy"  — fzf-style subsequence match (default, nucleo scoring)
 #   "prefix" — the name/alias must start with the query
@@ -198,6 +204,10 @@ toggle = "opt+space"
 # re-register them. Each entry directly launches its target without opening
 # the search UI.
 "opt+c" = "Clipboard History"
+# A plugin name instead of a target: opens the launcher directly in that
+# plugin's mode (prefix pre-filled), so a plugin is one hotkey away —
+# rofi-style mode hotkeys without typing.
+"opt+f" = "file-search"
 ```
 
 ### Custom Keys (Rofi Mode)
@@ -630,6 +640,9 @@ gap = 4.0
 
 > [!TIP]
 > By default a button **closes** the launcher after running its action (`close` defaults to `true`). Set `close = false` on a button to keep the launcher open — handy for actions like toggling a widget or copying, where you want to stay put. It applies to both clicks and the button's `hotkey`.
+
+> [!NOTE]
+> Besides a plain target name, `action` accepts special prefixes: `command:<shell>` (run a shell command detached), `target:`/`run:`/`script:<name>` (run the named target), and `plugin:<name>` (open the launcher in that plugin's mode — the window always stays open, `close` is ignored).
 
 ---
 
