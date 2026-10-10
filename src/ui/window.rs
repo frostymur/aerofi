@@ -148,6 +148,33 @@ pub fn launch_global_target(target: &Target) {
     });
 }
 
+/// Open a plugin from its global hotkey: put the launcher in the
+/// plugin's query mode (prefix pre-filled) and show the window if hidden.
+///
+/// The state transition runs first because leaving a Rofi session can
+/// hide the window again (`rofi_launched_from_hidden`); the visibility
+/// check below always wins, so the window ends up shown either way.
+pub fn open_plugin(prefix: &str) {
+    let Some(rr) = RENDER_REQUEST.with(|r| r.borrow().clone()) else {
+        return;
+    };
+    let view = rr.view.clone();
+    rr.app.update(|cx| {
+        view.update(cx, |launcher, cx| {
+            launcher.open_plugin(cx, prefix);
+            cx.notify();
+        });
+    });
+    if !is_visible() {
+        VISIBLE.store(true, Ordering::SeqCst);
+        notify_show();
+        appkit::show_application();
+        // Re-showing a hidden window can present a stale surface; force a
+        // fresh frame.
+        request_render();
+    }
+}
+
 /// Show the launcher window (AppKit only: order the panel in and make it key).
 ///
 /// Intended for a Rofi session launched while hidden (global hotkey): the

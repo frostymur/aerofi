@@ -39,42 +39,47 @@ fn main() {
 
     // Global target shortcuts (ADR 0002): resolve the configured combos to
     // keycodes and the named targets. Unknown combos/targets are skipped
-    // with a warning and never block startup.
+    // with a warning and never block startup. A name that is no target
+    // falls through to the loaded plugins (the launcher loads its own copy
+    // later; the OS caches the dylib, so the double dlopen is cheap).
+    let plugins = core::plugin_manager::PluginManager::load_all();
     let mut globals = Vec::new();
     for (combo, name) in &app_config.bindings.global {
-        match sys::carbon::parse_combo(combo) {
-            Some((keycode, modifiers)) => {
-                if let Some(target) = targets.iter().find(|t| t.name() == name).cloned() {
-                    // Skip pipe-mode scripts: they copy to clipboard, no global hotkey needed.
-                    if matches!(
-                        target,
-                        crate::core::item::Target::Script {
-                            mode: crate::core::item::ScriptMode::Pipe,
-                            ..
-                        }
-                    ) {
-                        eprintln!(
-                            "aerofi: warning: global shortcut {combo:?}: skipping pipe-mode script {name:?}"
-                        );
-                        continue;
-                    }
-                    globals.push(sys::carbon::GlobalBinding {
-                        keycode,
-                        modifiers,
-                        target,
-                        label: combo.clone(),
-                    });
-                } else {
-                    eprintln!(
-                        "aerofi: warning: global shortcut {combo:?}: unknown target {name:?}"
-                    );
-                }
-            }
-            None => eprintln!(
+        let Some((keycode, modifiers)) = sys::carbon::parse_combo(combo) else {
+            eprintln!(
                 "aerofi: warning: global shortcut {combo:?}: unsupported combo \
                  (need cmd/ctrl/opt + a key from a-z 0-9 f1-f12 space/tab/return/arrows)"
-            ),
+            );
+            continue;
+        };
+        let Some(target) = sys::carbon::resolve_global_target(name, &targets, &plugins.plugins)
+        else {
+            eprintln!(
+                "aerofi: warning: global shortcut {combo:?}: unknown target or plugin {name:?}"
+            );
+            continue;
+        };
+        // Skip pipe-mode scripts: they copy to clipboard, no global hotkey needed.
+        if let sys::carbon::GlobalTarget::Target(t) = &target
+            && matches!(
+                t,
+                crate::core::item::Target::Script {
+                    mode: crate::core::item::ScriptMode::Pipe,
+                    ..
+                }
+            )
+        {
+            eprintln!(
+                "aerofi: warning: global shortcut {combo:?}: skipping pipe-mode script {name:?}"
+            );
+            continue;
         }
+        globals.push(sys::carbon::GlobalBinding {
+            keycode,
+            modifiers,
+            target,
+            label: combo.clone(),
+        });
     }
 
     // Safety net for exits that never return from `application().run`

@@ -68,6 +68,16 @@ const HOTKEY_SIGNATURE: OSType = 0x41_45_52_46; // 'AERF'
 const HOTKEY_ID: u32 = 1; // Option+Space toggle
 const GLOBAL_BASE_ID: u32 = 2; // configured global target shortcuts
 
+/// What a global shortcut runs: a plain target, or a plugin (the launcher
+/// opens directly in the plugin's mode, prefix pre-filled).
+#[derive(Clone)]
+pub enum GlobalTarget {
+    /// An application, script, or built-in target.
+    Target(Target),
+    /// A dynamic plugin: the launcher's query is filled with this prefix.
+    Plugin(String),
+}
+
 /// A global shortcut bound to a target (parsed combo + the target to run).
 #[derive(Clone)]
 pub struct GlobalBinding {
@@ -76,9 +86,26 @@ pub struct GlobalBinding {
     /// Carbon modifier mask (cmd/shift/opt/ctrl bits).
     pub modifiers: u32,
     /// The target to run when the combo fires.
-    pub target: Target,
+    pub target: GlobalTarget,
     /// The configured combo, for diagnostics.
     pub label: String,
+}
+
+/// Resolve a `[bindings.global]` name: first against the indexed targets
+/// (apps, scripts, builtins), then against the loaded plugins. Targets win
+/// on a name clash.
+pub fn resolve_global_target(
+    name: &str,
+    targets: &[Target],
+    plugins: &[std::sync::Arc<crate::core::plugin_manager::LoadedPlugin>],
+) -> Option<GlobalTarget> {
+    if let Some(target) = targets.iter().find(|t| t.name() == name).cloned() {
+        return Some(GlobalTarget::Target(target));
+    }
+    plugins
+        .iter()
+        .find(|p| p.name == name)
+        .map(|p| GlobalTarget::Plugin(p.prefix.clone()))
 }
 
 type EventHandlerProcPtr = unsafe extern "C" fn(
@@ -127,7 +154,7 @@ static HANDLER_REF: AtomicPtr<c_void> = AtomicPtr::new(core::ptr::null_mut());
 /// are not `Sync`, so it cannot sit in a `OnceLock` directly).
 static GLOBAL_HOTKEY_REFS: AtomicPtr<c_void> = AtomicPtr::new(core::ptr::null_mut());
 /// The targets behind the global hotkeys, indexed by `id - GLOBAL_BASE_ID`.
-static GLOBAL_TARGETS: OnceLock<Vec<Target>> = OnceLock::new();
+static GLOBAL_TARGETS: OnceLock<Vec<GlobalTarget>> = OnceLock::new();
 
 unsafe extern "C" fn hotkey_handler(
     _handler_call_ref: *mut c_void,
@@ -155,7 +182,10 @@ unsafe extern "C" fn hotkey_handler(
         } else if let Some(targets) = GLOBAL_TARGETS.get()
             && let Some(target) = targets.get((id.id - GLOBAL_BASE_ID) as usize)
         {
-            crate::ui::window::launch_global_target(target);
+            match target {
+                GlobalTarget::Target(t) => crate::ui::window::launch_global_target(t),
+                GlobalTarget::Plugin(prefix) => crate::ui::window::open_plugin(prefix),
+            }
         }
     }
     noErr
@@ -365,6 +395,19 @@ mod tests {
         assert!(parse_combo("r").is_none());
         assert!(parse_combo("cmd+").is_none());
         assert!(parse_combo("").is_none());
+    }
+
+    #[test]
+    fn resolve_global_target_prefers_targets() {
+        let targets = vec![Target::reload_config()];
+        // A target name resolves to the plain target. (The plugin branch
+        // needs a loaded dylib and is covered by the manual smoke test.)
+        assert!(matches!(
+            resolve_global_target("Reload Configuration", &targets, &[]),
+            Some(GlobalTarget::Target(_))
+        ));
+        assert!(resolve_global_target("Nope", &targets, &[]).is_none());
+        assert!(resolve_global_target("Reload Configuration", &[], &[]).is_none());
     }
 
     #[test]

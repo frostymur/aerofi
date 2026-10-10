@@ -36,11 +36,12 @@ commitment — items may be reworked, split, or dropped.
 
 ## Modes & navigation
 
-- [ ] **Global hotkey access to plugins.** Plugins are currently only
-  reached by typing their prefix. Allow `[bindings.global]` to name a
-  plugin directly (show the launcher with the prefix pre-filled), so
-  e.g. a file search is one hotkey — rofi-style mode hotkeys without
-  typing.
+- [x] **Global hotkey access to plugins.** `[bindings.global]` names that
+  resolve to no app/script/builtin fall through to the loaded plugins:
+  the launcher opens directly in the plugin's mode (prefix pre-filled) —
+  rofi-style mode hotkeys without typing. The same primitive is exposed
+  to themes via the `plugin:<name>` button action (and, through it, to a
+  button's `hotkey`).
 - [ ] **Runtime source filter (Apps / Scripts / All).** A binding or
   builtin action that filters the target list at runtime for
   script-heavy setups, instead of hand-editing `[sources]` in the

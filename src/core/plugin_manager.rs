@@ -292,6 +292,13 @@ impl PluginManager {
         }
     }
 
+    /// Find a plugin by name (exact match). Used by `[bindings.global]`
+    /// and the `plugin:` button action, which address plugins by name
+    /// rather than by prefix.
+    pub fn find_by_name(&self, name: &str) -> Option<Arc<LoadedPlugin>> {
+        self.plugins.iter().find(|p| p.name == name).cloned()
+    }
+
     /// Find a plugin by its prefix. If a query matches the prefix, returns the plugin and the remainder of the query.
     pub fn match_prefix<'a>(&self, query: &'a str) -> Option<(Arc<LoadedPlugin>, &'a str)> {
         for plugin in &self.plugins {
