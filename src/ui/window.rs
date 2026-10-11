@@ -161,7 +161,7 @@ pub fn open_plugin(prefix: &str) {
     let view = rr.view.clone();
     rr.app.update(|cx| {
         view.update(cx, |launcher, cx| {
-            launcher.open_plugin(cx, prefix);
+            launcher.open_plugin(Some(&mut *cx), prefix);
             cx.notify();
         });
     });

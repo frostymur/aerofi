@@ -227,6 +227,7 @@ runs natively on macOS instead of through a Linux translation stack:
 | `Enter` | Launcher | Launch item (activates a running app) |
 | `Shift+Enter` | Launcher | Open a new window of a running app (AppleScript, `open -n` fallback) |
 | `Cmd+R` | Launcher | Reload configuration and rescan sources |
+| `Cmd+.` | Launcher | Cycle runtime mode (`[modes]` + loaded plugins): All → each mode → each plugin → All |
 | `Escape` | Launcher | Close aerofi window / Clear search |
 | `Tab` | Rofi Mode | Toggle multi-selection checkbox |
 | `Ctrl+D` | Rofi Mode | Secondary action (e.g. delete item) |
@@ -240,6 +241,15 @@ Terminal or Finder when you want a second window. Set
 `[general] new_instance_mode = "force"` to always use `open -n`, or
 `"background"` to use `open -n -g` (window lands on the current workspace
 without activating the app).
+
+**Filtering sources at runtime.** Define named source filters in
+`[modes]` (e.g. `scripts = "scripts,builtins"`) and cycle them with
+`Cmd+.` or theme buttons using `action = "mode:<name>"` — the active mode
+shows as a badge in the input bar. Any loaded plugin name is also a mode:
+its session opens with the prefix applied and hidden, so the input box
+holds only your query. Useful for script-heavy setups instead of
+hand-editing `[sources]`. See [Customization — Runtime Source
+Filters](./docs/customization.md#runtime-source-filters-modes).
 
 ---
 

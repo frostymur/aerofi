@@ -111,6 +111,39 @@ scripts = true         # Scripts from configured script directories
 system_settings = true # macOS System Settings panes (reserved)
 ```
 
+### Runtime Source Filters (`[modes]`)
+
+`[sources]` decides what the launcher *indexes*; `[modes]` lets you switch
+what it *lists* at runtime — no config edit or restart, so setups that keep
+`config.toml` read-only (e.g. Nix-managed) can still filter on the fly.
+Each mode is a comma-separated source list (`apps`, `scripts`, `builtins`,
+`all`); while a mode is active only those sources are shown.
+
+**Any loaded plugin name is also a mode**, with no config entry: `mode:`
+targets, Cmd+. cycling, and button actions all fall through to the plugin
+and enter its interactive session. The plugin's prefix is applied and
+*hidden* automatically — the input box shows only your query, an empty
+box requests the plugin's default results, and backspace/word-delete
+guards protect the prefix anchor. Escape, Enter-reset, or clearing the
+query exits the session.
+
+```toml
+[modes]
+scripts = "scripts,builtins"
+dev     = "apps,scripts"
+```
+
+Switching:
+
+- **Cmd+.** cycles `All → each mode (alphabetical) → each plugin (alphabetical) → All`
+- **Theme buttons** with `action = "mode:<name>"` (a button can carry its
+  own `hotkey`), e.g. a sidebar of mode tabs
+
+The active mode — a filter *or* a plugin session — shows as a small badge
+in the input bar. Unknown source names are warned about at startup and
+skipped; a mode that resolves to no sources shows an empty list; an
+unknown mode name (not in `[modes]`, not a plugin) warns and is ignored.
+
 ### Script Directories
 ```toml
 [scripts]

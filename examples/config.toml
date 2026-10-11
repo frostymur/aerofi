@@ -85,6 +85,28 @@ scripts = true
 # Default: true
 system_settings = true
 
+# ------------------------------------------------------------------------------
+# [modes] - Runtime Source Filters
+# ------------------------------------------------------------------------------
+# Named subsets of the target list, switchable at runtime without editing
+# config (handy for script-heavy setups). Each mode is a comma-separated
+# source list: "apps", "scripts", "builtins", "all".
+# While a mode is active only those sources are listed.
+#
+# Any loaded plugin name is also a mode (no config entry needed): it
+# enters that plugin's interactive session with its prefix applied —
+# and hidden — automatically, the input box holding only your query.
+#
+# Switching:
+#   - Cmd+. cycles All -> each mode -> each plugin -> All
+#   - theme button: action = "mode:<name>" (optionally with its own hotkey)
+#
+# Unknown source names are warned about at startup and skipped.
+# Example:
+# [modes]
+# scripts = "scripts,builtins"
+# dev     = "apps,scripts"
+
 
 # ------------------------------------------------------------------------------
 # [scripts] - Script Directories

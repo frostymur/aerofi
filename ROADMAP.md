@@ -38,14 +38,21 @@ commitment — items may be reworked, split, or dropped.
 
 - [x] **Global hotkey access to plugins.** `[bindings.global]` names that
   resolve to no app/script/builtin fall through to the loaded plugins:
-  the launcher opens directly in the plugin's mode (prefix pre-filled) —
+  the launcher opens directly in the plugin's mode (prefix applied and
+  hidden) —
   rofi-style mode hotkeys without typing. The same primitive is exposed
   to themes via the `plugin:<name>` button action (and, through it, to a
   button's `hotkey`).
-- [ ] **Runtime source filter (Apps / Scripts / All).** A binding or
-  builtin action that filters the target list at runtime for
-  script-heavy setups, instead of hand-editing `[sources]` in the
-  config file (which some setups keep read-only, e.g. Nix-managed).
+- [x] **Runtime source filter (Apps / Scripts / All).** `[modes]` defines
+  named source filters (comma-separated: `apps`, `scripts`, `builtins`,
+  `all`), resolved into an allocation-free `SourceMask` applied inside
+  `SearchIndex::search`. Any loaded plugin name is also a mode: it enters
+  the plugin's session with the prefix applied and hidden from the input
+  bar (an `active_plugin` session anchor guards backspace/word-delete).
+  Cmd+. cycles filters and plugins at runtime, and themes can bind
+  `mode:<name>` button actions (with their own hotkeys); the active mode
+  renders as an input-bar badge. No config edit or restart — works for
+  read-only (e.g. Nix-managed) configs.
 - [ ] **Mode switcher (rofi-style tabs).** The larger follow-up built
   on the two items above: a `mode-switcher` widget with tab buttons,
   a `Button` selected/active state to show the current mode, and

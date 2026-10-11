@@ -24,6 +24,50 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+/// A runtime source filter: a bitmask over [`Target`] variants used to
+/// restrict the search list to a subset of sources (a `[modes]` entry
+/// resolves to one). A plain `u8` keeps it `Copy` and allocation-free —
+/// the search hot path checks it with a single comparison per target.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SourceMask(u8);
+
+impl SourceMask {
+    pub const APPS: Self = Self(1 << 0);
+    pub const SCRIPTS: Self = Self(1 << 1);
+    pub const BUILTINS: Self = Self(1 << 2);
+    /// Every source; equivalent to no filter.
+    pub const ALL: Self = Self(0x7);
+
+    /// Resolve a single source name from a `[modes]` filter list.
+    /// Unknown names yield `None` so callers can warn and skip them.
+    pub fn from_name(name: &str) -> Option<Self> {
+        match name {
+            "apps" => Some(Self::APPS),
+            "scripts" => Some(Self::SCRIPTS),
+            "builtins" => Some(Self::BUILTINS),
+            "all" => Some(Self::ALL),
+            _ => None,
+        }
+    }
+
+    /// Union of two masks (`a | b`).
+    pub const fn union(self, other: Self) -> Self {
+        Self(self.0 | other.0)
+    }
+
+    /// Whether `target` belongs to one of the masked sources.
+    pub fn contains(self, target: &Target) -> bool {
+        let bit = match target {
+            Target::App { .. } => Self::APPS,
+            Target::Script { .. } => Self::SCRIPTS,
+            Target::Builtin { .. } => Self::BUILTINS,
+            // Plugin rows are streamed session results, never a static
+            // filter source.
+            Target::PluginItem { .. } => return false,
+        };
+        self.0 & bit.0 != 0
+    }
+}
 /// Output mode of a script (from `@raycast.mode`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -865,6 +909,54 @@ echo "Theme switcher..."
         assert_eq!(script.category_label(), "Script");
         assert_eq!(builtin.category_label(), "Aerofi");
         assert_eq!(builtin.icon(), None);
+    }
+
+    #[test]
+    fn source_mask_resolves_names_and_filters_targets() {
+        let app = Target::App {
+            name: "Safari".into(),
+            path: Arc::from(PathBuf::from("/Applications/Safari.app")),
+            icon_path: None,
+        };
+        let script = Target::Script {
+            name: "hello".into(),
+            path: Arc::from(PathBuf::from("/tmp/hello.sh")),
+            mode: ScriptMode::FullOutput,
+            icon: None,
+            icon_image_path: None,
+            metadata: Arc::new(RaycastMetadata::default()),
+            metatags: ScriptMetatags::default(),
+            inline_output: None,
+        };
+        let builtin = Target::reload_config();
+
+        assert_eq!(SourceMask::from_name("apps"), Some(SourceMask::APPS));
+        assert_eq!(SourceMask::from_name("scripts"), Some(SourceMask::SCRIPTS));
+        assert_eq!(
+            SourceMask::from_name("builtins"),
+            Some(SourceMask::BUILTINS)
+        );
+        // "plugins" is not a source: plugin rows are streamed session
+        // results, reached via plugin modes, not static filters.
+        assert_eq!(SourceMask::from_name("plugins"), None);
+        assert_eq!(SourceMask::from_name("all"), Some(SourceMask::ALL));
+        assert_eq!(SourceMask::from_name("nonsense"), None);
+        assert_eq!(
+            SourceMask::from_name("Apps"),
+            None,
+            "names are case-sensitive"
+        );
+
+        assert!(SourceMask::ALL.contains(&app));
+        assert!(SourceMask::ALL.contains(&script));
+        assert!(SourceMask::ALL.contains(&builtin));
+
+        assert!(SourceMask::APPS.contains(&app));
+        assert!(!SourceMask::APPS.contains(&script));
+        assert!(!SourceMask::SCRIPTS.contains(&app));
+        assert!(SourceMask::SCRIPTS.contains(&script));
+        assert!(!SourceMask::SCRIPTS.contains(&builtin));
+        assert!(SourceMask::BUILTINS.contains(&builtin));
     }
 
     #[test]

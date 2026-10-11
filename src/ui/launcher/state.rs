@@ -11,7 +11,7 @@ use gpui::{Context, Font, ListAlignment, ListState, ScrollStrategy, UniformListS
 
 use crate::core::config::{AppConfig, NewInstanceMode};
 use crate::core::history::History;
-use crate::core::item::{BuiltinAction, ScriptMetatags, ScriptMode, Target};
+use crate::core::item::{BuiltinAction, ScriptMetatags, ScriptMode, SourceMask, Target};
 use crate::core::rofi_protocol::RofiCommand;
 use crate::core::rofi_session::{self, ReadResult, RofiSession};
 use crate::core::search::SearchIndex;
@@ -154,6 +154,17 @@ pub struct Launcher {
     /// depends only on the row text.
     pub(super) pango_cache:
         std::cell::RefCell<std::collections::HashMap<gpui::SharedString, PangoParse>>,
+    /// Name of the active `[modes]` source filter (`None` = all sources).
+    pub(super) mode_name: Option<gpui::SharedString>,
+    /// Mask resolved from `mode_name`'s config value, kept so `refilter`
+    /// doesn't re-parse the mode list on every keystroke.
+    pub(super) mode_mask: Option<SourceMask>,
+    /// Plugin entered via hotkey / `plugin:` / `mode:` (or by typing its
+    /// prefix). While set, the input box shows only the query remainder
+    /// after the prefix and the backspace guards below protect the prefix
+    /// itself. Re-derived every `refilter` from the query text, so it
+    /// cannot drift from the actual session state.
+    pub(super) active_plugin: Option<std::sync::Arc<crate::core::plugin_manager::LoadedPlugin>>,
 }
 
 impl Launcher {
@@ -167,6 +178,7 @@ impl Launcher {
         let widget_registry = WidgetRegistry::from_theme(&theme.widgets);
         let button_hotkeys = widget_registry.button_hotkeys();
         let base_count = all.len();
+        Self::validate_modes(&app_config);
         let font_fallbacks = super::helpers::font_fallback_families(&theme.font.fallback);
         let (root_font, inputbar_font, element_font_val, mono_font) =
             Self::build_fonts(&theme, &font_fallbacks);
@@ -209,6 +221,9 @@ impl Launcher {
             mono_font,
             highlight_cache: std::cell::RefCell::new(std::collections::HashMap::new()),
             pango_cache: std::cell::RefCell::new(std::collections::HashMap::new()),
+            mode_name: None,
+            mode_mask: None,
+            active_plugin: None,
         }
     }
 
@@ -337,7 +352,11 @@ impl Launcher {
                     return LauncherAction::None;
                 }
                 ("w", false, true, false) | ("backspace", false, false, true) => {
-                    let len = self.query.trim_end().rfind(' ').map(|i| i + 1).unwrap_or(0);
+                    let mut len = self.query.trim_end().rfind(' ').map(|i| i + 1).unwrap_or(0);
+                    // Never cut into the plugin session anchor prefix.
+                    if let Some(p) = &self.active_plugin {
+                        len = len.max(p.prefix.len());
+                    }
                     self.query.truncate(len);
                     self.refilter(cx);
                     self.selected = 0;
@@ -353,6 +372,18 @@ impl Launcher {
                     let cols = self.effective_columns();
                     let step = if cols > 1 { cols as isize } else { 1 };
                     self.move_selection(-step);
+                    return LauncherAction::None;
+                }
+                // Cmd+. cycles the active source filter ([modes]):
+                // All -> each [modes] entry -> each plugin -> All.
+                (".", true, false, false) => {
+                    if let Some(cx) = cx {
+                        // Reborrow so `cx` stays usable for notify.
+                        self.cycle_mode(Some(&mut *cx));
+                        cx.notify();
+                    } else {
+                        self.cycle_mode(None);
+                    }
                     return LauncherAction::None;
                 }
                 _ => {}
@@ -623,11 +654,149 @@ impl Launcher {
             return;
         }
         self.query.clear();
+        self.active_plugin = None;
         self.refilter(None);
         self.selected = 0;
     }
 
+    /// Split a `[modes]` value (comma-separated source names) into a
+    /// mask. Returns `None` when no valid name is present. Silent —
+    /// callers decide what to warn about.
+    fn parse_mode_list(value: &str) -> Option<SourceMask> {
+        let mut mask: Option<SourceMask> = None;
+        for name in value.split(',').map(str::trim).filter(|s| !s.is_empty()) {
+            if let Some(m) = SourceMask::from_name(name) {
+                mask = Some(mask.map_or(m, |acc| acc.union(m)));
+            }
+        }
+        mask
+    }
+
+    /// Warn about `[modes]` entries that contain unknown source names or
+    /// resolve to no sources at all. Runs once at startup so the user
+    /// doesn't only hear about a typo when the mode is first switched to.
+    fn validate_modes(config: &AppConfig) {
+        for (name, value) in &config.modes {
+            for source in value.split(',').map(str::trim).filter(|s| !s.is_empty()) {
+                if SourceMask::from_name(source).is_none() {
+                    eprintln!(
+                        "aerofi: warning: unknown source {source:?} in [modes].{name} \
+(available: apps, scripts, builtins, plugins, all)"
+                    );
+                }
+            }
+            if Self::parse_mode_list(value).is_none() {
+                eprintln!(
+                    "aerofi: warning: [modes].{name} resolves to no sources; \
+the mode will show an empty list"
+                );
+            }
+        }
+    }
+
+    /// Cycle the active source filter: All -> each `[modes]` entry
+    /// (alphabetical, matching the config's deterministic order) -> each
+    /// loaded plugin (alphabetical) -> All. A plugin mode enters that
+    /// plugin's interactive session rather than applying a static filter.
+    /// Switching a mode starts from an empty query, like entering a new
+    /// rofi mode.
+    fn cycle_mode(&mut self, cx: Option<&mut Context<Self>>) {
+        let config_modes: Vec<gpui::SharedString> = self
+            .app_config
+            .modes
+            .keys()
+            .map(|k| gpui::SharedString::from(k.clone()))
+            .collect();
+        let plugin_modes: Vec<gpui::SharedString> = self
+            .plugin_manager
+            .plugins
+            .iter()
+            .map(|p| p.name.clone().into())
+            .collect();
+        let next = match self.mode_name.as_deref() {
+            None => config_modes
+                .first()
+                .cloned()
+                .or_else(|| plugin_modes.first().cloned()),
+            Some(current) => config_modes
+                .iter()
+                .position(|n| n == current)
+                .and_then(|p| config_modes.get(p + 1).cloned())
+                .or_else(|| {
+                    plugin_modes
+                        .iter()
+                        .position(|n| n == current)
+                        .and_then(|p| plugin_modes.get(p + 1).cloned())
+                }),
+        };
+        match next {
+            Some(name) => self.activate_mode(&name, cx),
+            None => self.clear_mode(),
+        }
+    }
+
+    /// Switch to the named mode: a `[modes]` source filter, or — when no
+    /// such filter exists — a loaded plugin by name, entering its
+    /// session. Unknown or source-less modes warn and leave the current
+    /// mode.
+    fn activate_mode(&mut self, name: &str, cx: Option<&mut Context<Self>>) {
+        if let Some(value) = self.app_config.modes.get(name) {
+            let Some(mask) = Self::parse_mode_list(value) else {
+                eprintln!("aerofi: warning: mode {name:?} resolves to no sources");
+                return;
+            };
+            self.mode_name = Some(gpui::SharedString::from(name.to_string()));
+            self.mode_mask = Some(mask);
+            self.query.clear();
+            self.refilter(cx);
+            self.selected = 0;
+            return;
+        }
+        if let Some(plugin) = self.plugin_manager.find_by_name(name) {
+            let prefix = plugin.prefix.clone();
+            self.open_plugin(cx, &prefix);
+            return;
+        }
+        eprintln!(
+            "aerofi: warning: unknown mode {name:?} (not in [modes] and \
+no plugin by that name)"
+        );
+    }
+
+    /// Back to all sources (clearing the query, like any mode switch).
+    fn clear_mode(&mut self) {
+        if self.mode_name.is_none() {
+            return;
+        }
+        self.mode_name = None;
+        self.mode_mask = None;
+        self.query.clear();
+        self.refilter(None);
+        self.selected = 0;
+    }
+
+    /// Text shown in the input bar. In an active plugin session the
+    /// prefix is state, not user text, so only the query remainder is
+    /// displayed — an empty box means "show the plugin's default
+    /// results".
+    pub(super) fn display_query(&self) -> &str {
+        if let Some(p) = &self.active_plugin
+            && let Some(remainder) = self.query.strip_prefix(&p.prefix)
+        {
+            return remainder;
+        }
+        &self.query
+    }
+
     fn backspace(&mut self, cx: Option<&mut Context<Self>>) {
+        // The plugin prefix is the session anchor, not user text: an
+        // active session with an empty remainder can't be backspaced
+        // into (it would corrupt the anchor). Clear/reset exits instead.
+        if let Some(p) = &self.active_plugin
+            && matches!(self.query.strip_prefix(&p.prefix), Some(""))
+        {
+            return;
+        }
         if self.query.pop().is_some() {
             self.refilter(cx);
             self.selected = 0;
@@ -657,6 +826,9 @@ impl Launcher {
 
         if let Some((plugin, remainder)) = self.plugin_manager.match_prefix(&self.query) {
             let remainder = remainder.to_string();
+            // The session is live: remember the plugin so the input bar
+            // can hide the prefix anchor from the displayed text.
+            self.active_plugin = Some(plugin.clone());
 
             if let Some(cx) = cx {
                 // Keep the previous plugin rows (and the `filtered` pointing
@@ -676,6 +848,7 @@ impl Launcher {
                         &self.history,
                         self.app_config.general.matching,
                         self.app_config.general.ranking,
+                        self.mode_mask,
                         &mut self.filtered,
                     );
                     self.filtered.truncate(self.app_config.general.max_results);
@@ -713,6 +886,7 @@ impl Launcher {
             }
         } else {
             // Left plugin mode: invalidate any pending async result.
+            self.active_plugin = None;
             self.plugin_gen = self.plugin_gen.wrapping_add(1);
             // Clear any previous plugin items and release excess capacity.
             self.all.truncate(self.base_count);
@@ -725,6 +899,7 @@ impl Launcher {
                 &self.history,
                 self.app_config.general.matching,
                 self.app_config.general.ranking,
+                self.mode_mask,
                 &mut self.filtered,
             );
             self.filtered.truncate(self.app_config.general.max_results);
@@ -1165,6 +1340,27 @@ impl Launcher {
         crate::core::script_watcher::reconcile_dirs(&self.app_config.expanded_script_dirs());
         self.search = SearchIndex::new(&self.app_config.aliases, &self.app_config.pinned);
         self.plugin_manager = crate::core::plugin_manager::PluginManager::load_all();
+        // Re-resolve the active source filter against the reloaded
+        // [modes]; a removed or source-less mode falls back to "all".
+        if let Some(name) = self.mode_name.clone() {
+            let name = name.to_string();
+            let mask = self
+                .app_config
+                .modes
+                .get(&name)
+                .and_then(|v| Self::parse_mode_list(v));
+            match mask {
+                Some(m) => self.mode_mask = Some(m),
+                None => {
+                    eprintln!(
+                        "aerofi: warning: mode {name:?} is gone or source-less \
+after reload; showing all sources"
+                    );
+                    self.mode_name = None;
+                    self.mode_mask = None;
+                }
+            }
+        }
         self.widget_registry = WidgetRegistry::from_theme(&theme.widgets);
         self.button_hotkeys = self.widget_registry.button_hotkeys();
         self.theme = Arc::new(theme);
@@ -1304,8 +1500,8 @@ impl Launcher {
     /// full output, argument input) and put the launcher in the plugin's
     /// query mode — the same state the user would reach by typing the
     /// prefix. Called from `window::open_plugin` (a global hotkey) and
-    /// from the `plugin:` button action.
-    pub(crate) fn open_plugin(&mut self, cx: &mut Context<Self>, prefix: &str) {
+    /// from the `plugin:` / `mode:` button actions.
+    pub(crate) fn open_plugin(&mut self, cx: Option<&mut Context<Self>>, prefix: &str) {
         match &self.state {
             LauncherState::RofiMode { .. } => {
                 // May hide the window again (a session launched from a
@@ -1321,7 +1517,15 @@ impl Launcher {
             }
         }
         self.query = prefix.to_string();
-        self.refilter(Some(cx));
+        // A session opened from outside is a mode too: show the plugin's
+        // name in the input-bar badge and lift any static source filter.
+        let plugin = self.plugin_manager.match_prefix(prefix).map(|(p, _)| p);
+        if let Some(p) = &plugin {
+            self.mode_name = Some(gpui::SharedString::from(p.name.clone()));
+        }
+        self.mode_mask = None;
+        self.active_plugin = plugin;
+        self.refilter(cx);
         self.selected = 0;
         println!("aerofi: opened plugin mode (prefix: {prefix:?})");
     }
@@ -1388,11 +1592,25 @@ impl Launcher {
             let plugin_name = plugin_name.trim();
             match self.plugin_manager.find_by_name(plugin_name) {
                 Some(plugin) => {
-                    self.open_plugin(cx, &plugin.prefix);
+                    self.open_plugin(Some(&mut *cx), &plugin.prefix);
                     cx.notify();
                 }
                 None => eprintln!("aerofi: warning: button plugin not found: {plugin_name}"),
             }
+            return;
+        }
+
+        // Switch to a named source filter ([modes]). Like plugin:, the
+        // launcher is its own UI, so the window stays open regardless of
+        // the button's `close` attribute.
+        // Switch to a named mode: a `[modes]` source filter, or a loaded
+        // plugin by name (entering its session). Like plugin:, the
+        // launcher is its own UI, so the window stays open regardless of
+        // the button's `close` attribute.
+        if let Some(mode_name) = trimmed.strip_prefix("mode:") {
+            let mode_name = mode_name.trim().to_string();
+            self.activate_mode(&mode_name, Some(&mut *cx));
+            cx.notify();
             return;
         }
 

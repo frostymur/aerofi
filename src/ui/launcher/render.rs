@@ -661,23 +661,53 @@ impl Launcher {
             row.into_any()
         } else {
             let (ib_font, ib_size) = &self.inputbar_font;
-            if self.query.is_empty() {
-                div()
-                    .flex_1()
-                    .font(ib_font.clone())
-                    .text_size(px(*ib_size))
-                    .text_color(rgba(Self::color(&ib.placeholder_color)))
-                    .child(ib.placeholder.clone())
-                    .into_any()
-            } else {
-                div()
-                    .flex_1()
-                    .font(ib_font.clone())
-                    .text_size(px(*ib_size))
-                    .text_color(rgba(Self::color(&ib.text_color)))
-                    .child(self.query.clone())
-                    .into_any()
+            let mut row = div().flex().flex_row().items_center().gap_1().w_full();
+            // Active source filter ([modes]) badge — the rofi-style mode
+            // indicator, shown left of the placeholder/query text.
+            if let Some(mode) = &self.mode_name {
+                row = row.child(
+                    div()
+                        .flex_shrink_0()
+                        .px_1()
+                        .py(px(1.0))
+                        .rounded_sm()
+                        .border_1()
+                        .border_color(rgba(Self::color(&ib.border_color)))
+                        .text_color(rgba(Self::color(&ib.placeholder_color)))
+                        .child(mode.to_string()),
+                );
             }
+            // Plugin sessions hide their prefix anchor: the box shows
+            // only the query sent to the plugin.
+            let display = self.display_query();
+            if display.is_empty() {
+                row = row.child(
+                    div()
+                        .flex_1()
+                        .min_w(px(0.0))
+                        .line_clamp(1)
+                        .text_ellipsis()
+                        .overflow_hidden()
+                        .font(ib_font.clone())
+                        .text_size(px(*ib_size))
+                        .text_color(rgba(Self::color(&ib.placeholder_color)))
+                        .child(ib.placeholder.clone()),
+                );
+            } else {
+                row = row.child(
+                    div()
+                        .flex_1()
+                        .min_w(px(0.0))
+                        .line_clamp(1)
+                        .text_ellipsis()
+                        .overflow_hidden()
+                        .font(ib_font.clone())
+                        .text_size(px(*ib_size))
+                        .text_color(rgba(Self::color(&ib.text_color)))
+                        .child(display.to_string()),
+                );
+            }
+            row.into_any()
         };
 
         let icon_label = ib.icon.as_deref().unwrap_or("❯");

@@ -53,6 +53,15 @@ apps = true
 scripts = true
 system_settings = true
 
+# Named runtime source filters. Each mode is a comma-separated source
+# list: "apps", "scripts", "builtins", "all". While a mode is active, the
+# launcher lists only those sources. Any loaded plugin name is also a
+# mode: it enters the plugin's session with its prefix applied and
+# hidden. Cycle modes with Cmd+. or bind them to buttons:
+# action = "mode:scripts". Unknown source names are skipped with a warning.
+# [modes]
+# scripts = "scripts,builtins"
+
 [scripts]
 # Folders scanned for launchable scripts. A leading `~` is expanded
 # to the user's home directory.
@@ -276,6 +285,13 @@ pub struct AppConfig {
     /// path. Pinned items outrank frecency and fuzzy score while matching the
     /// current query.
     pub pinned: Vec<String>,
+    /// Named runtime source filters (`[modes]`), switched at runtime with
+    /// Cmd+. or a `mode:<name>` button action.
+    /// Keys are mode names; values are comma-separated source lists
+    /// (`"apps,scripts,builtins,all"`). A loaded plugin name is also a
+    /// valid mode (it enters the plugin's session). `BTreeMap` so the
+    /// Cmd+. cycle order is deterministic.
+    pub modes: std::collections::BTreeMap<String, String>,
 }
 
 impl Default for AppConfig {
@@ -289,6 +305,7 @@ impl Default for AppConfig {
             aliases: HashMap::new(),
             bindings: BindingsConfig::default(),
             pinned: Vec::new(),
+            modes: std::collections::BTreeMap::new(),
         }
     }
 }
@@ -548,5 +565,28 @@ mod tests {
         )
         .unwrap();
         assert_eq!(c.general.new_instance_mode, NewInstanceMode::Background);
+    }
+
+    #[test]
+    fn modes_section_parses_and_defaults_empty() {
+        let c: AppConfig = toml::from_str(
+            r#"
+            theme = "default"
+            [general]
+            [modes]
+            scripts = "scripts,builtins"
+            dev = "apps, scripts"
+            "#,
+        )
+        .unwrap();
+        assert_eq!(c.modes.len(), 2);
+        assert_eq!(
+            c.modes.get("scripts"),
+            Some(&"scripts,builtins".to_string())
+        );
+
+        // No [modes] section at all: empty, old configs keep parsing.
+        let c: AppConfig = toml::from_str(r#"theme = "default""#).unwrap();
+        assert!(c.modes.is_empty());
     }
 }

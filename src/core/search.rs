@@ -8,7 +8,7 @@ use nucleo_matcher::{Config, Matcher, Utf32Str};
 
 use crate::core::config::{MatchMode, RankingMode};
 use crate::core::history::History;
-use crate::core::item::Target;
+use crate::core::item::{SourceMask, Target};
 use crate::core::scanner::glob_match_chars;
 
 use gpui::SharedString;
@@ -89,6 +89,10 @@ impl SearchIndex {
     /// `ranking = Frecency` orders matches by score; `ranking = Lexical`
     /// orders them alphabetically by display name. Pinned items lead in
     /// both, in config order. Ties keep the original order.
+    ///
+    /// `filter` restricts which targets are even considered (a `[modes]`
+    /// source filter); `None` considers every target.
+    #[allow(clippy::too_many_arguments)]
     pub fn search(
         &mut self,
         query: &str,
@@ -96,6 +100,7 @@ impl SearchIndex {
         history: &History,
         matching: MatchMode,
         ranking: RankingMode,
+        filter: Option<SourceMask>,
         out_filtered: &mut Vec<usize>,
     ) {
         // Reuse all scratch buffers to avoid heap allocations every keystroke.
@@ -127,6 +132,13 @@ impl SearchIndex {
         let needle = need_fuzzy.then(|| Utf32Str::new(query, &mut self.needle_buf));
         let frecency_map = history.calculate_frecency_map();
         for (i, target) in targets.iter().enumerate() {
+            // Runtime source filter (a `[modes]` entry): one comparison
+            // per target, before any fuzzy work.
+            if let Some(mask) = filter
+                && !mask.contains(target)
+            {
+                continue;
+            }
             let name = target.name();
             let aliases = self.aliases_by_target.get(name);
 
@@ -486,7 +498,15 @@ mod tests {
         ranking: RankingMode,
     ) -> Vec<Target> {
         let mut results = Vec::new();
-        idx.search(query, targets, history, matching, ranking, &mut results);
+        idx.search(
+            query,
+            targets,
+            history,
+            matching,
+            ranking,
+            None,
+            &mut results,
+        );
         results.into_iter().map(|i| targets[i].clone()).collect()
     }
 
@@ -951,6 +971,68 @@ mod tests {
             )),
             vec!["Mango", "Apple", "Lemon", "Nectarine"]
         );
+    }
+
+    #[test]
+    fn source_mask_filters_out_other_sources() {
+        let idx = &mut SearchIndex::new(&HashMap::new(), &[]);
+        let history = empty_history();
+        let app = Target::App {
+            name: "Safari".into(),
+            path: std::sync::Arc::from(PathBuf::from("/Applications/Safari.app")),
+            icon_path: None,
+        };
+        let targets = vec![
+            app,
+            target("hello"),
+            Target::reload_config(),
+            target("Firefox-script"),
+        ];
+
+        // No filter: everything matches an empty query.
+        assert_eq!(
+            names(&search_helper_modes(
+                idx,
+                &history,
+                &targets,
+                "",
+                MatchMode::Fuzzy,
+                RankingMode::Lexical
+            )),
+            vec!["Firefox-script", "hello", "Reload Configuration", "Safari"]
+        );
+
+        // Apps-only drops the scripts and the builtin.
+        let mut results = Vec::new();
+        idx.search(
+            "",
+            &targets,
+            &history,
+            MatchMode::Fuzzy,
+            RankingMode::Lexical,
+            Some(SourceMask::APPS),
+            &mut results,
+        );
+        let picked: Vec<Target> = results.iter().map(|&i| targets[i].clone()).collect();
+        assert_eq!(
+            names(&picked),
+            vec!["Safari"],
+            "apps-only mode must drop scripts and builtins"
+        );
+
+        // A builtins-only mode selects exactly the builtin row.
+        results.clear();
+        idx.search(
+            "",
+            &targets,
+            &history,
+            MatchMode::Fuzzy,
+            RankingMode::Lexical,
+            Some(SourceMask::BUILTINS),
+            &mut results,
+        );
+        let picked: Vec<Target> = results.iter().map(|&i| targets[i].clone()).collect();
+        assert_eq!(names(&picked), vec!["Reload Configuration"]);
     }
 
     // ------------------------------------------------------------------
