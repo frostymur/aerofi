@@ -164,13 +164,7 @@ fn mainbox_height(
     let mut max_h = 0.0f32;
     let mut rendered = 0usize;
     for child in &t.mainbox.children {
-        let h = match child {
-            Widget::Builtin(BuiltinWidget::InputBar) => {
-                state.show_search.then_some(inputbar_height(t, state))
-            }
-            Widget::Builtin(BuiltinWidget::ListView) => list_slot,
-            Widget::Custom(id) => widget_height(t, reg, state, image_dims, list_slot, id),
-        };
+        let h = child_height(t, reg, state, image_dims, list_slot, child);
         if let Some(h) = h {
             rendered += 1;
             sum += h;
@@ -184,6 +178,26 @@ fn mainbox_height(
         max_h
     } else {
         sum + gap * (rendered.saturating_sub(1)) as f32
+    }
+}
+/// Height of one `[mainbox]` child slot (built-in or custom widget);
+/// `None` means the slot is not rendered this frame. Shared by
+/// [`mainbox_height`] and the fit-invariant tests, so "what each child
+/// needs" is computed in exactly one place.
+fn child_height(
+    t: &ThemeConfig,
+    reg: &WidgetRegistry,
+    state: &SearchFit,
+    image_dims: &HashMap<String, (u32, u32)>,
+    list_slot: Option<f32>,
+    child: &Widget,
+) -> Option<f32> {
+    match child {
+        Widget::Builtin(BuiltinWidget::InputBar) => {
+            state.show_search.then_some(inputbar_height(t, state))
+        }
+        Widget::Builtin(BuiltinWidget::ListView) => list_slot,
+        Widget::Custom(id) => widget_height(t, reg, state, image_dims, list_slot, id),
     }
 }
 
@@ -381,7 +395,7 @@ fn v_border(width: Option<f32>, top: Option<f32>, bottom: Option<f32>) -> f32 {
 mod tests {
     use std::collections::HashMap;
 
-    use super::{SearchFit, search_fit_height};
+    use super::{SearchFit, child_height, mainbox_height, search_fit_height};
     use crate::core::theme::{BuiltinWidget, Dimension, ThemeConfig, Widget, WidgetDef};
     use crate::core::widget::WidgetRegistry;
 
@@ -1085,5 +1099,195 @@ mod tests {
         // → capped at the configured 502.
         let long = search_fit_height(&t, &reg, &example_split_state(&t, true, 15), &dims);
         assert!((long - 502.0).abs() < 1e-3, "long got {long}");
+    }
+
+    // ------------------------------------------------------------------
+    // Fit invariants over every bundled layout (WP2-P1 of the
+    // maintainability plan). These don't pin exact values — they pin the
+    // contracts any correct measurer must hold, across the whole theme
+    // set, so a renderer/measurer desync (the bug class behind the
+    // catppuccin clipping and the w_full overestimate) fails here even
+    // when no single exact-value test covers the changed theme.
+    // ------------------------------------------------------------------
+
+    fn bundled_layouts() -> Vec<ThemeConfig> {
+        [
+            include_str!("../../examples/themes/layouts/catppuccin-split.toml"),
+            include_str!("../../examples/themes/layouts/compact.toml"),
+            include_str!("../../examples/themes/layouts/graphite-split.toml"),
+            include_str!("../../examples/themes/layouts/grid.toml"),
+            include_str!("../../examples/themes/layouts/gruvbox-compact.toml"),
+            include_str!("../../examples/themes/layouts/split.toml"),
+        ]
+        .iter()
+        .map(|c| toml::from_str::<ThemeConfig>(c).expect("bundled layout should parse"))
+        .collect()
+    }
+
+    fn layout_state(t: &ThemeConfig, auto_height: bool, show_list: bool, n: usize) -> SearchFit {
+        SearchFit {
+            show_search: true,
+            should_show_list: show_list,
+            auto_height,
+            require_input: true,
+            ib_h: t.inputbar.height,
+            columns: t.listview.columns,
+            filtered_len: n,
+            element_font_size: t.font.size,
+            screen_h: 1000.0,
+            screen_w: 1400.0,
+        }
+    }
+
+    /// Invariant 1 (floor): the window never shrinks below the fixed
+    /// chrome + padding, regardless of list size or mode.
+    #[test]
+    fn bundled_layouts_never_shrink_below_chrome() {
+        for mut t in bundled_layouts() {
+            t.window.auto_height = Some(true);
+            t.listview.require_input = Some(true);
+            let reg = WidgetRegistry::from_theme(&t.widgets);
+            let dims = HashMap::new();
+            let pad2 = t.window.padding * 2.0;
+            for auto in [true, false] {
+                t.window.auto_height = Some(auto);
+                for &n in &[0usize, 1, 5, 15, 100] {
+                    let state = layout_state(&t, auto, n > 0, n);
+                    let chrome = mainbox_height(&t, &reg, &state, &dims, None);
+                    let h = search_fit_height(&t, &reg, &state, &dims);
+                    assert!(
+                        h >= chrome + pad2 - 1e-6,
+                        "theme {:?}: {}pt < chrome floor {} + {} (auto={auto}, n={n})",
+                        t.name,
+                        h,
+                        chrome,
+                        pad2
+                    );
+                }
+            }
+        }
+    }
+
+    /// Invariant 2 (no clipped chrome): in a horizontal mainbox the
+    /// window height must cover every pane's *fixed* content at every
+    /// list size — the ListView is the only scrollable element, so its
+    /// contribution is counted as zero (its slot's gap included while the
+    /// list is shown). This is exactly what the v0.2.22 measurer
+    /// violated for catppuccin-split (the bar pane's fixed content
+    /// exceeded the window height).
+    #[test]
+    fn bundled_layouts_never_clip_a_pane() {
+        for t in bundled_layouts() {
+            if t.mainbox.orientation == "vertical" {
+                continue; // vertical stacks: covered by the floor invariant
+            }
+            let mut th = t.clone();
+            th.window.auto_height = Some(true);
+            th.listview.require_input = Some(true);
+            let reg = WidgetRegistry::from_theme(&th.widgets);
+            let dims = HashMap::new();
+            let pad2 = th.window.padding * 2.0;
+            for &n in &[0usize, 1, 5, 15, 100] {
+                let state = layout_state(&th, true, n > 0, n);
+                let h = search_fit_height(&th, &reg, &state, &dims);
+                for child in &th.mainbox.children {
+                    let Some(fixed) =
+                        child_height(&th, &reg, &state, &dims, (n > 0).then_some(0.0), child)
+                    else {
+                        continue;
+                    };
+                    assert!(
+                        fixed + pad2 <= h + 1e-6,
+                        "theme {:?}: pane {:?} fixed content {} exceeds window {} (n={n})",
+                        th.name,
+                        child,
+                        fixed,
+                        h
+                    );
+                }
+            }
+        }
+    }
+
+    /// Invariant 3 (cap): with auto_height the list grows the window but
+    /// never past max(configured height, chrome floor) — long lists
+    /// scroll instead of stretching the window.
+    #[test]
+    fn bundled_layouts_cap_at_configured_height() {
+        for mut t in bundled_layouts() {
+            t.window.auto_height = Some(true);
+            t.listview.require_input = Some(true);
+            let reg = WidgetRegistry::from_theme(&t.widgets);
+            let dims = HashMap::new();
+            let pad2 = t.window.padding * 2.0;
+            let window_h = t.window.height.resolve(1000.0);
+            let state = layout_state(&t, true, true, 1000);
+            let chrome = mainbox_height(&t, &reg, &state, &dims, None);
+            let h = search_fit_height(&t, &reg, &state, &dims);
+            assert!(
+                h <= window_h.max(chrome + pad2) + 1e-6,
+                "theme {:?}: {} exceeds cap {} (chrome floor {})",
+                t.name,
+                h,
+                window_h,
+                chrome + pad2
+            );
+        }
+    }
+
+    /// Invariant 4 (monotone): more results never shrink the window.
+    #[test]
+    fn bundled_layouts_height_is_monotone_in_results() {
+        for mut t in bundled_layouts() {
+            t.window.auto_height = Some(true);
+            t.listview.require_input = Some(true);
+            let reg = WidgetRegistry::from_theme(&t.widgets);
+            let dims = HashMap::new();
+            let mut prev = f32::NEG_INFINITY;
+            for &n in &[0usize, 1, 2, 5, 15, 50, 1000] {
+                let state = layout_state(&t, true, n > 0, n);
+                let h = search_fit_height(&t, &reg, &state, &dims);
+                assert!(
+                    h >= prev - 1e-6,
+                    "theme {:?}: shrank from {} to {} between results",
+                    t.name,
+                    prev,
+                    h
+                );
+                prev = h;
+            }
+        }
+    }
+
+    /// Invariant 5 (require_input-only exact form): without auto_height
+    /// the window is the configured height (floor at the chrome) while
+    /// the list is shown, and exactly the chrome while it is hidden.
+    #[test]
+    fn bundled_layouts_require_input_only_is_exact() {
+        for mut t in bundled_layouts() {
+            t.window.auto_height = Some(false);
+            t.listview.require_input = Some(true);
+            let reg = WidgetRegistry::from_theme(&t.widgets);
+            let dims = HashMap::new();
+            let pad2 = t.window.padding * 2.0;
+            let window_h = t.window.height.resolve(1000.0);
+            for &n in &[0usize, 1, 15, 100] {
+                let state = layout_state(&t, false, n > 0, n);
+                let chrome = mainbox_height(&t, &reg, &state, &dims, None);
+                let h = search_fit_height(&t, &reg, &state, &dims);
+                let want = if n == 0 {
+                    chrome + pad2
+                } else {
+                    window_h.max(chrome + pad2)
+                };
+                assert!(
+                    (h - want).abs() < 1e-3,
+                    "theme {:?}: {} != {} (n={n})",
+                    t.name,
+                    h,
+                    want
+                );
+            }
+        }
     }
 }
