@@ -15,7 +15,10 @@ use gpui_platform::application;
 fn main() {
     // CLI flags: answer before any scanning or window work so
     // `aerofi --version` is instant and side-effect free.
-    if std::env::args().skip(1).any(|a| a == "--version" || a == "-V") {
+    if std::env::args()
+        .skip(1)
+        .any(|a| a == "--version" || a == "-V")
+    {
         println!("{}", env!("CARGO_PKG_VERSION"));
         return;
     }

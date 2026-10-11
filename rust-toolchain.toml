@@ -1,0 +1,8 @@
+# Pin the toolchain so CI (dtolnay/rust-toolchain) and local builds agree
+# on compiler, clippy, and — crucially — rustfmt behavior. Without this,
+# a rustfmt rule change between local and CI stable silently flips which
+# code shape `cargo fmt --check` accepts (this file was added after such
+# a drift broke CI on the --version commit, 2026-10).
+[toolchain]
+channel = "1.98.0"
+components = ["rustfmt", "clippy"]
