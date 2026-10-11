@@ -21,7 +21,6 @@
 //! before the first frame (the same scheme as the scheduler's
 //! `PENDING_INLINE`).
 
-use gpui::Entity;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{LazyLock, Mutex};
@@ -174,7 +173,9 @@ fn classify(paths: &[PathBuf]) -> Vec<SourceKind> {
 pub fn start(
     cx: &mut gpui::App,
     config: &crate::core::config::AppConfig,
-    view: Entity<crate::ui::launcher::Launcher>,
+    // Called on the main thread (via `app.update`) for each dirty source
+    // kind; the UI closure applies the rescan and notifies the view.
+    mut apply_change: impl FnMut(SourceKind, &mut gpui::App) + Send + 'static,
 ) {
     let (tx, mut rx) = futures::channel::mpsc::unbounded::<Event>();
     *OUTPUT_TX
@@ -191,7 +192,7 @@ pub fn start(
             if kinds.is_empty() {
                 return;
             }
-            if crate::ui::window::is_visible() {
+            if crate::sys::appkit::window_visible() {
                 let Some(tx) = OUTPUT_TX
                     .lock()
                     .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -237,7 +238,7 @@ pub fn start(
     app_async
         .spawn(move |_: &mut gpui::AsyncApp| async move {
             use futures::{FutureExt, StreamExt};
-            let mut visible = crate::ui::window::is_visible();
+            let mut visible = crate::sys::appkit::window_visible();
             // Per-kind dirty bits, coalesced by one shared timer.
             let mut dirty = [false; 3];
             let mut next = IDLE;
@@ -264,7 +265,7 @@ pub fn start(
                             for kind in SourceKind::ALL {
                                 if dirty[kind.index()] {
                                     dirty[kind.index()] = false;
-                                    rescan(&view, &dispatcher_app, kind);
+                                    rescan(&mut apply_change, &dispatcher_app, kind);
                                 }
                             }
                             next = IDLE;
@@ -296,21 +297,12 @@ pub fn start(
 /// cheap (a couple of `read_dir` passes; icon extraction is disk-cached
 /// and plugin loading is path-cached); the notify is gated on visibility
 /// so a race with a hide never renders a frame nobody looks at.
-fn rescan(view: &Entity<crate::ui::launcher::Launcher>, app: &gpui::AsyncApp, kind: SourceKind) {
-    app.update(|cx| {
-        view.update(cx, |launcher, cx| {
-            match kind {
-                SourceKind::Apps => launcher.rescan_apps(Some(cx)),
-                SourceKind::Scripts => launcher.rescan_scripts(),
-                SourceKind::Plugins => launcher.rescan_plugins(),
-            };
-            // The notify is gated on visibility so a race with a hide
-            // never renders a frame nobody looks at.
-            if crate::ui::window::is_visible() {
-                cx.notify();
-            }
-        });
-    });
+fn rescan(
+    apply_change: &mut dyn FnMut(SourceKind, &mut gpui::App),
+    app: &gpui::AsyncApp,
+    kind: SourceKind,
+) {
+    app.update(|cx| apply_change(kind, cx));
 }
 
 /// (Re)watch the given (dir, kind) folders: drop paths that are no longer

@@ -1,11 +1,29 @@
-use gpui::{FontStyle, FontWeight, HighlightStyle, Hsla};
 use std::ops::Range;
 
-/// Parse lightweight Pango-style markup and return the plain text along with GPUI highlight styles.
-pub fn parse_pango(input: &str) -> (String, Vec<(Range<usize>, HighlightStyle)>) {
+/// Parsed emphasis for a span of plain text.
+///
+/// Spec-level on purpose: no GPUI types — the UI maps this to
+/// `gpui::HighlightStyle` at the render boundary. Colors are packed
+/// `0xRRGGBBAA` (the same convention `core::theme::parse_hex_color`
+/// uses); `None` means "theme default" / "no background".
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct PangoStyle {
+    pub bold: bool,
+    pub italic: bool,
+    pub underline: bool,
+    pub strikethrough: bool,
+    /// Foreground color, packed 0xRRGGBBAA (None = theme default).
+    pub color: Option<u32>,
+    /// Background color, packed 0xRRGGBBAA (None = no background).
+    pub background: Option<u32>,
+}
+
+/// Parse lightweight Pango-style markup and return the plain text along
+/// with the emphasis of each span ([`PangoStyle`], GPUI-free).
+pub fn parse_pango(input: &str) -> (String, Vec<(Range<usize>, PangoStyle)>) {
     let mut plain_text = String::with_capacity(input.len());
     let mut highlights = Vec::new();
-    let mut stack: Vec<(usize, HighlightStyle)> = Vec::new();
+    let mut stack: Vec<(usize, PangoStyle)> = Vec::new();
 
     let mut chars = input.chars().peekable();
     while let Some(c) = chars.next() {
@@ -44,31 +62,24 @@ pub fn parse_pango(input: &str) -> (String, Vec<(Range<usize>, HighlightStyle)>)
                 let tag_name = parts.next().unwrap_or("").to_lowercase();
                 let attrs_str = parts.next().unwrap_or("");
 
-                let mut style = HighlightStyle::default();
+                let mut style = PangoStyle::default();
                 let mut apply = false;
 
                 match tag_name.as_str() {
                     "b" => {
-                        style.font_weight = Some(FontWeight::BOLD);
+                        style.bold = true;
                         apply = true;
                     }
                     "i" => {
-                        style.font_style = Some(FontStyle::Italic);
+                        style.italic = true;
                         apply = true;
                     }
                     "u" => {
-                        style.underline = Some(gpui::UnderlineStyle {
-                            color: None,
-                            thickness: 1.0.into(),
-                            wavy: false,
-                        });
+                        style.underline = true;
                         apply = true;
                     }
                     "s" => {
-                        style.strikethrough = Some(gpui::StrikethroughStyle {
-                            color: None,
-                            thickness: 1.0.into(),
-                        });
+                        style.strikethrough = true;
                         apply = true;
                     }
                     "span" | "font" => {
@@ -91,22 +102,18 @@ pub fn parse_pango(input: &str) -> (String, Vec<(Range<usize>, HighlightStyle)>)
 
                                     match key.as_str() {
                                         "foreground" | "color" => {
-                                            if let Some(c) = parse_hex_color(value) {
-                                                style.color = Some(c);
-                                            }
+                                            style.color = parse_hex_color(value);
                                         }
                                         "background" | "bg_color" => {
-                                            if let Some(c) = parse_hex_color(value) {
-                                                style.background_color = Some(c);
-                                            }
+                                            style.background = parse_hex_color(value);
                                         }
                                         "weight" => {
                                             if value.eq_ignore_ascii_case("bold") {
-                                                style.font_weight = Some(FontWeight::BOLD);
+                                                style.bold = true;
                                             }
                                         }
                                         "style" if value.eq_ignore_ascii_case("italic") => {
-                                            style.font_style = Some(FontStyle::Italic);
+                                            style.italic = true;
                                         }
                                         _ => {}
                                     }
@@ -181,7 +188,8 @@ pub fn parse_pango(input: &str) -> (String, Vec<(Range<usize>, HighlightStyle)>)
     (plain_text, highlights)
 }
 
-fn parse_hex_color(hex: &str) -> Option<Hsla> {
+/// Parse a `#RRGGBB` / `#RRGGBBAA` hex color into packed 0xRRGGBBAA.
+fn parse_hex_color(hex: &str) -> Option<u32> {
     let hex = hex.trim_start_matches('#');
     let len = hex.len();
     if len != 6 && len != 8 {
@@ -195,8 +203,7 @@ fn parse_hex_color(hex: &str) -> Option<Hsla> {
     } else {
         255
     };
-    let hex_val = (r << 24) | (g << 16) | (b << 8) | a;
-    Some(gpui::rgba(hex_val).into())
+    Some((r << 24) | (g << 16) | (b << 8) | a)
 }
 
 #[cfg(test)]
@@ -209,7 +216,7 @@ mod tests {
         assert_eq!(text, "Hello world!");
         assert_eq!(highlights.len(), 1);
         assert_eq!(highlights[0].0, 6..11);
-        assert_eq!(highlights[0].1.font_weight, Some(FontWeight::BOLD));
+        assert!(highlights[0].1.bold);
     }
 
     #[test]

@@ -147,12 +147,32 @@ options:\n\
         // initializes smol's global thread pool (~8 threads × 2 MB each = 16-20 MB).
         // The foreground executor runs on the main run-loop with zero extra threads.
         let daemon_view = view.clone();
-        crate::core::scheduler::start_daemon(cx, &targets, daemon_view);
+        crate::core::scheduler::start_daemon(cx, &targets, move |path, text, cx| {
+            daemon_view.update(cx, |launcher, cx| {
+                launcher.apply_inline_output(&path, Some(gpui::SharedString::from(text)));
+                if crate::sys::appkit::window_visible() {
+                    cx.notify();
+                }
+            });
+        });
         // Watch the application, script, and plugin directories for live
         // changes (new/removed items appear without a Cmd+R); disabled via
         // [general] watch_sources.
         if watch_sources {
-            crate::core::fs_watcher::start(cx, &watch_config, view.clone());
+            let watcher_view = view.clone();
+            crate::core::fs_watcher::start(cx, &watch_config, move |kind, cx| {
+                use crate::core::fs_watcher::SourceKind;
+                watcher_view.update(cx, |launcher, cx| {
+                    match kind {
+                        SourceKind::Apps => launcher.rescan_apps(Some(cx)),
+                        SourceKind::Scripts => launcher.rescan_scripts(),
+                        SourceKind::Plugins => launcher.rescan_plugins(),
+                    };
+                    if crate::sys::appkit::window_visible() {
+                        cx.notify();
+                    }
+                });
+            });
         }
         // Route every keystroke into the launcher while the window is visible.
         // `detach()` keeps the observer alive for the app's lifetime without
@@ -176,8 +196,23 @@ options:\n\
         })
         .detach();
 
-        // Global hotkeys: toggle_hotkey toggles the launcher; configured
-        // `[bindings.global]` run their targets directly.
+        // Global hotkeys: carbon dispatches requests, the UI decides what
+        // they do (dependency inversion — sys never names UI types).
+        // Carbon events are delivered on the main run loop, so the handler
+        // runs on the main thread and the window functions can be called
+        // directly.
+        sys::carbon::set_hotkey_handler(std::sync::Arc::new(|request| {
+            use sys::carbon::{GlobalTarget, HotkeyRequest};
+            match request {
+                HotkeyRequest::Toggle => ui::window::toggle(),
+                HotkeyRequest::GlobalTarget(GlobalTarget::Target(t)) => {
+                    ui::window::launch_global_target(&t)
+                }
+                HotkeyRequest::GlobalTarget(GlobalTarget::Plugin(prefix)) => {
+                    ui::window::open_plugin(&prefix)
+                }
+            }
+        }));
         if let Err(e) = sys::carbon::install(&toggle_hotkey, globals) {
             eprintln!("aerofi: failed to register global hotkeys: {e}");
         }

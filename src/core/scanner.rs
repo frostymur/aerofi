@@ -1,4 +1,3 @@
-use gpui::SharedString;
 use std::collections::HashSet;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -120,7 +119,7 @@ pub fn scan_applications(config: &AppConfig) -> Vec<Target> {
             return;
         }
         items.push(Target::App {
-            name: SharedString::from(name),
+            name: name.to_string(),
             path: Arc::from(path),
             icon_path: None,
         });
@@ -330,12 +329,12 @@ mod tests {
         std::fs::create_dir_all(&old_app_dir).unwrap();
 
         let old_app = Target::App {
-            name: SharedString::from("Old"),
+            name: "Old".to_string(),
             path: std::sync::Arc::from(old_app_dir.clone()),
             icon_path: None,
         };
         let new_app = Target::App {
-            name: SharedString::from("New"),
+            name: "New".to_string(),
             path: std::sync::Arc::from(PathBuf::from("/Applications/New.app")),
             icon_path: None,
         };
@@ -344,11 +343,11 @@ mod tests {
         let script = Target::script_from_file(&script_path).unwrap();
         let mut all = vec![old_app, script, Target::reload_config()];
         all.push(Target::PluginItem {
-            name: SharedString::from("Plugin row"),
+            name: "Plugin row".to_string(),
             subtitle: None,
             icon: None,
-            plugin_id: SharedString::from("1"),
-            plugin_name: SharedString::from("demo"),
+            plugin_id: "1".to_string(),
+            plugin_name: "demo".to_string(),
         });
         let base = all.len() - 1;
 
@@ -402,7 +401,7 @@ mod tests {
         std::fs::write(&beta, "#!/bin/sh\necho beta\n").unwrap();
 
         let app = Target::App {
-            name: SharedString::from("Zed"),
+            name: "Zed".to_string(),
             path: Arc::from(PathBuf::from("/Applications/Zed.app")),
             icon_path: None,
         };
@@ -412,11 +411,11 @@ mod tests {
             Target::reload_config(),
         ];
         all.push(Target::PluginItem {
-            name: SharedString::from("Plugin row"),
+            name: "Plugin row".to_string(),
             subtitle: None,
             icon: None,
-            plugin_id: SharedString::from("1"),
-            plugin_name: SharedString::from("demo"),
+            plugin_id: "1".to_string(),
+            plugin_name: "demo".to_string(),
         });
         let base_count = 3;
 

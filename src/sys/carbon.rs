@@ -17,8 +17,8 @@
 )]
 
 use core::ffi::c_void;
-use std::sync::OnceLock;
 use std::sync::atomic::{AtomicPtr, Ordering};
+use std::sync::{Arc, LazyLock, Mutex, OnceLock};
 
 use crate::core::item::Target;
 
@@ -76,6 +76,48 @@ pub enum GlobalTarget {
     Target(Target),
     /// A dynamic plugin: the launcher's query is filled with this prefix.
     Plugin(String),
+}
+
+/// What a global hotkey pressed; the UI registers a handler for these
+/// (dependency inversion: the Carbon event thread dispatches requests,
+/// the UI decides what they do, and hops to the main thread itself).
+#[derive(Clone)]
+pub enum HotkeyRequest {
+    /// The primary toggle hotkey (default: Option+Space).
+    Toggle,
+    /// A `[bindings.global]` target.
+    GlobalTarget(GlobalTarget),
+}
+
+/// The UI's hotkey handler: one request in, the UI decides what it does.
+type HotkeyHandler = Arc<dyn Fn(HotkeyRequest) + Send + Sync>;
+
+/// The UI's handler for hotkey presses, registered once at startup.
+///
+/// Runs on the main thread (Carbon events are delivered on the main run
+/// loop), so the handler may use the main-thread window functions directly.
+static HOTKEY_HANDLER: LazyLock<Mutex<Option<HotkeyHandler>>> = LazyLock::new(|| Mutex::new(None));
+
+/// Register the hotkey handler (called once from the UI at startup).
+/// Must be installed before any hotkey can fire; a press before
+/// registration is dropped with a warning.
+pub fn set_hotkey_handler(handler: HotkeyHandler) {
+    *HOTKEY_HANDLER
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(handler);
+}
+
+/// Dispatch one pressed hotkey to the registered handler.
+fn dispatch_hotkey(request: HotkeyRequest) {
+    // Clone out of the lock: the handler runs while we don't hold it.
+    let handler = HOTKEY_HANDLER
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone();
+    match handler {
+        Some(h) => h(request),
+        None => eprintln!("aerofi: warning: hotkey pressed before the UI registered a handler"),
+    }
 }
 
 /// A global shortcut bound to a target (parsed combo + the target to run).
@@ -178,14 +220,11 @@ unsafe extern "C" fn hotkey_handler(
     };
     if status == noErr && id.signature == HOTKEY_SIGNATURE {
         if id.id == HOTKEY_ID {
-            crate::ui::window::toggle();
+            dispatch_hotkey(HotkeyRequest::Toggle);
         } else if let Some(targets) = GLOBAL_TARGETS.get()
             && let Some(target) = targets.get((id.id - GLOBAL_BASE_ID) as usize)
         {
-            match target {
-                GlobalTarget::Target(t) => crate::ui::window::launch_global_target(t),
-                GlobalTarget::Plugin(prefix) => crate::ui::window::open_plugin(prefix),
-            }
+            dispatch_hotkey(HotkeyRequest::GlobalTarget(target.clone()));
         }
     }
     noErr

@@ -7,7 +7,6 @@ use gpui::{
     App, AsyncApp, Bounds, Entity, WindowBackgroundAppearance, WindowBounds, WindowKind,
     WindowOptions, point, prelude::*, px, size,
 };
-use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::core::config::AppConfig;
 use crate::core::history::History;
@@ -15,9 +14,6 @@ use crate::core::item::{BuiltinAction, Target};
 use crate::core::theme::ThemeConfig;
 use crate::sys::appkit;
 use crate::ui::launcher::Launcher;
-
-/// Whether the launcher window is currently visible.
-static VISIBLE: AtomicBool = AtomicBool::new(false);
 
 /// Handle used to ask the GPUI loop to redraw the launcher.
 ///
@@ -49,7 +45,7 @@ fn request_render() {
 
 /// Whether the launcher window is currently visible.
 pub fn is_visible() -> bool {
-    VISIBLE.load(Ordering::SeqCst)
+    crate::sys::appkit::window_visible()
 }
 
 /// Hide the launcher window. The app was never activated (the launcher is a
@@ -57,14 +53,14 @@ pub fn is_visible() -> bool {
 /// foreground — no focus hand-off and no workspace jump. Must be called on
 /// the main thread.
 pub fn hide() {
-    VISIBLE.store(false, Ordering::SeqCst);
+    appkit::set_window_visible(false);
     appkit::hide_application();
 }
 
 /// Hide the launcher window while leaving the Toast window (if any) visible.
 /// Used for compact scripts.
 pub fn hide_launcher_only() {
-    VISIBLE.store(false, Ordering::SeqCst);
+    appkit::set_window_visible(false);
     // The launcher (and its inline subtitles) is off-screen; stop pacing.
     crate::core::scheduler::notify_visibility(false);
     crate::core::fs_watcher::notify_visibility(false);
@@ -77,7 +73,7 @@ pub fn toggle() {
         notify_hide();
         hide();
     } else {
-        VISIBLE.store(true, Ordering::SeqCst);
+        appkit::set_window_visible(true);
         notify_show();
         appkit::show_application();
         // Re-showing a hidden window can present a stale surface; force a
@@ -166,7 +162,7 @@ pub fn open_plugin(prefix: &str) {
         });
     });
     if !is_visible() {
-        VISIBLE.store(true, Ordering::SeqCst);
+        appkit::set_window_visible(true);
         notify_show();
         appkit::show_application();
         // Re-showing a hidden window can present a stale surface; force a
@@ -184,7 +180,7 @@ pub fn open_plugin(prefix: &str) {
 /// `on_show` itself and notifies — this function must not re-enter
 /// `App::update`.
 pub fn show_window() {
-    VISIBLE.store(true, Ordering::SeqCst);
+    appkit::set_window_visible(true);
     appkit::show_application();
 }
 
