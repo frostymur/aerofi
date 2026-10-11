@@ -11,7 +11,7 @@ use crate::core::history::History;
 use crate::core::item::{SourceMask, Target};
 use crate::core::scanner::glob_match_chars;
 
-use gpui::SharedString;
+use String;
 
 /// A reusable fuzzy matcher. Holds the nucleo `Matcher` (it allocates a
 /// working set up front, so it is built once and reused), a reverse alias
@@ -20,10 +20,10 @@ use gpui::SharedString;
 /// reused across `filter_and_rank()` calls.
 pub struct SearchIndex {
     matcher: Matcher,
-    aliases_by_target: HashMap<SharedString, Vec<SharedString>>,
+    aliases_by_target: HashMap<String, Vec<String>>,
     /// Pinned target entries (display name or full path), in the order the
     /// user listed them. Pinned matches outrank frecency and fuzzy score.
-    pinned: Vec<SharedString>,
+    pinned: Vec<String>,
     needle_buf: Vec<char>,
     hay_buf: Vec<char>,
     /// Reused scratch buffer for (is_pinned, pinned_order, score, index) —
@@ -48,20 +48,17 @@ impl SearchIndex {
     /// or by full path. Pinned matches are ranked above everything else, in
     /// the order the entries were listed.
     pub fn new(aliases: &HashMap<String, String>, pinned: &[String]) -> Self {
-        let mut aliases_by_target: HashMap<SharedString, Vec<SharedString>> = HashMap::new();
+        let mut aliases_by_target: HashMap<String, Vec<String>> = HashMap::new();
         for (alias, target) in aliases {
             aliases_by_target
-                .entry(SharedString::from(target.clone()))
+                .entry(target.clone())
                 .or_default()
-                .push(SharedString::from(alias.clone()));
+                .push(alias.clone());
         }
         Self {
             matcher: Matcher::new(Config::DEFAULT),
             aliases_by_target,
-            pinned: pinned
-                .iter()
-                .map(|p| SharedString::from(p.clone()))
-                .collect(),
+            pinned: pinned.to_vec(),
             needle_buf: Vec::new(),
             hay_buf: Vec::new(),
             scored_buf: Vec::new(),
@@ -202,8 +199,7 @@ impl SearchIndex {
             // full path. The list is short, so a linear scan is cheap and
             // allocation-free; `position` also yields the user's ordering.
             let pinned_order = self.pinned.iter().position(|entry| {
-                entry.as_ref().eq_ignore_ascii_case(name)
-                    || entry.as_ref().eq_ignore_ascii_case(target.identifier())
+                entry.eq_ignore_ascii_case(name) || entry.eq_ignore_ascii_case(target.identifier())
             });
             let (is_pinned, order) = match pinned_order {
                 Some(order) => (true, order as u32),

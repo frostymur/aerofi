@@ -164,18 +164,11 @@ fn handle_daemon_event(
     ev: DaemonEvent,
     visible: bool,
     app: &gpui::AsyncApp,
-    view: &gpui::Entity<crate::ui::launcher::Launcher>,
+    apply_output: &mut dyn FnMut(std::path::PathBuf, String, &mut gpui::App),
 ) -> bool {
     match ev {
         DaemonEvent::Output(path, text) => {
-            app.update(|cx| {
-                view.update(cx, |launcher, cx| {
-                    launcher.apply_inline_output(&path, Some(gpui::SharedString::from(text)));
-                    if crate::ui::window::is_visible() {
-                        cx.notify();
-                    }
-                });
-            });
+            app.update(|cx| apply_output(path, text, cx));
             visible
         }
         DaemonEvent::Show => {
@@ -252,7 +245,9 @@ pub fn poke_all_daemons() {
 pub fn start_daemon(
     cx: &mut gpui::App,
     all_targets: &[Target],
-    view: gpui::Entity<crate::ui::launcher::Launcher>,
+    // Called on the main thread (via `app.update`) for every daemon
+    // output line; the UI closure applies it to the launcher view.
+    mut apply_output: impl FnMut(std::path::PathBuf, String, &mut gpui::App) + Send + 'static,
 ) {
     let (tx, mut rx) = futures::channel::mpsc::unbounded::<DaemonEvent>();
     *OUTPUT_TX
@@ -274,14 +269,15 @@ pub fn start_daemon(
     app_async
         .spawn(move |_: &mut gpui::AsyncApp| async move {
             use futures::{FutureExt, StreamExt};
-            let mut visible = crate::ui::window::is_visible();
+            let mut visible = crate::sys::appkit::window_visible();
             loop {
                 if visible {
                     let delay = next_pace_in();
                     futures::select! {
                         ev = rx.next() => {
                             let Some(ev) = ev else { return };
-                            visible = handle_daemon_event(ev, visible, &dispatcher_app, &view);
+                            visible =
+                                handle_daemon_event(ev, visible, &dispatcher_app, &mut apply_output);
                         }
                         _ = bg.timer(delay).fuse() => {
                             pace_daemons();
@@ -293,7 +289,8 @@ pub fn start_daemon(
                     let Some(ev) = rx.next().await else {
                         return;
                     };
-                    visible = handle_daemon_event(ev, visible, &dispatcher_app, &view);
+                    visible =
+                        handle_daemon_event(ev, visible, &dispatcher_app, &mut apply_output);
                 }
             }
         })
@@ -441,7 +438,7 @@ fn spawn_daemon(stem: &str, path: &Path) -> Option<(u32, Arc<Mutex<Option<ChildS
                     buf.clear();
 
                     if !text.is_empty() {
-                        if crate::ui::window::is_visible() {
+                        if crate::sys::appkit::window_visible() {
                             // UnboundedSender::unbounded_send never blocks.
                             if tx
                                 .unbounded_send(DaemonEvent::Output(path2.clone(), text))

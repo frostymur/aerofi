@@ -177,11 +177,11 @@ impl LoadedPlugin {
                     }
                 };
                 crate::core::item::Target::PluginItem {
-                    name: gpui::SharedString::from(cstr(item.title).unwrap_or_default()),
-                    subtitle: cstr(item.subtitle).map(gpui::SharedString::from),
-                    icon: cstr(item.icon).map(gpui::SharedString::from),
-                    plugin_id: gpui::SharedString::from(cstr(item.id).unwrap_or_default()),
-                    plugin_name: gpui::SharedString::from(self.name.clone()),
+                    name: cstr(item.title).unwrap_or_default(),
+                    subtitle: cstr(item.subtitle),
+                    icon: cstr(item.icon),
+                    plugin_id: cstr(item.id).unwrap_or_default(),
+                    plugin_name: self.name.clone(),
                 }
             })
             .collect()

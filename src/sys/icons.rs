@@ -359,14 +359,13 @@ pub fn thumbnail_image_icons(items: &mut [Target]) {
         let Some(icon) = icon else {
             continue;
         };
-        let s = icon.as_ref();
-        if !s.starts_with('/') && !s.starts_with('~') {
+        if !icon.starts_with('/') && !icon.starts_with('~') {
             continue;
         }
-        let resolved = expand_home(s);
+        let resolved = expand_home(icon);
         match thumbnail_for(Path::new(&resolved)) {
-            Some(path) => *icon = gpui::SharedString::from(path.to_string_lossy()),
-            None => *icon = gpui::SharedString::from("🖼️"),
+            Some(path) => *icon = path.to_string_lossy().into_owned(),
+            None => *icon = "🖼️".into(),
         }
     }
 }

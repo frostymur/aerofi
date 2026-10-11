@@ -1346,7 +1346,7 @@ no plugin by that name)"
                 } if p.as_ref() == path
             );
             if is_match {
-                target.set_inline_output(output.clone());
+                target.set_inline_output(output.clone().map(|s| s.to_string()));
             }
         }
     }

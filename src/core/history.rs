@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use gpui::SharedString;
+use String;
 use serde::{Deserialize, Serialize};
 
 /// A single launch, persisted in `history.json`.
@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 pub struct ExecutionRecord {
     /// Stable identifier of the launched target (path to the `.app`
     /// bundle or the script on disk).
-    pub target_identifier: SharedString,
+    pub target_identifier: String,
     /// Seconds since UNIX_EPOCH.
     pub timestamp: u64,
 }
@@ -96,7 +96,7 @@ impl History {
     /// and persist the history to disk. Keep at most 2000 records.
     pub fn record_launch(&mut self, target_identifier: &str) {
         self.records.push(ExecutionRecord {
-            target_identifier: SharedString::from(target_identifier),
+            target_identifier: target_identifier.to_string(),
             timestamp: now_secs(),
         });
         if self.records.len() > MAX_RECORDS {

@@ -15,7 +15,7 @@ src/
 │   ├── toast_window.rs  # Compact & silent script status notifications (floating toast)
 │   ├── execute.rs       # Script execution routing by mode (silent, compact, inline, fullOutput, pipe, gui)
 │   └── launcher/        # Input field, search list, keyboard handlers, custom widgets & GUI mode rendering
-├── core/                # Data models, config & execution engine (knows nothing about GPUI)
+├── core/                # Data models, config & execution engine (GPUI-free except the main-thread App handle for daemons)
 │   ├── item.rs          # Target (App/Script/Builtin/PluginItem), ScriptMode, metadata parsing
 │   ├── config.rs        # AppConfig loader (~/.config/aerofi/config.toml) & defaults
 │   ├── scanner.rs       # Directory indexing: /Applications* + configured script folders
@@ -24,7 +24,8 @@ src/
 │   ├── gui_protocol.rs  # Rofi-compatible GUI mode protocol parser
 │   ├── gui_session.rs   # GUI mode interactive process session management
 │   ├── markdown.rs      # Markdown AST parser for full-output script reader
-│   ├── pango.rs         # Pango markup parsing for rich rows
+│   ├── pango.rs         # Pango markup parsing for rich rows (GPUI-free PangoStyle spec; UI maps to HighlightStyle)
+│   ├── fit.rs           # auto_height/require_input window-height measurer (pure; the renderer's layout mirror — see its module doc)
 │   ├── search.rs        # Zero-allocation Nucleo fuzzy matcher & frecency ranker
 │   ├── theme.rs         # Theme configuration parser, alpha channels & palette resolver
 │   ├── widget.rs        # Widget tree definition and validation
@@ -40,7 +41,14 @@ src/
 **Rationale:** the launcher itself is a single crate, keeping its build simple;
 the workspace additionally exposes the small `aerofi-plugin-api` crate so
 plugins can be compiled against the C ABI. The layering (core → ui → sys)
-enforces separation of concerns *within* the launcher crate.
+enforces separation of concerns *within* the launcher crate: `core` and
+`sys` have **zero imports of `ui`**, and `core` is GPUI-free except for the
+two sanctioned seams — daemons (`scheduler`, `fs_watcher`) take a
+`&mut gpui::App` handle to post work to the main thread, and `sys`'s
+window/font entry points take GPUI window handles. Core's data model
+uses plain `String`/packed-`u32` colors (GPUI types are mapped at the
+render boundary — e.g. `pango::PangoStyle` → `gpui::HighlightStyle`),
+so a future GPUI bump or engine swap never has to touch `core`'s data.
 
 ## Validated performance baseline
 

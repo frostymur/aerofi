@@ -1,7 +1,11 @@
-//! AppKit FFI helpers: chrome stripping and application show/hide.
+//! AppKit FFI helpers: chrome stripping, application show/hide, and the
+//! window-visibility flag.
 //!
-//! Pure system calls with no knowledge of app state: the visibility flag
-//! and the show/hide orchestration live in [`crate::ui::window`].
+//! The visibility flag lives here (not in `ui::window`) because core's
+//! daemons read it from background dispatchers to decide whether a change
+//! may wake the main thread; it is plain app state over system visibility,
+//! so it sits with the system layer. The show/hide *orchestration* (GPUI
+//! view updates, panel ordering) stays in [`crate::ui::window`].
 
 use gpui::Window;
 use image::ImageEncoder;
@@ -15,7 +19,7 @@ use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::ffi::c_void;
 use std::io::Cursor;
 use std::path::Path;
-use std::sync::atomic::{AtomicPtr, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 
 /// Raw pointer to the window's `NSWindow`, captured once after creation.
 ///
@@ -26,6 +30,20 @@ use std::sync::atomic::{AtomicPtr, Ordering};
 /// close/recreate capability is ever added, the retained reference would
 /// have to be released before the window goes away.)
 static NS_WINDOW: AtomicPtr<c_void> = AtomicPtr::new(std::ptr::null_mut());
+
+/// Whether the launcher window is currently visible.
+static WINDOW_VISIBLE: AtomicBool = AtomicBool::new(false);
+
+/// Whether the launcher window is currently visible.
+pub fn window_visible() -> bool {
+    WINDOW_VISIBLE.load(Ordering::SeqCst)
+}
+
+/// Record the launcher window's visibility (called from the show/hide
+/// orchestration in `ui::window`).
+pub fn set_window_visible(visible: bool) {
+    WINDOW_VISIBLE.store(visible, Ordering::SeqCst);
+}
 
 /// Resolve the `NSWindow` backing a GPUI window.
 fn get_ns_window(window: &Window) -> Option<*mut c_void> {

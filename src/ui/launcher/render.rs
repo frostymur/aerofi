@@ -2519,15 +2519,44 @@ impl Launcher {
     /// Pango-parsed `StyledText` for a markup Rofi row. The parse (a linear
     /// scan with per-tag allocations) is memoized per row text, so redraws
     /// and selection changes don't re-parse every visible row.
+    /// Map a core (GPUI-free) [`PangoStyle`] span to the GPUI highlight
+    /// style used to render it. Packed 0xRRGGBBAA colors go through
+    /// `gpui::rgba` (the same convention `core::theme::parse_hex_color`
+    /// produces).
+    fn highlight_style(p: crate::core::pango::PangoStyle) -> gpui::HighlightStyle {
+        gpui::HighlightStyle {
+            color: p.color.map(gpui::rgba).map(Into::into),
+            background_color: p.background.map(gpui::rgba).map(Into::into),
+            font_weight: p.bold.then_some(gpui::FontWeight::BOLD),
+            font_style: p.italic.then_some(gpui::FontStyle::Italic),
+            underline: p.underline.then_some(gpui::UnderlineStyle {
+                color: None,
+                thickness: 1.0.into(),
+                wavy: false,
+            }),
+            strikethrough: p.strikethrough.then_some(gpui::StrikethroughStyle {
+                color: None,
+                thickness: 1.0.into(),
+            }),
+            ..Default::default()
+        }
+    }
     fn markup_text(&self, text: &str) -> gpui::StyledText {
         let (plain, highlights) = {
             let mut cache = self.pango_cache.borrow_mut();
             match cache.get(text) {
                 Some(c) => (c.0.clone(), c.1.clone()),
                 None => {
-                    let v = crate::core::pango::parse_pango(text);
-                    cache.insert(gpui::SharedString::from(text), (v.0.clone(), v.1.clone()));
-                    v
+                    let (plain, spec) = crate::core::pango::parse_pango(text);
+                    let highlights: Vec<(std::ops::Range<usize>, gpui::HighlightStyle)> = spec
+                        .into_iter()
+                        .map(|(r, p)| (r, Self::highlight_style(p)))
+                        .collect();
+                    cache.insert(
+                        gpui::SharedString::from(text),
+                        (plain.clone(), highlights.clone()),
+                    );
+                    (plain, highlights)
                 }
             }
         };
