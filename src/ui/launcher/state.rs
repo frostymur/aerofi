@@ -73,6 +73,10 @@ pub struct Launcher {
     /// Registry of custom widget definitions from `[[widgets]]` in the
     /// theme file. Used by `render_custom_widget` in `custom_widgets.rs`.
     pub(super) widget_registry: WidgetRegistry,
+    /// Natural dimensions (width, height) of the images referenced by the
+    /// theme's widgets, pre-resolved at theme load so `auto_height` can
+    /// measure width-constrained images without touching the disk per frame.
+    pub(super) image_dims: std::collections::HashMap<String, (u32, u32)>,
     /// Hotkey bindings from button widgets: maps combo string (e.g. "cmd+r")
     /// to the button's action string. Rebuilt on config reload.
     pub(super) button_hotkeys: HashMap<String, (String, bool)>,
@@ -177,6 +181,7 @@ impl Launcher {
         let filtered = (0..all.len()).collect();
         let widget_registry = WidgetRegistry::from_theme(&theme.widgets);
         let button_hotkeys = widget_registry.button_hotkeys();
+        let image_dims = super::helpers::collect_image_dims(&theme);
         let base_count = all.len();
         Self::validate_modes(&app_config);
         let font_fallbacks = super::helpers::font_fallback_families(&theme.font.fallback);
@@ -204,6 +209,7 @@ impl Launcher {
             reveal_wait_frames: 0,
             sticky_metatags: None,
             widget_registry,
+            image_dims,
             button_hotkeys,
             rofi_session: None,
             plugin_manager: crate::core::plugin_manager::PluginManager::load_all(),
@@ -265,6 +271,16 @@ impl Launcher {
             .as_ref()
             .and_then(|m| m.columns)
             .unwrap_or(self.theme.listview.columns)
+    }
+
+    /// Whether the results list is visible right now: always, unless
+    /// `require_input` is set and no query matches anything yet.
+    pub(super) fn list_visible(&self) -> bool {
+        if self.theme.listview.require_input.unwrap_or(false) {
+            !self.query.trim().is_empty() && !self.filtered.is_empty()
+        } else {
+            true
+        }
     }
 
     /// Handle a keystroke. Returns the action that the host (main.rs) should perform.
@@ -1380,6 +1396,7 @@ after reload; showing all sources"
             }
         }
         self.widget_registry = WidgetRegistry::from_theme(&theme.widgets);
+        self.image_dims = super::helpers::collect_image_dims(&theme);
         self.button_hotkeys = self.widget_registry.button_hotkeys();
         self.theme = Arc::new(theme);
 

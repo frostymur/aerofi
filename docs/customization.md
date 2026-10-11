@@ -358,7 +358,18 @@ y_offset = -40.0
 # background_image = "~/.config/aerofi/themes/wallpaper.jpg"
 ```
 
-> **Note:** `auto_height` and `require_input` calculate the window size based on a standard vertical layout. They are not compatible with custom `[widgets]` layouts (like horizontal splits or fixed-size artwork panels) and will cause visual clipping if used together.
+> **Note:** `auto_height` measures the whole `[widgets]` tree (boxes, header/footer
+> bars, images, buttons, …), not just the input bar and list — so it works with
+> custom layouts. The window shrinks to fit the content, capped at the configured
+> `height` (longer lists scroll), and it never shrinks below the fixed chrome:
+> artwork panels, footer bars, and other fixed-size widgets are never clipped.
+> `require_input` collapses the window to the fixed chrome while the list is
+> hidden (before the first matching keystroke); once results appear, the
+> window either fits the list (`auto_height`) or uses the configured `height`
+> (growing only when the chrome, e.g. wrapped argument chips, is taller).
+> Images with `w_full`/`h_full` stretch to their container and add no height
+> — give an image an explicit `height` if you want the artwork to set a
+> minimum window height.
 
 ### Full-Window Script View (`[script_view]`)
 

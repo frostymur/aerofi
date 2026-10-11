@@ -59,10 +59,11 @@ fallback = ["SF Pro", "SF Mono", "Helvetica Neue", "Arial"]
 width = "49.0%"
 height = "50.2%"
 
-# Shrink the window height automatically to fit the number of search results.
+# Shrink the window height automatically to fit the content: it measures the
+# whole `[widgets]` tree (header/footer bars, images, buttons, …), caps at the
+# configured `height` (longer lists scroll) and never shrinks below the fixed
+# chrome, so artwork panels and footer bars are never clipped.
 # Inherits from `[listview] require_input` by default if unset.
-# Note: Designed for standard vertical layouts. Not compatible with custom `[widgets]` 
-# layouts (like horizontal splits or fixed-size artwork panels).
 # Type: Boolean
 # auto_height = true
 
@@ -245,9 +246,11 @@ highlight_matches = true
 empty_text = "No matching items found"
 empty_text_color = "$subtle"
 
-# When true, the listview is collapsed until the user starts typing.
-# Note: Designed for standard vertical layouts. Not compatible with custom `[widgets]` 
-# layouts (like horizontal splits or fixed-size artwork panels).
+# When true, the listview is collapsed until the user starts typing: the
+# window shrinks to the remaining chrome (input bar, header/footer, artwork)
+# and grows back when results appear — with auto_height it fits the list,
+# without it the configured [window] height is used. Works with any
+# `[widgets]` layout.
 # Type: Boolean (Optional)
 # require_input = false
 

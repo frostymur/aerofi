@@ -278,6 +278,36 @@ pub(super) fn combo_matches(combo: &str, ks: &gpui::Keystroke) -> bool {
     key_matches && mods_match
 }
 
+/// Pre-resolve the natural dimensions of every image referenced by the
+/// theme's custom widgets, so `auto_height` can measure width-constrained
+/// images without touching the disk on every frame. Reads only file headers
+/// (`into_dimensions`, no pixel decode). Images with a fixed `height` or
+/// `h_full` never need their natural size and are skipped.
+pub(super) fn collect_image_dims(
+    t: &crate::core::theme::ThemeConfig,
+) -> std::collections::HashMap<String, (u32, u32)> {
+    let mut dims = std::collections::HashMap::new();
+    for def in &t.widgets {
+        if let crate::core::theme::WidgetDef::Image {
+            path,
+            height,
+            h_full,
+            ..
+        } = def
+        {
+            if height.is_some() || h_full.unwrap_or(false) || dims.contains_key(path) {
+                continue;
+            }
+            if let Ok(reader) = image::ImageReader::open(expand_tilde_path(path))
+                && let Ok((w, h)) = reader.into_dimensions()
+            {
+                dims.insert(path.clone(), (w, h));
+            }
+        }
+    }
+    dims
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
