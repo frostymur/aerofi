@@ -82,6 +82,7 @@ impl Render for Launcher {
                         filtered_len: self.filtered.len(),
                         element_font_size: self.element_font_val.1,
                         screen_h,
+                        screen_w,
                     },
                     &self.image_dims,
                 )
@@ -342,6 +343,9 @@ pub(super) struct SearchFit {
     pub element_font_size: f32,
     /// Screen height the window `Dimension` resolves against.
     pub screen_h: f32,
+    /// Screen width the window `Dimension` resolves against (needed to
+    /// measure `w_full` images, whose rendered width is the container's).
+    pub screen_w: f32,
 }
 
 /// Window height for the `Search` / `ArgumentInput` / `Confirming` states.
@@ -544,6 +548,7 @@ fn def_height(
             width,
             height,
             h_full,
+            w_full,
             margin,
             border_width,
             border_top,
@@ -561,6 +566,22 @@ fn def_height(
                 match image_dims.get(path) {
                     Some((nw, nh)) if *nw > 0 => *w * (*nh as f32) / (*nw as f32),
                     _ => *w,
+                }
+            } else if w_full.unwrap_or(false) {
+                // Width-stretched: the renderer scales the height by the
+                // aspect ratio to the container width (GPUI `img` keeps
+                // its intrinsic aspect ratio when only width is fixed).
+                // The container is at most the window wide, so using the
+                // window width is the never-clip bound: exact for
+                // full-width containers, a bounded overestimate for
+                // images inside narrower panes (exact pane widths need a
+                // layout pass, out of scope for a height measurer).
+                match image_dims.get(path) {
+                    Some((nw, nh)) if *nw > 0 => {
+                        let w = t.window.width.resolve(state.screen_w);
+                        w * (*nh as f32) / (*nw as f32)
+                    }
+                    _ => 0.0,
                 }
             } else {
                 image_dims
@@ -3170,6 +3191,14 @@ mod fit_tests {
         WidgetDef::Spacer { id: id.to_string() }
     }
 
+    fn image_def_full(id: &str, path: &str) -> WidgetDef {
+        let mut def = image_def(id, path, None, None);
+        if let WidgetDef::Image { w_full, .. } = &mut def {
+            *w_full = Some(true);
+        }
+        def
+    }
+
     fn image_def(id: &str, path: &str, width: Option<f32>, height: Option<f32>) -> WidgetDef {
         WidgetDef::Image {
             id: id.to_string(),
@@ -3225,6 +3254,7 @@ mod fit_tests {
             filtered_len: n,
             element_font_size: font,
             screen_h: 1000.0,
+            screen_w: 1400.0,
         }
     }
 
@@ -3595,6 +3625,43 @@ mod fit_tests {
         assert!((h - 150.0).abs() < 1e-3, "got {h}");
     }
 
+    /// A `w_full` image is measured at the width it actually renders at:
+    /// A `w_full` image is measured at its rendered height: the aspect
+    /// ratio scaled to the window width — so a wide banner no longer
+    /// forces its full natural height onto the window.
+    #[test]
+    fn w_full_image_scales_to_window_width() {
+        let mut t = fit_theme();
+        t.window.padding = 0.0;
+        t.window.width = Dimension::Points(100.0);
+        t.mainbox.orientation = "horizontal".into();
+        t.mainbox.gap = Some(0.0);
+        t.mainbox.children = vec![
+            Widget::Custom("left".into()),
+            Widget::Custom("right".into()),
+        ];
+        t.widgets = vec![
+            box_def("left", "vertical", None, None, vec!["img"]),
+            image_def_full("img", "/img.png"),
+            box_def("right", "vertical", None, None, vec!["ListView"]),
+        ];
+        let reg = WidgetRegistry::from_theme(&t.widgets);
+        let mut dims = HashMap::new();
+        dims.insert("/img.png".to_string(), (200, 300));
+
+        // 200-wide image in a 100pt window: renders at 100 wide →
+        // 100 * 300 / 200 = 150 tall, not the natural 300.
+        let h = search_fit_height(&t, &reg, &fit(true, false, true, true, 1, 0, 17.0), &dims);
+        assert!((h - 150.0).abs() < 1e-3, "got {h}");
+
+        // Window wider than the image: the renderer stretches the image
+        // to the full width, so the measured height follows the aspect
+        // ratio at that width (400 * 300 / 200 = 600).
+        t.window.width = Dimension::Points(400.0);
+        let h = search_fit_height(&t, &reg, &fit(true, false, true, true, 1, 0, 17.0), &dims);
+        assert!((h - 600.0).abs() < 1e-3, "got {h}");
+    }
+
     /// Hiding the bar drops its height and one gap in custom layouts too.
     #[test]
     fn hidden_bar_drops_footer_gap_too() {
@@ -3678,6 +3745,7 @@ mod fit_tests {
             require_input: true,
             ib_h: t.inputbar.height,
             columns: t.listview.columns,
+            screen_w: 1400.0,
             filtered_len,
             element_font_size: t.font.size,
             screen_h: 1000.0,
