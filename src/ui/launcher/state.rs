@@ -983,11 +983,18 @@ no plugin by that name)"
         for (path, text) in crate::core::scheduler::flush_pending_inline() {
             self.apply_inline_output(&path, Some(gpui::SharedString::from(text)));
         }
-        // Script-folder changes that arrived while the window was hidden
+        // Source-folder changes that arrived while the window was hidden
         // (the main thread was never woken for them); apply them before
         // the first frame so the list isn't stale.
-        if crate::core::script_watcher::take_pending() {
+        let (apps, scripts, plugins) = crate::core::fs_watcher::take_pending();
+        if apps {
+            self.rescan_apps();
+        }
+        if scripts {
             self.rescan_scripts();
+        }
+        if plugins {
+            self.rescan_plugins();
         }
         self.refilter(None);
         // refilter() resets the scroll to the top, but the selection
@@ -1336,8 +1343,9 @@ no plugin by that name)"
         // Reconcile inline-script daemons with the new target set (scripts
         // added/removed/re-intervalled by the reload).
         crate::core::scheduler::reconcile_daemons(&self.all);
-        // Re-point the script-folder watcher at the (possibly new) dirs.
-        crate::core::script_watcher::reconcile_dirs(&self.app_config.expanded_script_dirs());
+        // Re-point the source watcher at the (possibly new) dirs —
+        // `[scripts]`, `[apps]`, and `[sources]` may all have changed.
+        crate::core::fs_watcher::reconcile(&self.app_config);
         self.search = SearchIndex::new(&self.app_config.aliases, &self.app_config.pinned);
         self.plugin_manager = crate::core::plugin_manager::PluginManager::load_all();
         // Re-resolve the active source filter against the reloaded
@@ -1436,6 +1444,62 @@ after reload; showing all sources"
         println!(
             "aerofi: rescanned script folders ({} script(s))",
             script_count
+        );
+    }
+
+    /// Rescan only the application targets after an app-dir change on
+    /// disk (the fs watcher).
+    ///
+    /// Like [`Self::rescan_scripts`], this splices the freshly scanned
+    /// apps into the base list (scripts and builtins stay put). Icon
+    /// extraction is disk-cached: an already-cached app costs one
+    /// metadata check, only genuinely new bundles hit AppKit.
+    pub(crate) fn rescan_apps(&mut self) {
+        if !self.app_config.sources.apps {
+            return;
+        }
+        let new_apps = crate::core::scanner::scan_applications(&self.app_config);
+        let app_count = new_apps.len();
+        self.base_count =
+            crate::core::scanner::replace_apps(&mut self.all, self.base_count, new_apps);
+        crate::sys::icons::extract_all(&mut self.all);
+        self.refilter(None);
+        if self.selected >= self.filtered.len() {
+            self.selected = 0;
+        }
+        println!("aerofi: rescanned application folders ({app_count} app(s))");
+    }
+
+    /// Rescan the plugin directories after a change on disk (the fs
+    /// watcher).
+    ///
+    /// `load_all` reuses the per-path plugin cache, so an unchanged
+    /// `.dylib` keeps the same `LoadedPlugin` (and any live session
+    /// referencing it keeps working); only added/removed plugins change
+    /// the set. A plugin-mode that lost its plugin falls back to all
+    /// sources.
+    pub(crate) fn rescan_plugins(&mut self) {
+        self.plugin_manager = crate::core::plugin_manager::PluginManager::load_all();
+        if let Some(name) = self.mode_name.clone() {
+            let name = name.to_string();
+            let survives = self.app_config.modes.contains_key(&name)
+                || self.plugin_manager.find_by_name(&name).is_some();
+            if !survives {
+                eprintln!(
+                    "aerofi: warning: plugin {name:?} was removed; \
+showing all sources"
+                );
+                self.mode_name = None;
+                self.mode_mask = None;
+            }
+        }
+        self.refilter(None);
+        if self.selected >= self.filtered.len() {
+            self.selected = 0;
+        }
+        println!(
+            "aerofi: rescanned plugin directories ({} plugin(s))",
+            self.plugin_manager.plugins.len()
         );
     }
 
@@ -1815,7 +1879,7 @@ after reload; showing all sources"
         // hotkey while the app was hidden), show it now — still at alpha 0.
         if from_hidden {
             crate::core::scheduler::notify_visibility(true);
-            crate::core::script_watcher::notify_visibility(true);
+            crate::core::fs_watcher::notify_visibility(true);
             self.on_show();
             crate::ui::window::show_window();
         }

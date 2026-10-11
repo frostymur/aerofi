@@ -158,6 +158,27 @@ pub fn scan_all(config: &AppConfig) -> Vec<Target> {
 /// re-sort the base. Plugin rows beyond `base_count` are kept in place.
 /// Returns the new base count. Used by the script-folder watcher's rescan
 /// (`Launcher::rescan_scripts`).
+/// The application directories to watch for changes (the fs watcher's
+/// apps watch set), per the config specs: the standard macOS bundle dirs,
+/// `[apps] extra_dirs`, and the individual `[apps] extra_apps` bundles,
+/// minus anything inside `[apps] ignore_dirs`. Mirrors exactly what
+/// [`scan_applications`] reads, so a change in a watched path can affect
+/// the result and a change outside never does.
+pub fn app_watch_dirs(config: &AppConfig) -> Vec<PathBuf> {
+    if !config.sources.apps {
+        return Vec::new();
+    }
+    let ignore_dirs = config.expanded_ignore_dirs();
+    let mut dirs: Vec<PathBuf> = APP_DIRS
+        .iter()
+        .map(|d| PathBuf::from(*d))
+        .chain(config.expanded_app_dirs())
+        .chain(config.expanded_extra_apps())
+        .collect();
+    dirs.retain(|d| !ignore_dirs.iter().any(|ig| d.starts_with(ig)));
+    dirs
+}
+
 pub(crate) fn replace_scripts(
     all: &mut Vec<Target>,
     base_count: usize,
@@ -166,6 +187,23 @@ pub(crate) fn replace_scripts(
     let plugin_tail: Vec<Target> = all.split_off(base_count);
     all.retain(|t| !matches!(t, Target::Script { .. }));
     all.extend(new_scripts);
+    sort_by_name(all);
+    let base = all.len();
+    all.extend(plugin_tail);
+    base
+}
+
+/// Replace the `Target::App` entries of the base list with freshly
+/// scanned `new_apps` and re-sort the base. Mirrors [`replace_scripts`];
+/// used by the fs watcher's rescan (`Launcher::rescan_apps`).
+pub(crate) fn replace_apps(
+    all: &mut Vec<Target>,
+    base_count: usize,
+    new_apps: Vec<Target>,
+) -> usize {
+    let plugin_tail: Vec<Target> = all.split_off(base_count);
+    all.retain(|t| !matches!(t, Target::App { .. }));
+    all.extend(new_apps);
     sort_by_name(all);
     let base = all.len();
     all.extend(plugin_tail);
@@ -286,6 +324,75 @@ mod tests {
     }
 
     #[test]
+    #[test]
+    fn replace_apps_swaps_apps_and_preserves_plugin_tail() {
+        let temp = TempTestDir::new("apps");
+        let old_app_dir = temp.path().join("Old.app");
+        std::fs::create_dir_all(&old_app_dir).unwrap();
+
+        let old_app = Target::App {
+            name: SharedString::from("Old"),
+            path: std::sync::Arc::from(old_app_dir.clone()),
+            icon_path: None,
+        };
+        let new_app = Target::App {
+            name: SharedString::from("New"),
+            path: std::sync::Arc::from(PathBuf::from("/Applications/New.app")),
+            icon_path: None,
+        };
+        let script_path = temp.path().join("some-script.sh");
+        std::fs::write(&script_path, "#!/bin/sh\necho hi\n").unwrap();
+        let script = Target::script_from_file(&script_path).unwrap();
+        let mut all = vec![old_app, script, Target::reload_config()];
+        all.push(Target::PluginItem {
+            name: SharedString::from("Plugin row"),
+            subtitle: None,
+            icon: None,
+            plugin_id: SharedString::from("1"),
+            plugin_name: SharedString::from("demo"),
+        });
+        let base = all.len() - 1;
+
+        let new_base = replace_apps(&mut all, base, vec![new_app]);
+
+        assert_eq!(new_base, base);
+        assert_eq!(all.len(), 4);
+        // The base is re-sorted (byte order: uppercase before lowercase).
+        assert_eq!(all[0].name(), "New");
+        assert_eq!(all[1].name(), "Reload Configuration");
+        assert_eq!(all[2].name(), "some-script");
+        // The plugin row beyond base_count survives untouched.
+        assert!(matches!(all[base], Target::PluginItem { .. }));
+    }
+
+    #[test]
+    fn app_watch_dirs_follows_config_specs() {
+        let temp = TempTestDir::new("watch");
+        let custom_dir = temp.path().join("CustomApps");
+        std::fs::create_dir_all(&custom_dir).unwrap();
+        let ignored_dir = temp.path().join("IgnoredApps");
+        std::fs::create_dir_all(&ignored_dir).unwrap();
+
+        let mut config = AppConfig::default();
+        config.apps.extra_dirs = vec![custom_dir.clone(), ignored_dir.clone()];
+        config.apps.extra_apps = vec![PathBuf::from("/Applications/Safari.app")];
+        config.apps.ignore_dirs = vec![ignored_dir.clone()];
+
+        let dirs = app_watch_dirs(&config);
+
+        // Standard dirs are present.
+        assert!(dirs.contains(&PathBuf::from("/Applications")));
+        assert!(dirs.contains(&PathBuf::from("/System/Applications")));
+        // extra_dirs included, ignore_dirs excluded.
+        assert!(dirs.contains(&custom_dir));
+        assert!(!dirs.contains(&ignored_dir));
+        // extra_apps bundles are watched individually.
+        assert!(dirs.contains(&PathBuf::from("/Applications/Safari.app")));
+
+        // A disabled apps source yields no watched dirs.
+        config.sources.apps = false;
+        assert!(app_watch_dirs(&config).is_empty());
+    }
     fn replace_scripts_swaps_scripts_and_preserves_plugin_tail() {
         let temp = TempTestDir::new("splice");
         let alpha = temp.path().join("alpha.sh");

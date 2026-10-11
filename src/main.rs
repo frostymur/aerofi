@@ -109,8 +109,10 @@ fn main() {
         }
         let theme = core::theme::load_theme(&app_config.theme);
         let toggle_hotkey = app_config.bindings.toggle.clone();
-        let watch_scripts = app_config.general.watch_scripts;
-        let script_dirs = app_config.expanded_script_dirs();
+        let watch_sources = app_config.general.watch_sources;
+        // Clone for the fs watcher: the original moves into the window
+        // below. AppConfig is small (path/name vecs), this is cheap.
+        let watch_config = app_config.clone();
         let view =
             ui::window::create_launcher_window(cx, targets.clone(), theme, app_config, history);
 
@@ -126,10 +128,11 @@ fn main() {
         // The foreground executor runs on the main run-loop with zero extra threads.
         let daemon_view = view.clone();
         crate::core::scheduler::start_daemon(cx, &targets, daemon_view);
-        // Watch the script folders for live changes (new/removed scripts
-        // appear without a Cmd+R); disabled via [general] watch_scripts.
-        if watch_scripts {
-            crate::core::script_watcher::start(cx, script_dirs, view.clone());
+        // Watch the application, script, and plugin directories for live
+        // changes (new/removed items appear without a Cmd+R); disabled via
+        // [general] watch_sources.
+        if watch_sources {
+            crate::core::fs_watcher::start(cx, &watch_config, view.clone());
         }
         // Route every keystroke into the launcher while the window is visible.
         // `detach()` keeps the observer alive for the app's lifetime without

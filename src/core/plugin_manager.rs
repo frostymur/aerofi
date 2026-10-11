@@ -253,7 +253,23 @@ impl PluginManager {
         }
     }
 
-    /// Scan the plugins directory and load all `.dylib` files.
+    /// The plugin directories scanned for `.dylib` files (also the fs
+    /// watcher's plugins watch set).
+    pub fn plugin_dirs() -> Vec<std::path::PathBuf> {
+        let mut dirs = Vec::new();
+        if let Some(home) = dirs::home_dir() {
+            dirs.push(home.join(".config").join("aerofi").join("plugins"));
+        }
+        if let Some(config_dir) = dirs::config_dir() {
+            let p = config_dir.join("aerofi").join("plugins");
+            if !dirs.contains(&p) {
+                dirs.push(p);
+            }
+        }
+        dirs
+    }
+
+    /// Scan the plugin directories and load all `.dylib` files.
     pub fn load_all() -> Self {
         #[cfg(test)]
         return Self::new();
@@ -261,20 +277,9 @@ impl PluginManager {
         #[cfg(not(test))]
         {
             let mut manager = Self::new();
-            let mut candidate_dirs = Vec::new();
-
-            if let Some(home) = dirs::home_dir() {
-                candidate_dirs.push(home.join(".config").join("aerofi").join("plugins"));
-            }
-            if let Some(config_dir) = dirs::config_dir() {
-                let p = config_dir.join("aerofi").join("plugins");
-                if !candidate_dirs.contains(&p) {
-                    candidate_dirs.push(p);
-                }
-            }
 
             let mut loaded_names = std::collections::HashSet::new();
-            for dir in candidate_dirs {
+            for dir in Self::plugin_dirs() {
                 if let Ok(entries) = std::fs::read_dir(&dir) {
                     for entry in entries.flatten() {
                         let path = entry.path();

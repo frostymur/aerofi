@@ -143,6 +143,26 @@ The active mode — a filter *or* a plugin session — shows as a small badge
 in the input bar. Unknown source names are warned about at startup and
 skipped; a mode that resolves to no sources shows an empty list; an
 unknown mode name (not in `[modes]`, not a plugin) warns and is ignored.
+### Live Source Watching (`watch_sources`)
+
+With `[general] watch_sources = true` (default) the application, script,
+and plugin directories are watched via FSEvents, so new/removed items
+appear without a reload:
+
+- **Apps** — `/Applications`, `/System/Applications` (+ `Utilities/`),
+  `[apps] extra_dirs`, and the individual `[apps] extra_apps` bundles
+  (minus `[apps] ignore_dirs`); a freshly installed app shows up, and
+  icons are extracted on first appearance (disk-cached)
+- **Scripts** — `[scripts] dirs`
+- **Plugins** — the two plugin directories; a dropped-in `.dylib` loads
+  (its `activate` runs) and a removed one stops being offered (the
+  per-path cache keeps the old library in memory until a restart)
+
+The watch set follows the config specs: a source disabled in `[sources]`
+contributes no watched paths, and `Cmd+R` re-derives the set after a
+config change. Changes while the window is hidden are applied on the next
+show (no main-thread wake). One FSEvents stream and one dispatcher task
+serve all three — no per-source cost.
 
 ### Script Directories
 ```toml
@@ -156,8 +176,8 @@ dirs = [
 ```
 
 The folders are watched: new, removed, or modified scripts appear in the
-launcher without a reload (disable with `[general] watch_scripts = false`,
-applies after a restart).
+launcher without a reload (disable all live watching with
+`[general] watch_sources = false`, applies after a restart — see below).
 
 ### App Discovery & Filtering
 aerofi indexes standard application directories (`/Applications`, `/System/Applications`, and their `Utilities/` subdirectories such as Activity Monitor, Console, and Terminal) automatically.
