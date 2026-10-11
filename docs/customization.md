@@ -695,7 +695,7 @@ gap = 4.0
 > By default a button **closes** the launcher after running its action (`close` defaults to `true`). Set `close = false` on a button to keep the launcher open — handy for actions like toggling a widget or copying, where you want to stay put. It applies to both clicks and the button's `hotkey`.
 
 > [!NOTE]
-> Besides a plain target name, `action` accepts special prefixes: `command:<shell>` (run a shell command detached), `target:`/`run:`/`script:<name>` (run the named target), and `plugin:<name>` (open the launcher in that plugin's mode — the window always stays open, `close` is ignored).
+> Besides a plain target name, `action` accepts special prefixes: `command:<shell>` (run a shell command detached), `target:`/`run:`/`script:<name>` (run the named target), `plugin:<name>` (open the launcher in that plugin's mode — the window always stays open, `close` is ignored), and `mode:<name>` (switch to a `[modes]` source filter, or a loaded plugin by name — the window always stays open, `close` is ignored).
 
 ---
 

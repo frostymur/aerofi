@@ -65,6 +65,13 @@ matching = "fuzzy"
 # Default: "frecency"
 ranking = "frecency"
 
+# Watch the application, script, and plugin directories for filesystem
+# changes so new/removed items appear without a reload (applies after a
+# restart). A source disabled in [sources] below is never watched.
+# Type: Boolean
+# Default: true
+watch_sources = true
+
 
 # ------------------------------------------------------------------------------
 # [sources] - Search Sources Indexing Toggles

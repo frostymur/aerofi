@@ -753,6 +753,16 @@ the mode will show an empty list"
             return;
         }
         if let Some(plugin) = self.plugin_manager.find_by_name(name) {
+            // A plugin without a prefix has no query-router session to
+            // enter; entering a dead "mode" state would be worse than
+            // warning.
+            if plugin.prefix.is_empty() {
+                eprintln!(
+                    "aerofi: warning: plugin {name:?} has no prefix and \
+cannot be entered as a mode"
+                );
+                return;
+            }
             let prefix = plugin.prefix.clone();
             self.open_plugin(cx, &prefix);
             return;
@@ -793,7 +803,7 @@ no plugin by that name)"
         // active session with an empty remainder can't be backspaced
         // into (it would corrupt the anchor). Clear/reset exits instead.
         if let Some(p) = &self.active_plugin
-            && matches!(self.query.strip_prefix(&p.prefix), Some(""))
+            && self.query == p.prefix
         {
             return;
         }
@@ -988,7 +998,7 @@ no plugin by that name)"
         // the first frame so the list isn't stale.
         let (apps, scripts, plugins) = crate::core::fs_watcher::take_pending();
         if apps {
-            self.rescan_apps();
+            self.rescan_apps(None);
         }
         if scripts {
             self.rescan_scripts();
@@ -1454,7 +1464,7 @@ after reload; showing all sources"
     /// apps into the base list (scripts and builtins stay put). Icon
     /// extraction is disk-cached: an already-cached app costs one
     /// metadata check, only genuinely new bundles hit AppKit.
-    pub(crate) fn rescan_apps(&mut self) {
+    pub(crate) fn rescan_apps(&mut self, cx: Option<&mut Context<Self>>) {
         if !self.app_config.sources.apps {
             return;
         }
@@ -1462,7 +1472,23 @@ after reload; showing all sources"
         let app_count = new_apps.len();
         self.base_count =
             crate::core::scanner::replace_apps(&mut self.all, self.base_count, new_apps);
-        crate::sys::icons::extract_all(&mut self.all);
+        // Icon extraction is disk-cached: an already-cached app costs one
+        // metadata check, only genuinely new bundles hit AppKit. The
+        // CPU-heavy downsample of new bundles must not block the main
+        // thread, so with a context we route through the async job
+        // pipeline; on_show (no context) falls back to the blocking
+        // variant — that path only runs when the window is re-shown, and
+        // by then new bundles are rare.
+        let jobs = crate::sys::icons::prepare_icon_jobs(&mut self.all);
+        if !jobs.is_empty() {
+            match cx {
+                Some(cx) => self.start_icon_jobs(jobs, cx),
+                None => {
+                    let results = crate::sys::icons::process_icon_jobs(jobs);
+                    crate::sys::icons::apply_icon_results(&mut self.all, results);
+                }
+            }
+        }
         self.refilter(None);
         if self.selected >= self.filtered.len() {
             self.selected = 0;

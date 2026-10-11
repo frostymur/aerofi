@@ -300,7 +300,7 @@ fn rescan(view: &Entity<crate::ui::launcher::Launcher>, app: &gpui::AsyncApp, ki
     app.update(|cx| {
         view.update(cx, |launcher, cx| {
             match kind {
-                SourceKind::Apps => launcher.rescan_apps(),
+                SourceKind::Apps => launcher.rescan_apps(Some(cx)),
                 SourceKind::Scripts => launcher.rescan_scripts(),
                 SourceKind::Plugins => launcher.rescan_plugins(),
             };
