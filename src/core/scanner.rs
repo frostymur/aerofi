@@ -324,7 +324,6 @@ mod tests {
     }
 
     #[test]
-    #[test]
     fn replace_apps_swaps_apps_and_preserves_plugin_tail() {
         let temp = TempTestDir::new("apps");
         let old_app_dir = temp.path().join("Old.app");
@@ -393,6 +392,8 @@ mod tests {
         config.sources.apps = false;
         assert!(app_watch_dirs(&config).is_empty());
     }
+
+    #[test]
     fn replace_scripts_swaps_scripts_and_preserves_plugin_tail() {
         let temp = TempTestDir::new("splice");
         let alpha = temp.path().join("alpha.sh");
