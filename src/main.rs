@@ -13,6 +13,23 @@ use gpui::App;
 use gpui_platform::application;
 
 fn main() {
+    // CLI flags: answer before any scanning or window work so
+    // `aerofi --version` is instant and side-effect free.
+    if std::env::args().skip(1).any(|a| a == "--version" || a == "-V") {
+        println!("{}", env!("CARGO_PKG_VERSION"));
+        return;
+    }
+    if std::env::args().skip(1).any(|a| a == "--help" || a == "-h") {
+        println!(
+            "aerofi {} — keyboard launcher (window appears via the global hotkey)\n\n\
+usage: aerofi [OPTIONS]\n\n\
+options:\n\
+  -h, --help     Print this help and exit\n\
+  -V, --version  Print the version and exit",
+            env!("CARGO_PKG_VERSION")
+        );
+        return;
+    }
     // Index all targets (applications + scripts).
     let app_config = core::config::AppConfig::load();
     let mut targets = core::scanner::scan_all(&app_config);

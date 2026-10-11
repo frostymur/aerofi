@@ -102,7 +102,11 @@ sudo mv aerofi /usr/local/bin/
 
 # Run aerofi:
 aerofi &
+
+# Check the version (instant, no window):
+aerofi --version
 ```
+
 
 ### Cargo
 ```bash
