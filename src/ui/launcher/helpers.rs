@@ -2,16 +2,9 @@
 
 use gpui::Styled;
 
-/// Returns true if `s` looks like a local image file path.
-pub(super) fn is_image_path(s: &str) -> bool {
-    s.starts_with('/')
-        || s.starts_with("./")
-        || s.ends_with(".png")
-        || s.ends_with(".jpg")
-        || s.ends_with(".jpeg")
-        || s.ends_with(".webp")
-        || s.ends_with(".tiff")
-}
+// `is_image_path` moved to `core::fit` (the measurer needs it too);
+// re-exported so existing `helpers::` imports keep working.
+pub(crate) use crate::core::fit::is_image_path;
 
 /// Apply a full `TextStyle` to an element so its text children (including
 /// `StyledText`, which inherits the parent style) render with it.

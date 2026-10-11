@@ -3,6 +3,7 @@
 
 pub mod config;
 pub mod executor;
+pub mod fit;
 pub mod fs_watcher;
 pub mod history;
 pub mod item;
