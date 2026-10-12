@@ -12,7 +12,10 @@
 
 mod custom_widgets;
 mod helpers;
+mod keystrokes;
 mod render;
+mod rescans;
+mod sessions;
 mod state;
 mod types;
 
