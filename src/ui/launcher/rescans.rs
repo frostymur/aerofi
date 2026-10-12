@@ -33,23 +33,31 @@ impl Launcher {
         self.search = SearchIndex::new(&self.app_config.aliases, &self.app_config.pinned);
         self.plugin_manager = crate::core::plugin_manager::PluginManager::load_all();
         // Re-resolve the active source filter against the reloaded
-        // [modes]; a removed or source-less mode falls back to "all".
+        // Re-resolve the active mode against the reloaded config and
+        // plugin set. A [modes] filter survives if it still exists; a
+        // plugin mode ends with the query clear below (its session needs
+        // a query) — silently, since the name was never invalid.
         if let Some(name) = self.mode_name.clone() {
             let name = name.to_string();
-            let mask = self
-                .app_config
-                .modes
-                .get(&name)
-                .and_then(|v| Self::parse_mode_list(v));
-            match mask {
-                Some(m) => self.mode_mask = Some(m),
-                None => {
-                    eprintln!(
-                        "aerofi: warning: mode {name:?} is gone or source-less \
+            if self.plugin_manager.find_by_name(&name).is_some() {
+                self.mode_name = None;
+                self.mode_mask = None;
+            } else {
+                let mask = self
+                    .app_config
+                    .modes
+                    .get(&name)
+                    .and_then(|v| Self::parse_mode_list(v));
+                match mask {
+                    Some(m) => self.mode_mask = Some(m),
+                    None => {
+                        eprintln!(
+                            "aerofi: warning: mode {name:?} is gone or source-less \
 after reload; showing all sources"
-                    );
-                    self.mode_name = None;
-                    self.mode_mask = None;
+                        );
+                        self.mode_name = None;
+                        self.mode_mask = None;
+                    }
                 }
             }
         }
