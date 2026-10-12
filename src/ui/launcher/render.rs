@@ -2075,8 +2075,13 @@ impl Launcher {
                 -scroll.base_handle.offset().y.as_f32(),
             )
         };
-        let mut container = div().flex_1().w_full();
-        container = container.child(list);
+        let mut container = div().flex().flex_1().w_full();
+        // The wrapper must be a flex container and the list must fill it:
+        // a `div()` without `.flex()` never stretches its children, and a
+        // measured uniform list then collapses to 0 height — no rows
+        // render at all. This is the explicit fill the list had before
+        // the scrollbar wrapper existed.
+        container = container.child(list.flex_1().w_full());
         if let Some((thumb_y, thumb_h)) = scrollbar_metrics(content, viewport, offset) {
             let spec = t.listview.scrollbar_spec();
             if spec.visible {
