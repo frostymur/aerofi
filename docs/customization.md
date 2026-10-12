@@ -137,7 +137,8 @@ Switching:
 
 - **Cmd+.** cycles `All → each mode (alphabetical) → each plugin (alphabetical) → All`
 - **Theme buttons** with `action = "mode:<name>"` (a button can carry its
-  own `hotkey`), e.g. a sidebar of mode tabs
+  own `hotkey`), e.g. a sidebar of mode tabs. `mode:all` switches back to
+  every source (a mode you actually named `all` wins over the reset).
 
 The active mode — a filter *or* a plugin session — shows as a small badge
 in the input bar. Unknown source names are warned about at startup and

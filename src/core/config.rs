@@ -59,7 +59,8 @@ system_settings = true
 # launcher lists only those sources. Any loaded plugin name is also a
 # mode: it enters the plugin's session with its prefix applied and
 # hidden. Cycle modes with Cmd+. or bind them to buttons:
-# action = "mode:scripts". Unknown source names are skipped with a warning.
+# action = "mode:scripts". `mode:all` (or Cmd+.) switches back to every
+# source. Unknown source names are skipped with a warning.
 # [modes]
 # scripts = "scripts,builtins"
 

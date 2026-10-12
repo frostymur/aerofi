@@ -728,6 +728,66 @@ fn button_hotkey_triggers_action() {
 }
 
 #[test]
+fn mode_all_action_resets_active_mode() {
+    let mut config = AppConfig::default();
+    config
+        .modes
+        .insert("scripts".to_string(), "scripts".to_string());
+    let mut l = Launcher::new(
+        vec![
+            Target::App {
+                name: "Safari".into(),
+                path: std::sync::Arc::from(PathBuf::from("/Applications/Safari.app")),
+                icon_path: None,
+            },
+            item("Git Status"),
+            Target::reload_config(),
+        ],
+        ThemeConfig::default(),
+        config,
+        History::test_new(PathBuf::new(), Vec::new()),
+    );
+    l.activate_mode("scripts", None);
+    assert_eq!(l.mode_name.as_deref(), Some("scripts"));
+    assert_eq!(names(&l).len(), 1, "mode filters to scripts only");
+
+    l.activate_mode("all", None);
+    assert!(l.mode_name.is_none(), "mode:all clears the filter");
+    assert_eq!(names(&l).len(), 3, "all sources are back");
+
+    // With no active mode it is a no-op, not an error.
+    l.activate_mode("all", None);
+    assert!(l.mode_name.is_none());
+}
+
+#[test]
+fn user_defined_all_mode_wins_over_reset() {
+    let mut config = AppConfig::default();
+    // Mode names are case-sensitive; the reset only wins over a
+    // differently-cased "all". This one is the exact name.
+    config
+        .modes
+        .insert("all".to_string(), "scripts".to_string());
+    let mut l = Launcher::new(
+        vec![Target::App {
+            name: "Safari".into(),
+            path: std::sync::Arc::from(PathBuf::from("/Applications/Safari.app")),
+            icon_path: None,
+        }],
+        ThemeConfig::default(),
+        config,
+        History::test_new(PathBuf::new(), Vec::new()),
+    );
+    l.activate_mode("all", None);
+    // The user's mode named "All" takes precedence over the reset.
+    assert_eq!(l.mode_name.as_deref(), Some("all"));
+    assert!(
+        names(&l).is_empty(),
+        "the All mode filters to scripts, of which there are none"
+    );
+}
+
+#[test]
 fn element_layout_accepts_custom_slot_ordering() {
     let mut theme = ThemeConfig::default();
     theme.element.layout = Some(vec![

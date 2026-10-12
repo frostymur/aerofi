@@ -382,7 +382,22 @@ the mode will show an empty list"
     /// such filter exists — a loaded plugin by name, entering its
     /// session. Unknown or source-less modes warn and leave the current
     /// mode.
-    fn activate_mode(&mut self, name: &str, cx: Option<&mut Context<Self>>) {
+    /// Switch to the named mode: a `[modes]` source filter, or — when no
+    /// such filter exists — a loaded plugin by name, entering its
+    /// session. `all` (any case) clears back to every source, unless the
+    /// user defined a mode actually named `all`. Unknown or source-less
+    /// modes warn and leave the current mode.
+    pub(super) fn activate_mode(&mut self, name: &str, cx: Option<&mut Context<Self>>) {
+        if name.eq_ignore_ascii_case("all")
+            && !self
+                .app_config
+                .modes
+                .keys()
+                .any(|k| k.eq_ignore_ascii_case("all"))
+        {
+            self.clear_mode();
+            return;
+        }
         if let Some(value) = self.app_config.modes.get(name) {
             let Some(mask) = Self::parse_mode_list(value) else {
                 eprintln!("aerofi: warning: mode {name:?} resolves to no sources");
