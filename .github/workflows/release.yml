@@ -26,10 +26,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # The channel is pinned in rust-toolchain.toml (fmt/toolchain
+      # drift). Materialize that exact toolchain, then add the build
+      # target to IT — installing targets into stable would be ignored
+      # once cargo switches to the pinned channel (E0463 on the
+      # cross-compile matrix job).
       - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
+        run: |
+          rustup show
+          rustup target add ${{ matrix.target }}
 
       - name: Build release binary
         run: cargo build --release --target ${{ matrix.target }}
@@ -63,7 +68,7 @@ jobs:
       - name: Checkout Homebrew Tap
         uses: actions/checkout@v4
         with:
-          repository: frostymur/homebrew-tap
+          repository: frostymur/tap
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           path: homebrew-tap
           ref: main
