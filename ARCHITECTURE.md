@@ -14,7 +14,9 @@ src/
 │   ├── window.rs        # Window setup (borderless PopUp NSPanel, focus & lifecycle)
 │   ├── toast_window.rs  # Compact & silent script status notifications (floating toast)
 │   ├── execute.rs       # Script execution routing by mode (silent, compact, inline, fullOutput, pipe, gui)
-│   └── launcher/        # Input field, search list, keyboard handlers, custom widgets & GUI mode rendering
+│   └── launcher/        # state (controller + modes), keystrokes, rescans,
+│                        # sessions (Rofi/plugin + pumps), render (widgets,
+│                        # custom widgets, GUI mode), fit tests in core/fit
 ├── core/                # Data models, config & execution engine (GPUI-free except the main-thread App handle for daemons)
 │   ├── item.rs          # Target (App/Script/Builtin/PluginItem), ScriptMode, metadata parsing
 │   ├── config.rs        # AppConfig loader (~/.config/aerofi/config.toml) & defaults

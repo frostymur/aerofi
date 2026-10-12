@@ -19,8 +19,11 @@ git config core.hooksPath scripts/git-hooks
 cargo test --all-targets
 ```
 
-All 100+ tests should pass on macOS. There are no platform-independent
-stubs — macOS is the only supported target.
+All 200+ tests should pass on macOS. There are no platform-independent
+stubs — macOS is the only supported target. The test suite is a
+load-bearing part of the maintenance strategy: layout sizing is pinned by
+exact-value tests plus per-theme invariant tests (see "Architectural
+discipline" → two-sides rule), and config behavior is pinned per key.
 
 ## Architectural discipline
 
@@ -32,6 +35,15 @@ stubs — macOS is the only supported target.
 - Any change that touches windowing, the metal rendering pipeline, or the
   hotkey backend should be preceded by a short discussion in an issue and
   land with architectural documentation in `ARCHITECTURE.md`, not just code.
+- **Two-sides rule (layout):** window sizing for `auto_height` /
+  `require_input` is computed by *two* pieces of code that must agree —
+  the renderer walks the layout (`ui/launcher/custom_widgets.rs`), and
+  the measurer mirrors it (`core/fit.rs`, pure and unit-tested, including
+  per-theme invariant tests over all bundled layouts). Any change to a
+  layout rule (box stacking, gaps, flex, image sizing, input bar or list
+  height) must update **both sides in the same commit** — otherwise the
+  compact window is mis-sized (too short clips the bar, too tall leaves
+  dead space). See the `core/fit.rs` module header for the contract.
 
 ## Commit messages — Conventional Commits
 
