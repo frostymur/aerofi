@@ -642,32 +642,27 @@ impl Default for ListViewConfig {
         }
     }
 }
-/// Resolved scrollbar geometry/appearance (defaults applied; the render
-/// side only draws). The color is a resolved hex string.
-#[derive(Debug, Clone, PartialEq)]
+/// Resolved scrollbar geometry (defaults applied; the render side only
+/// draws). The color stays on the theme side (`scrollbar_color`, default
+/// `status_colors.accent`) — the render resolves it at the boundary so
+/// this hot-path helper allocates nothing per frame.
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ScrollbarSpec {
     pub visible: bool,
     pub width: f32,
     pub padding: f32,
     /// `true` = draw on the list's left edge (default is right).
     pub left: bool,
-    pub color: String,
 }
 
 impl ListViewConfig {
-    /// Resolve the scrollbar parameters, applying defaults. `accent` is
-    /// the theme's resolved `status_colors.accent`, used when
-    /// `scrollbar_color` is unset.
-    pub fn scrollbar_spec(&self, accent: &str) -> ScrollbarSpec {
+    /// Resolve the scrollbar geometry, applying defaults.
+    pub fn scrollbar_spec(&self) -> ScrollbarSpec {
         ScrollbarSpec {
             visible: self.scrollbar_visible.unwrap_or(true),
             width: self.scrollbar_width.unwrap_or(4.0),
             padding: self.scrollbar_padding.unwrap_or(5.0),
             left: self.scrollbar_position.as_deref() == Some("left"),
-            color: self
-                .scrollbar_color
-                .clone()
-                .unwrap_or_else(|| accent.to_string()),
         }
     }
 }

@@ -2078,9 +2078,14 @@ impl Launcher {
         let mut container = div().flex_1().w_full();
         container = container.child(list);
         if let Some((thumb_y, thumb_h)) = scrollbar_metrics(content, viewport, offset) {
-            let spec = t.listview.scrollbar_spec(&t.status_colors.accent);
+            let spec = t.listview.scrollbar_spec();
             if spec.visible {
-                let base = Self::color(&spec.color);
+                let color_src = t
+                    .listview
+                    .scrollbar_color
+                    .as_deref()
+                    .unwrap_or(&t.status_colors.accent);
+                let base = Self::color(color_src);
                 // The theme color is full-strength text/row color; the
                 // thumb is a hint, so scale its alpha down to 15–45%.
                 let a = (((base & 0xFF) as f32) * 0.45).clamp(38.0, 115.0) as u32;
