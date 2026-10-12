@@ -492,6 +492,11 @@ empty_text_color = "$subtle"
 highlight_matches = true             # Highlight the query's matched characters in item names
 # match_color = "$green"             # Colour of matched characters (default: status_colors.accent)
 # require_input = true               # Hides the list view until the user types a query
+# scrollbar_color = "$subtle"        # Thumb color (default: $accent at reduced opacity)
+# scrollbar_width = 4                # Thumb width in points
+# scrollbar_padding = 5              # Inset from the list edge
+# scrollbar_position = "right"       # "right" (default) or "left"
+# scrollbar_visible = true           # Set false to hide entirely
 
 # Category Badge Styling ("Script", "Application", "Plugin")
 [listview.category_badge]

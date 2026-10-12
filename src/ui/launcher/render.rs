@@ -6,7 +6,7 @@ use gpui::{
     rgba, size, uniform_list,
 };
 
-use crate::core::fit::{SearchFit, search_fit_height};
+use crate::core::fit::{SearchFit, list_height, scrollbar_metrics, search_fit_height};
 use crate::core::item::Target;
 use crate::core::theme::{BuiltinWidget, Widget, parse_hex_color_alpha};
 
@@ -45,11 +45,11 @@ impl Render for Launcher {
             .map(|d| d.bounds().size.height.as_f32())
             .unwrap_or(1080.0);
 
-        let target_height = match &self.state {
+        let (target_height, list_viewport) = match &self.state {
             LauncherState::RunningFull { .. } | LauncherState::FullOutput { .. } => {
-                t.window.height.resolve(screen_h)
+                (t.window.height.resolve(screen_h), 0.0)
             }
-            LauncherState::RofiMode { .. } => self.rofi_fit_height(screen_h),
+            LauncherState::RofiMode { .. } => (self.rofi_fit_height(screen_h), 0.0),
             LauncherState::Search
             | LauncherState::ArgumentInput { .. }
             | LauncherState::Confirming { .. } => {
@@ -67,25 +67,26 @@ impl Render for Launcher {
                 } else {
                     ib_height
                 };
-                search_fit_height(
-                    &t,
-                    &self.widget_registry,
-                    &SearchFit {
-                        show_search,
-                        should_show_list,
-                        auto_height,
-                        require_input,
-                        ib_h,
-                        columns,
-                        filtered_len: self.filtered.len(),
-                        element_font_size: self.element_font_val.1,
-                        screen_h,
-                        screen_w,
-                    },
-                    &self.image_dims,
+                let fit_state = SearchFit {
+                    show_search,
+                    should_show_list,
+                    auto_height,
+                    require_input,
+                    ib_h,
+                    columns,
+                    filtered_len: self.filtered.len(),
+                    element_font_size: self.element_font_val.1,
+                    screen_h,
+                    screen_w,
+                };
+                let list_viewport = list_height(&t, &fit_state);
+                (
+                    search_fit_height(&t, &self.widget_registry, &fit_state, &self.image_dims),
+                    list_viewport,
                 )
             }
         };
+        self.last_list_viewport_h = list_viewport;
 
         let win_width = if matches!(&self.state, LauncherState::RofiMode { .. }) {
             self.rofi_fit_width(screen_w)
@@ -2029,7 +2030,9 @@ impl Launcher {
                 .into_any();
         }
 
-        if columns > 1 {
+        // The scrollable list (grid or single column), built first so the
+        // scrollbar below can overlay it.
+        let list = if columns > 1 {
             // Grid mode: virtualized rows of `columns` items each using uniform_list.
             let total_rows = self.filtered.len().div_ceil(columns);
             uniform_list(
@@ -2042,9 +2045,6 @@ impl Launcher {
                 }),
             )
             .track_scroll(&self.list)
-            .flex_1()
-            .w_full()
-            .into_any()
         } else {
             // List mode: single-column vertical list with virtual scrolling.
             uniform_list(
@@ -2055,10 +2055,52 @@ impl Launcher {
                 }),
             )
             .track_scroll(&self.list)
-            .flex_1()
-            .w_full()
-            .into_any()
+        };
+
+        // Scrollbar thumb: a uniform list's content height is
+        // n * item_height, and the scroll handle knows the max scroll
+        // offset — so the track geometry comes from the actual layout
+        // state, no extra measurement. Shown only while the list
+        // overflows; the list's right padding (12px in shipped themes)
+        // leaves room, so the thumb never covers a row.
+        let viewport = self.last_list_viewport_h;
+        let (content, offset) = {
+            let scroll = self.list.0.borrow();
+            let item_h = scroll
+                .last_item_size
+                .map(|s| s.item.height)
+                .unwrap_or(px(0.0));
+            (
+                item_h.as_f32() * self.filtered.len() as f32,
+                -scroll.base_handle.offset().y.as_f32(),
+            )
+        };
+        let mut container = div().flex_1().w_full();
+        container = container.child(list);
+        if let Some((thumb_y, thumb_h)) = scrollbar_metrics(content, viewport, offset) {
+            let spec = t.listview.scrollbar_spec(&t.status_colors.accent);
+            if spec.visible {
+                let base = Self::color(&spec.color);
+                // The theme color is full-strength text/row color; the
+                // thumb is a hint, so scale its alpha down to 15–45%.
+                let a = (((base & 0xFF) as f32) * 0.45).clamp(38.0, 115.0) as u32;
+                let color = (base & 0xFFFFFF00) | a;
+                let mut thumb = div()
+                    .absolute()
+                    .top(px(thumb_y))
+                    .w(px(spec.width))
+                    .h(px(thumb_h))
+                    .rounded(px((spec.width / 2.0).min(2.0)))
+                    .bg(rgba(color));
+                thumb = if spec.left {
+                    thumb.left(px(spec.padding))
+                } else {
+                    thumb.right(px(spec.padding))
+                };
+                container = container.child(thumb);
+            }
         }
+        container.into_any()
     }
 
     /// Render a single row of the grid (used when `columns > 1`).

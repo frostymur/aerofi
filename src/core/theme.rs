@@ -600,6 +600,19 @@ pub struct ListViewConfig {
     /// When `true`, the list is hidden and the window shrinks to the
     /// inputbar until the user types a query.
     pub require_input: Option<bool>,
+    /// Colour of the scrollbar thumb (shown only when the list
+    /// overflows). Defaults to `status_colors.accent` at reduced
+    /// opacity when unset.
+    pub scrollbar_color: Option<String>,
+    /// Scrollbar thumb width in points. Default: 4.
+    pub scrollbar_width: Option<f32>,
+    /// Inset of the scrollbar from the list's edge, in points.
+    /// Default: 5.
+    pub scrollbar_padding: Option<f32>,
+    /// Which edge the scrollbar sits on: "right" (default) or "left".
+    pub scrollbar_position: Option<String>,
+    /// Set to false to hide the scrollbar entirely. Default: true.
+    pub scrollbar_visible: Option<bool>,
 }
 
 impl Default for ListViewConfig {
@@ -621,6 +634,40 @@ impl Default for ListViewConfig {
             },
             alias_badge,
             require_input: None,
+            scrollbar_color: None,
+            scrollbar_width: None,
+            scrollbar_padding: None,
+            scrollbar_position: None,
+            scrollbar_visible: None,
+        }
+    }
+}
+/// Resolved scrollbar geometry/appearance (defaults applied; the render
+/// side only draws). The color is a resolved hex string.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ScrollbarSpec {
+    pub visible: bool,
+    pub width: f32,
+    pub padding: f32,
+    /// `true` = draw on the list's left edge (default is right).
+    pub left: bool,
+    pub color: String,
+}
+
+impl ListViewConfig {
+    /// Resolve the scrollbar parameters, applying defaults. `accent` is
+    /// the theme's resolved `status_colors.accent`, used when
+    /// `scrollbar_color` is unset.
+    pub fn scrollbar_spec(&self, accent: &str) -> ScrollbarSpec {
+        ScrollbarSpec {
+            visible: self.scrollbar_visible.unwrap_or(true),
+            width: self.scrollbar_width.unwrap_or(4.0),
+            padding: self.scrollbar_padding.unwrap_or(5.0),
+            left: self.scrollbar_position.as_deref() == Some("left"),
+            color: self
+                .scrollbar_color
+                .clone()
+                .unwrap_or_else(|| accent.to_string()),
         }
     }
 }
@@ -827,6 +874,7 @@ impl ThemeConfig {
         // ListView
         resolve(&mut self.listview.empty_text_color, colors);
         resolve_opt(&mut self.listview.match_color, colors);
+        resolve_opt(&mut self.listview.scrollbar_color, colors);
         resolve(&mut self.listview.category_badge.color, colors);
         resolve(&mut self.listview.alias_badge.color, colors);
         resolve_opt(&mut self.listview.alias_badge.border_color, colors);

@@ -73,6 +73,11 @@ pub struct Launcher {
     /// theme's widgets, pre-resolved at theme load so `auto_height` can
     /// measure width-constrained images without touching the disk per frame.
     pub(super) image_dims: std::collections::HashMap<String, (u32, u32)>,
+    /// The search list's viewport height for the current frame, computed
+    /// alongside the window height (see `render`). The scrollbar overlay
+    /// in `render_listview` needs it as the track size. Zero when the
+    /// list is not rendered this frame (non-search states).
+    pub(super) last_list_viewport_h: f32,
     /// Hotkey bindings from button widgets: maps combo string (e.g. "cmd+r")
     /// to the button's action string. Rebuilt on config reload.
     pub(super) button_hotkeys: HashMap<String, (String, bool)>,
@@ -206,6 +211,7 @@ impl Launcher {
             sticky_metatags: None,
             widget_registry,
             image_dims,
+            last_list_viewport_h: 0.0,
             button_hotkeys,
             rofi_session: None,
             plugin_manager: crate::core::plugin_manager::PluginManager::load_all(),

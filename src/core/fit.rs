@@ -129,7 +129,7 @@ pub fn search_fit_height(
 /// Dropping the text-line/border terms under-sizes the window and clips
 /// the last row; counting items instead of grid rows over-sizes it in
 /// grid themes.
-fn list_height(t: &ThemeConfig, state: &SearchFit) -> f32 {
+pub fn list_height(t: &ThemeConfig, state: &SearchFit) -> f32 {
     let spacing = t.listview.spacing;
     let el = &t.element;
     let el_pad_v = el.padding.first().copied().unwrap_or(8.0);
@@ -369,6 +369,33 @@ fn def_height(
 fn inputbar_height(t: &ThemeConfig, state: &SearchFit) -> f32 {
     state.ib_h + t.inputbar.margin.get(2).copied().unwrap_or(8.0)
 }
+/// Scrollbar thumb geometry for an overflowing scroll view.
+///
+/// `content_h` is the full scrollable content height, `viewport_h` the
+/// visible height, `offset` the current scroll position in content
+/// units. Returns `None` when the content fits (no overflow), else the
+/// thumb's top offset and height within the viewport. The thumb keeps a
+/// minimum size so short overflows stay draggable.
+///
+/// Pure (no GPUI) so the render side can only *draw* the result — the
+/// same "core computes, UI renders" split as [`search_fit_height`].
+pub fn scrollbar_metrics(content_h: f32, viewport_h: f32, offset: f32) -> Option<(f32, f32)> {
+    if content_h <= viewport_h + 1e-6 || viewport_h <= 0.0 {
+        return None;
+    }
+    const MIN_THUMB: f32 = 24.0;
+    let scrollable = content_h - viewport_h;
+    let mut thumb_h = (viewport_h * viewport_h / content_h).max(MIN_THUMB);
+    if thumb_h > viewport_h {
+        thumb_h = viewport_h;
+    }
+    let thumb_y = if scrollable <= 1e-6 {
+        0.0
+    } else {
+        (offset / scrollable) * (viewport_h - thumb_h)
+    };
+    Some((thumb_y, thumb_h))
+}
 
 /// Vertical extent of a padding/margin array, mirroring the
 /// `apply_padding!` / `apply_margin!` macros: one value = all sides, two =
@@ -395,7 +422,7 @@ fn v_border(width: Option<f32>, top: Option<f32>, bottom: Option<f32>) -> f32 {
 mod tests {
     use std::collections::HashMap;
 
-    use super::{SearchFit, child_height, mainbox_height, search_fit_height};
+    use super::{SearchFit, child_height, mainbox_height, scrollbar_metrics, search_fit_height};
     use crate::core::theme::{BuiltinWidget, Dimension, ThemeConfig, Widget, WidgetDef};
     use crate::core::widget::WidgetRegistry;
 
@@ -1099,6 +1126,48 @@ mod tests {
         // → capped at the configured 502.
         let long = search_fit_height(&t, &reg, &example_split_state(&t, true, 15), &dims);
         assert!((long - 502.0).abs() < 1e-3, "long got {long}");
+    }
+
+    #[test]
+    fn scrollbar_metrics_only_when_overflowing() {
+        // No overflow: no scrollbar.
+        assert_eq!(scrollbar_metrics(100.0, 200.0, 0.0), None);
+        assert_eq!(scrollbar_metrics(200.0, 200.0, 0.0), None);
+        // Zero viewport: degenerate, no scrollbar.
+        assert_eq!(scrollbar_metrics(300.0, 0.0, 0.0), None);
+    }
+
+    #[test]
+    fn scrollbar_metrics_thumb_proportional_and_tracks_offset() {
+        // 10 rows of 40 = 400 content in a 200 viewport: the thumb is
+        // half the track: 200 * 200 / 400 = 100.
+        let (y, h) = scrollbar_metrics(400.0, 200.0, 0.0).unwrap();
+        assert!((y - 0.0).abs() < 1e-6, "at top, got {y}");
+        assert!((h - 100.0).abs() < 1e-6, "thumb height, got {h}");
+
+        // Half-scrolled: the thumb's top sits at the middle of its
+        // travel (0.5 * (200 - 100) = 50).
+        let (y, h) = scrollbar_metrics(400.0, 200.0, 100.0).unwrap();
+        assert!((h - 100.0).abs() < 1e-6);
+        assert!((y - 50.0).abs() < 1e-6, "mid-track, got {y}");
+
+        // Fully scrolled: the thumb reaches the bottom of the track.
+        let (y, h) = scrollbar_metrics(400.0, 200.0, 200.0).unwrap();
+        assert!((y + h - 200.0).abs() < 1e-6, "at bottom, got y={y} h={h}");
+    }
+
+    #[test]
+    fn scrollbar_metrics_long_list_clamps_to_min_thumb() {
+        // 20,000pt of content in a 200pt viewport: the proportional
+        // thumb (2pt) is far below the 24pt minimum, so it is clamped —
+        // the scrollbar stays grabbable on huge lists (max_results 100+).
+        let (y, h) = scrollbar_metrics(20000.0, 200.0, 0.0).unwrap();
+        assert!((h - 24.0).abs() < 1e-6, "min thumb, got {h}");
+        assert!((y - 0.0).abs() < 1e-6);
+        // Halfway through: the clamped thumb tracks across the track.
+        let (y2, h2) = scrollbar_metrics(20000.0, 200.0, 9900.0).unwrap();
+        assert!((h2 - 24.0).abs() < 1e-6);
+        assert!((y2 - (9900.0 / 19800.0) * (200.0 - 24.0)).abs() < 1e-6);
     }
 
     // ------------------------------------------------------------------
