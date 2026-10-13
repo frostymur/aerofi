@@ -66,6 +66,27 @@ fn get_ns_window(window: &Window) -> Option<*mut c_void> {
 pub fn store_ns_window(window: &Window) {
     if let Some(ptr) = get_ns_window(window) {
         NS_WINDOW.store(ptr, Ordering::SeqCst);
+        disable_stop_key_on_panel(ptr);
+    }
+}
+
+/// Cmd+Period is the system-wide "Stop" key: AppKit's default handling
+/// deactivates the key window, and the non-activating launcher panel then
+/// loses activation — which the activation observer turns into a hide.
+/// So the moment the user presses the mode-cycle key (Cmd+.), the window
+/// vanishes.
+///
+/// Install a no-op `cancelOperation:` on the panel's dynamic class so the
+/// system cancel path dies at the window level and never reaches the
+/// default. The keystroke is unaffected: it still arrives as a normal
+/// keyDown and the mode-cycle handler in the launcher consumes it.
+fn disable_stop_key_on_panel(ns_window: *mut c_void) {
+    extern "C" fn noop_cancel() {}
+    unsafe {
+        let cls = objc2::ffi::object_getClass(ns_window.cast()).cast_mut();
+        let sel = objc2::ffi::sel_registerName(c"cancelOperation:".as_ptr());
+        let types = c"v@:".as_ptr();
+        objc2::ffi::class_addMethod(cls, sel, Some(noop_cancel as unsafe extern "C" fn()), types);
     }
 }
 
