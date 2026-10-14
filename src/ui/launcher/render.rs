@@ -568,21 +568,22 @@ impl Launcher {
         } else {
             let (ib_font, ib_size) = &self.inputbar_font;
             let mut row = div().flex().flex_row().items_center().gap_1().w_full();
-            // Active source filter ([modes]) badge — the rofi-style mode
-            // indicator, shown left of the placeholder/query text.
-            if let Some(mode) = &self.mode_name {
-                row = row.child(
-                    div()
-                        .flex_shrink_0()
-                        .px_1()
-                        .py(px(1.0))
-                        .rounded_sm()
-                        .border_1()
-                        .border_color(rgba(Self::color(&ib.border_color)))
-                        .text_color(rgba(Self::color(&ib.placeholder_color)))
-                        .child(mode.to_string()),
-                );
-            }
+            // Mode indicator badge — rofi-style, shown left of the
+            // placeholder/query text. Always visible: the active filter or
+            // plugin name, "All" when no mode is active, so the label slot
+            // never reads empty.
+            let badge_label = self.mode_name.clone().unwrap_or_else(|| "All".into());
+            row = row.child(
+                div()
+                    .flex_shrink_0()
+                    .px_1()
+                    .py(px(1.0))
+                    .rounded_sm()
+                    .border_1()
+                    .border_color(rgba(Self::color(&ib.border_color)))
+                    .text_color(rgba(Self::color(&ib.placeholder_color)))
+                    .child(badge_label),
+            );
             // Plugin sessions hide their prefix anchor: the box shows
             // only the query sent to the plugin.
             let display = self.display_query();
@@ -840,7 +841,7 @@ impl Launcher {
         let mut inputbar = div()
             .flex()
             .items_center()
-            .gap_2()
+            .gap(px(4.0))
             .w_full()
             .h(px(ib.height))
             .px(px(padding_h))

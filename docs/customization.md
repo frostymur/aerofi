@@ -140,8 +140,9 @@ Switching:
   own `hotkey`), e.g. a sidebar of mode tabs. `mode:all` switches back to
   every source (a mode you actually named `all` wins over the reset).
 
-The active mode — a filter *or* a plugin session — shows as a small badge
-in the input bar. Unknown source names are warned about at startup and
+The current mode is always shown as a small badge in the input bar:
+the active filter or plugin session's name, or **All** when no mode
+is active (so the input bar's label slot is never empty). Unknown source names are warned about at startup and
 skipped; a mode that resolves to no sources shows an empty list; an
 unknown mode name (not in `[modes]`, not a plugin) warns and is ignored.
 ### Live Source Watching (`watch_sources`)
