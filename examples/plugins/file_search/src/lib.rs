@@ -49,22 +49,12 @@ unsafe extern "C" fn query(query_ptr: *const c_char) -> PluginResults {
     let q = unsafe { CStr::from_ptr(query_ptr) }.to_string_lossy();
     let q_trimmed = q.trim();
 
+    // Empty query: no results — the launcher shows its own empty state
+    // (the theme's [listview] empty_text), not a plugin hint row.
     if q_trimmed.is_empty() {
-        let item = PluginItem {
-            id: CString::new("").unwrap().into_raw(),
-            title: CString::new("Search files…").unwrap().into_raw(),
-            subtitle: CString::new("Type filename to search (e.g. f notes)")
-                .unwrap()
-                .into_raw(),
-            icon: CString::new("📁").unwrap().into_raw(),
-        };
-        let items = vec![item];
-        let count = items.len();
-        let boxed_slice = items.into_boxed_slice();
-        let items_ptr = Box::into_raw(boxed_slice) as *const PluginItem;
         return PluginResults {
-            items: items_ptr,
-            count,
+            items: ptr::null(),
+            count: 0,
         };
     }
 
