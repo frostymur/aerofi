@@ -644,6 +644,21 @@ impl Launcher {
 
         let sz = font_size.unwrap_or(t.font.size);
         btn = btn.text_size(px(sz));
+        // Explicit height — the two-sides pin. The fit measurer
+        // (`core::fit::def_height`) sizes a button at `sz * 1.2 + v-padding`,
+        // but a natural (content-driven) div height is the font's real line
+        // height, which for many monospaced fonts is far taller
+        // (JetBrainsMono ≈ 1.64em): custom bars then render taller than
+        // measured and the auto_height window clips the list's last row.
+        // Pinned here exactly like `render_row` pins `.h(px(row_h))`.
+        // `.h()` is border-box in GPUI, so borders and the padding set by
+        // `apply_padding!` above stay inside it.
+        let v_pad = match padding {
+            Some(p) if p.len() <= 2 => p[0] * 2.0,
+            Some(p) if p.len() == 4 => p[0] + p[2],
+            _ => 8.0,
+        };
+        btn = btn.h(px(sz * 1.2 + v_pad)).line_clamp(1).text_ellipsis();
 
         if let Some(w) = font_weight {
             btn = btn.font_weight(resolve_font_weight(&w.as_str()));

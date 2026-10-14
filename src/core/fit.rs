@@ -351,9 +351,12 @@ fn def_height(
             margin,
             ..
         } => {
-            // The text line (an icon never exceeds the font size) drives
-            // the content height; the default vertical padding is 4pt per
-            // side (see `render_widget_button`).
+            // The text line drives the content height; the renderer pins
+            // this exactly with an explicit `.h()` (`render_widget_button`)
+            // because a natural text line follows the font's own line
+            // height (JetBrainsMono ≈ 1.64em) and would desync the
+            // measurement — the window would be too short and the list's
+            // last row clipped. Default vertical padding: 4pt per side.
             let sz = font_size.unwrap_or(t.font.size);
             let pad = match padding.as_deref() {
                 Some(p) => v_extent(Some(p)),
@@ -763,6 +766,35 @@ mod tests {
         // 48 + 12 + 120 + 12 + 37.2 = 229.2 → + pad 20 = 249.2
         let h = measure(&t, &fit(true, true, true, true, 1, 3, 17.0));
         assert!((h - 249.2).abs() < 1e-3, "got {h}");
+    }
+    /// Regression: a button bar must measure exactly `sz * 1.2 + v-pad`
+    /// per button. The renderer pins this with an explicit height
+    /// (`render_widget_button`); before the pin, fonts with a tall line
+    /// height (JetBrainsMono ≈ 1.64em) made the rendered bar taller than
+    /// the measurement, and the auto_height window clipped the list's
+    /// last row.
+    #[test]
+    fn button_bar_height_is_exact_contract() {
+        let mut t = fit_theme();
+        t.widgets = vec![
+            box_def("bar", "horizontal", Some(6.0), None, vec!["a", "b", "c"]),
+            button_def("a", 11.0, Some(&[3.0, 8.0])),
+            button_def("b", 11.0, Some(&[3.0, 8.0])),
+            button_def("c", 11.0, Some(&[3.0, 8.0])),
+        ];
+        t.mainbox.children = vec![
+            Widget::Custom("bar".into()),
+            Widget::Builtin(BuiltinWidget::InputBar),
+            Widget::Builtin(BuiltinWidget::ListView),
+        ];
+        // bar = max(button 11*1.2 + 3*2 = 19.2) = 19.2; chrome = 19.2 +
+        // gap 12 + bar 40 + margin 8 = 79.2; + pad 20 → idle 99.2.
+        let h = measure(&t, &fit(true, false, false, true, 1, 0, 17.0));
+        assert!((h - 99.2).abs() < 1e-3, "got {h}");
+        // With the list (1 row: pad 6*2 + max(icon 24, 20.4) = 36):
+        // 79.2 + 12 + 36 = 127.2 → + pad 20 = 147.2.
+        let h = measure(&t, &fit(true, true, true, true, 1, 1, 17.0));
+        assert!((h - 147.2).abs() < 1e-3, "got {h}");
     }
 
     /// A header bar (icon + title + spacer) above the input bar is counted
