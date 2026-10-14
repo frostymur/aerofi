@@ -581,6 +581,8 @@ impl Launcher {
                     .rounded_sm()
                     .border_1()
                     .border_color(rgba(Self::color(&ib.border_color)))
+                    .font(ib_font.clone())
+                    .text_size(px(*ib_size))
                     .text_color(rgba(Self::color(&ib.placeholder_color)))
                     .child(badge_label),
             );
