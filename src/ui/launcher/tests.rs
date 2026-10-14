@@ -763,11 +763,11 @@ fn mode_all_action_resets_active_mode() {
 #[test]
 fn user_defined_all_mode_wins_over_reset() {
     let mut config = AppConfig::default();
-    // Mode names are case-sensitive; the reset only wins over a
-    // differently-cased "all". This one is the exact name.
+    // A mode named "All" (capital A) takes precedence over the reset and
+    // is activated by its exact key.
     config
         .modes
-        .insert("all".to_string(), "scripts".to_string());
+        .insert("All".to_string(), "scripts".to_string());
     let mut l = Launcher::new(
         vec![Target::App {
             name: "Safari".into(),
@@ -779,12 +779,14 @@ fn user_defined_all_mode_wins_over_reset() {
         History::test_new(PathBuf::new(), Vec::new()),
     );
     l.activate_mode("all", None);
-    // The user's mode named "All" takes precedence over the reset.
-    assert_eq!(l.mode_name.as_deref(), Some("all"));
+    assert_eq!(l.mode_name.as_deref(), Some("All"));
     assert!(
         names(&l).is_empty(),
         "the All mode filters to scripts, of which there are none"
     );
+    // mode:all now switches TO the user's mode, not past it.
+    l.activate_mode("all", None);
+    assert_eq!(l.mode_name.as_deref(), Some("All"));
 }
 
 #[test]

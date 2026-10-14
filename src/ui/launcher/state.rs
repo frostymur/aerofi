@@ -385,18 +385,30 @@ the mode will show an empty list"
     /// Switch to the named mode: a `[modes]` source filter, or — when no
     /// such filter exists — a loaded plugin by name, entering its
     /// session. `all` (any case) clears back to every source, unless the
-    /// user defined a mode actually named `all`. Unknown or source-less
-    /// modes warn and leave the current mode.
+    /// user defined a mode named `all` in some case — that mode wins and
+    /// is activated instead. Unknown or source-less modes warn and leave
+    /// the current mode.
     pub(super) fn activate_mode(&mut self, name: &str, cx: Option<&mut Context<Self>>) {
-        if name.eq_ignore_ascii_case("all")
-            && !self
+        if name.eq_ignore_ascii_case("all") {
+            // A user-defined mode named "all" in any case wins over the
+            // reset; activate it by its exact key.
+            let named = self
                 .app_config
                 .modes
                 .keys()
-                .any(|k| k.eq_ignore_ascii_case("all"))
-        {
-            self.clear_mode();
-            return;
+                .find(|k| k.eq_ignore_ascii_case("all"))
+                .cloned();
+            match named {
+                Some(k) if k != name => {
+                    self.activate_mode(&k, cx);
+                    return;
+                }
+                Some(_) => {} // exact key: fall through to the normal lookup
+                None => {
+                    self.clear_mode();
+                    return;
+                }
+            }
         }
         if let Some(value) = self.app_config.modes.get(name) {
             let Some(mask) = Self::parse_mode_list(value) else {
