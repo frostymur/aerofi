@@ -294,10 +294,11 @@ mod tests {
 
     #[test]
     fn test_file_search_empty_query() {
+        // An empty query returns no items — the launcher shows its own
+        // empty state ([listview] empty_text), not a plugin hint row.
         let q = CString::new("").unwrap();
         let res = unsafe { query(q.as_ptr()) };
-        assert_eq!(res.count, 1);
-        assert!(!res.items.is_null());
+        assert_eq!(res.count, 0);
         unsafe { free_results(res) };
     }
 
