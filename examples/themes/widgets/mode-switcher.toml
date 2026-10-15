@@ -1,0 +1,74 @@
+# ==============================================================================
+# Mode Switcher Bar (Mixin)
+# ==============================================================================
+# Location: ~/.config/aerofi/themes/widgets/mode-switcher.toml
+# Import via: imports = ["widgets/mode-switcher.toml"]
+# Then reference the root widget id in your theme:
+#   [mainbox]
+#   children = ["mode_bar", "InputBar", "ListView"]
+#
+# The bar shows one button per [modes] filter (and any loaded plugin
+# whose name matches a button's `mode:` action). The active mode is
+# highlighted via selected_when — see the "Widget state" section of
+# docs/customization.md.
+#
+# To match YOUR setup: rename the mode keys to your [modes] keys,
+# delete buttons you don't need, and add one per plugin you load:
+#   action = "mode:file-search"   (the plugin's registered name)
+# ==============================================================================
+
+[widgets.mode_bar]
+type = "box"
+orientation = "horizontal"
+gap = 6.0
+padding = [3.0, 8.0]
+children = [
+    "mode_btn_all",
+    "mode_btn_apps",
+    "mode_btn_scripts",
+    "mode_btn_builtins",
+]
+
+[widgets.mode_btn_all]
+text = "All"
+action = "mode:all"
+font_size = 11.0
+padding = [3.0, 8.0]
+selected_when = "mode == all"
+
+[widgets.mode_btn_all.selected]
+background = "$accent"
+color = "$surface"
+
+[widgets.mode_btn_apps]
+text = "Apps"
+action = "mode:apps"
+font_size = 11.0
+padding = [3.0, 8.0]
+selected_when = "mode == apps"
+
+[widgets.mode_btn_apps.selected]
+background = "$accent"
+color = "$surface"
+
+[widgets.mode_btn_scripts]
+text = "Scripts"
+action = "mode:scripts"
+font_size = 11.0
+padding = [3.0, 8.0]
+selected_when = "mode == scripts"
+
+[widgets.mode_btn_scripts.selected]
+background = "$accent"
+color = "$surface"
+
+[widgets.mode_btn_builtins]
+text = "Builtins"
+action = "mode:builtins"
+font_size = 11.0
+padding = [3.0, 8.0]
+selected_when = "mode == builtins"
+
+[widgets.mode_btn_builtins.selected]
+background = "$accent"
+color = "$surface"

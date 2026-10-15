@@ -116,6 +116,15 @@ impl Launcher {
         cx: &mut Context<Self>,
     ) -> Option<gpui::AnyElement> {
         let def = self.widget_registry.get(id)?;
+        // `visible_when`: a hidden widget is skipped entirely (no
+        // element, so no flex gap around it) — the measurer applies the
+        // same condition via `core::fit`, so window height never
+        // reserves space for it.
+        if let Some(raw) = def.visible_when()
+            && !self.eval_widget_condition(raw)
+        {
+            return None;
+        }
         Some(self.render_widget_def(def, row_context, cx))
     }
 
@@ -255,6 +264,9 @@ impl Launcher {
                 font_weight,
                 gap,
                 close,
+                selected_when,
+                selected,
+                ..
             } => self.render_widget_button(
                 id,
                 text.as_deref(),
@@ -279,10 +291,27 @@ impl Launcher {
                 font_weight.as_ref(),
                 *gap,
                 *close,
+                selected_when.as_deref(),
+                selected.as_ref().map(|b| b.as_ref()),
                 row_context,
                 cx,
             ),
         }
+    }
+
+    /// Evaluate a `visible_when` / `selected_when` predicate against the
+    /// current launcher state. Invalid grammar (already warned at theme
+    /// load) evaluates to false.
+    fn eval_widget_condition(&self, raw: &str) -> bool {
+        let Some(cond) = crate::core::widget_state::parse_condition(raw) else {
+            return false;
+        };
+        let active_mode = self.mode_name.as_deref().unwrap_or("all");
+        cond.eval(
+            active_mode,
+            self.display_query().is_empty(),
+            self.filtered.is_empty(),
+        )
     }
 
     fn render_widget_text(
@@ -568,10 +597,25 @@ impl Launcher {
         font_weight: Option<&FontWeightSpec>,
         gap: Option<f32>,
         close: Option<bool>,
+        selected_when: Option<&str>,
+        selected: Option<&crate::core::theme::ButtonSelected>,
         row_context: Option<(usize, &Target)>,
         cx: &mut Context<Self>,
     ) -> gpui::AnyElement {
         let t = &self.theme;
+        // `selected_when` state: merge the style overrides over the base
+        // values. The selected block cannot change metrics (no padding or
+        // font fields), so the pinned height stays valid.
+        let sel = match (selected_when, selected) {
+            (Some(raw), Some(sel)) if self.eval_widget_condition(raw) => Some(sel),
+            _ => None,
+        };
+        let background = sel.and_then(|s| s.background.as_deref()).or(background);
+        let color = sel.and_then(|s| s.color.as_deref()).or(color);
+        let border_color = sel.and_then(|s| s.border_color.as_deref()).or(border_color);
+        let border_width = sel.and_then(|s| s.border_width).or(border_width);
+        let radius = sel.and_then(|s| s.radius).or(radius);
+        let shadow = sel.and_then(|s| s.shadow).or(shadow);
         let btn_id = match row_context {
             Some((ix, _)) => format!("row-{ix}-widget-button-{id}"),
             None => format!("widget-button-{id}"),

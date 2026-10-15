@@ -65,6 +65,8 @@ pub enum WidgetDef {
         font_weight: Option<FontWeightSpec>,
         align: Option<String>,
         margin: Option<Vec<f32>>,
+        #[serde(default)]
+        visible_when: Option<String>,
     },
     Icon {
         #[serde(default)]
@@ -73,6 +75,8 @@ pub enum WidgetDef {
         size: Option<f32>,
         color: Option<String>,
         margin: Option<Vec<f32>>,
+        #[serde(default)]
+        visible_when: Option<String>,
     },
     Image {
         #[serde(default)]
@@ -94,6 +98,8 @@ pub enum WidgetDef {
         border_left: Option<f32>,
         #[serde(default)]
         shadow: Option<bool>,
+        #[serde(default)]
+        visible_when: Option<String>,
     },
     Spacer {
         #[serde(default)]
@@ -105,6 +111,8 @@ pub enum WidgetDef {
         color: Option<String>,
         thickness: Option<f32>,
         margin: Option<f32>,
+        #[serde(default)]
+        visible_when: Option<String>,
     },
     Box {
         #[serde(default)]
@@ -129,6 +137,8 @@ pub enum WidgetDef {
         flex: Option<bool>,
         #[serde(default)]
         children: Vec<String>,
+        #[serde(default)]
+        visible_when: Option<String>,
     },
     Button {
         #[serde(default)]
@@ -156,7 +166,33 @@ pub enum WidgetDef {
         font_weight: Option<FontWeightSpec>,
         gap: Option<f32>,
         close: Option<bool>,
+        /// State predicate (`core::widget_state` grammar) that highlights
+        /// the button with the `selected` style overrides when true —
+        /// e.g. `selected_when = "mode == apps"` in a mode switcher.
+        #[serde(default)]
+        selected_when: Option<String>,
+        /// Style overrides applied while `selected_when` is true. Boxed
+        /// to keep the enum's variants size-balanced (clippy).
+        #[serde(default)]
+        selected: Option<Box<ButtonSelected>>,
     },
+}
+
+/// Style overrides for a button while its `selected_when` condition
+/// holds (the selected-mode highlight in a mode switcher bar). Only the
+/// listed fields exist on purpose: the selected state may recolor and
+/// re-border the button, but it must not change its metrics — the
+/// auto_height measurer pins the button height from the *base* def, and
+/// a state-dependent height would desync the two sides.
+#[derive(Debug, Clone, Default, Deserialize, PartialEq)]
+pub struct ButtonSelected {
+    pub background: Option<String>,
+    pub color: Option<String>,
+    pub border_color: Option<String>,
+    pub border_width: Option<f32>,
+    pub radius: Option<f32>,
+    #[serde(default)]
+    pub shadow: Option<bool>,
 }
 
 impl WidgetDef {
@@ -186,6 +222,18 @@ impl WidgetDef {
         }
     }
 
+    /// The `visible_when` predicate, if set (Spacers have none).
+    pub fn visible_when(&self) -> Option<&str> {
+        match self {
+            Self::Text { visible_when, .. }
+            | Self::Icon { visible_when, .. }
+            | Self::Image { visible_when, .. }
+            | Self::Divider { visible_when, .. }
+            | Self::Box { visible_when, .. } => visible_when.as_deref(),
+            _ => None,
+        }
+    }
+
     /// Resolve `$alias` colour references within this widget's fields.
     pub fn resolve_colors(&mut self, colors: &HashMap<String, String>) {
         match self {
@@ -207,6 +255,7 @@ impl WidgetDef {
                 hover_background,
                 hover_color,
                 border_color,
+                selected,
                 ..
             } => {
                 resolve_opt(color, colors);
@@ -214,6 +263,11 @@ impl WidgetDef {
                 resolve_opt(hover_background, colors);
                 resolve_opt(hover_color, colors);
                 resolve_opt(border_color, colors);
+                if let Some(sel) = selected {
+                    resolve_opt(&mut sel.background, colors);
+                    resolve_opt(&mut sel.color, colors);
+                    resolve_opt(&mut sel.border_color, colors);
+                }
             }
             Self::Spacer { .. } => {}
         }
@@ -1805,6 +1859,7 @@ orientation = "horizontal"
             font_weight: None,
             align: None,
             margin: None,
+            visible_when: None,
         });
         t.widgets.push(WidgetDef::Button {
             id: "btn".to_string(),
@@ -1830,6 +1885,8 @@ orientation = "horizontal"
             font_size: None,
             font_weight: None,
             gap: None,
+            selected_when: None,
+            selected: None,
         });
         t.resolve_colors();
         if let WidgetDef::Text { color, .. } = &t.widgets[0] {
@@ -2141,5 +2198,63 @@ weight = 700
         assert!(theme.listview.match_color.is_none());
         assert!(theme.inputbar.font.is_none());
         assert!(theme.element.font.is_none());
+    }
+
+    #[test]
+    fn widget_state_predicates_and_selected_block_parse() {
+        // A mode switcher bar: selected_when + a [selected] override
+        // block, plus a visible_when-gated text. `$alias` palette
+        // references inside `selected` resolve like every other colour
+        // field. (Elements in `[[widgets]]` need their `type` tag,
+        // like the [widgets.<id>] form.)
+        let toml_str = "\
+name = \"state-test\"\n\
+[colors]\n\
+accent = \"#7aa2f7\"\n\
+[widgets.bar]\n\
+type = \"box\"\n\
+children = [\"m1\", \"hint\"]\n\
+[widgets.m1]\n\
+type = \"button\"\n\
+text = \"Apps\"\n\
+selected_when = \"mode == apps\"\n\
+[widgets.m1.selected]\n\
+background = \"$accent\"\n\
+color = \"#1a1b26\"\n\
+[widgets.hint]\n\
+type = \"text\"\n\
+text = \"type to search\"\n\
+visible_when = \"query == empty\"\n";
+        let mut t: ThemeConfig = toml::from_str(toml_str).unwrap();
+        let bar = t.widgets.iter().find(|w| w.id() == "bar").unwrap();
+        assert!(bar.visible_when().is_none());
+        let m1 = t.widgets.iter().find(|w| w.id() == "m1").unwrap();
+        if let WidgetDef::Button { selected_when, .. } = m1 {
+            assert_eq!(selected_when.as_deref(), Some("mode == apps"));
+        } else {
+            panic!("expected a button");
+        }
+        if let WidgetDef::Button {
+            selected: Some(sel),
+            ..
+        } = m1
+        {
+            assert_eq!(sel.background.as_deref(), Some("$accent"));
+            assert_eq!(sel.color.as_deref(), Some("#1a1b26"));
+            assert_eq!(sel.border_width, None);
+        } else {
+            panic!("expected a selected block");
+        }
+        let hint = t.widgets.iter().find(|w| w.id() == "hint").unwrap();
+        assert_eq!(hint.visible_when(), Some("query == empty"));
+        // Palette resolution covers the selected block too.
+        t.resolve_colors();
+        if let WidgetDef::Button {
+            selected: Some(sel),
+            ..
+        } = t.widgets.iter().find(|w| w.id() == "m1").unwrap()
+        {
+            assert_eq!(sel.background.as_deref(), Some("#7aa2f7"));
+        }
     }
 }

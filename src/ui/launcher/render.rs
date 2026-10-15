@@ -78,6 +78,12 @@ impl Render for Launcher {
                     element_font_size: self.element_font_val.1,
                     screen_h,
                     screen_w,
+                    mode: self
+                        .mode_name
+                        .clone()
+                        .map(|m| m.to_string())
+                        .unwrap_or_else(|| "all".into()),
+                    query_empty: self.display_query().is_empty(),
                 };
                 let list_viewport = list_height(&t, &fit_state);
                 (

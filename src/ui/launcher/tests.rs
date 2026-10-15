@@ -604,6 +604,7 @@ fn launcher_initializes_widget_registry_from_theme() {
         font_weight: None,
         align: None,
         margin: None,
+        visible_when: None,
     });
     let l = Launcher::new(
         vec![item("Git Status")],
@@ -642,6 +643,8 @@ fn button_widget_in_registry() {
         font_size: None,
         font_weight: None,
         gap: None,
+        selected_when: None,
+        selected: None,
     });
     let l = Launcher::new(
         vec![item("Git Status")],
@@ -687,6 +690,8 @@ fn button_hotkey_triggers_action() {
         font_size: None,
         font_weight: None,
         gap: None,
+        selected_when: None,
+        selected: None,
     });
     theme.widgets.push(WidgetDef::Button {
         id: "btn_stay".to_string(),
@@ -712,6 +717,8 @@ fn button_hotkey_triggers_action() {
         font_size: None,
         font_weight: None,
         gap: None,
+        selected_when: None,
+        selected: None,
     });
     let l = Launcher::new(
         vec![Target::reload_config()],
@@ -838,6 +845,8 @@ fn element_layout_supports_custom_widgets_in_row() {
         font_size: None,
         font_weight: None,
         gap: None,
+        selected_when: None,
+        selected: None,
     });
     theme.element.layout = Some(vec![
         "icon".to_string(),

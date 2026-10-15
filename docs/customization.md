@@ -32,6 +32,7 @@ aerofi is configured via transparent, human-readable TOML files located in `~/.c
 - [Custom Widgets System](#custom-widgets-system)
   - [Widget Types & Properties](#widget-types--properties)
   - [Composing a Custom Header and Footer](#composing-a-custom-header-and-footer)
+  - [Widget State (`visible_when` / `selected_when`)](#widget-state-visible_when--selected_when)
 - [Performance Optimization](#performance-optimization)
 
 ---
@@ -715,6 +716,55 @@ gap = 4.0
 > [!NOTE]
 > Besides a plain target name, `action` accepts special prefixes: `command:<shell>` (run a shell command detached), `target:`/`run:`/`script:<name>` (run the named target), `plugin:<name>` (open the launcher in that plugin's mode — the window always stays open, `close` is ignored), and `mode:<name>` (switch to a `[modes]` source filter, or a loaded plugin by name — the window always stays open, `close` is ignored).
 
+### Widget State: `visible_when` & `selected_when`
+
+Widgets can react to launcher state with a single-comparison predicate.
+This is what a mode switcher bar uses to highlight the active mode.
+
+**Grammar** (one comparison — no operators, values shown are the only
+accepted ones):
+
+| key | values | meaning |
+|---|---|---|
+| `mode` | any `[modes]` key, any loaded plugin name, or `all` | the active mode (`all` = no mode) |
+| `query` | `empty`, `nonempty` | whether the input has text |
+| `list` | `empty`, `nonempty` | whether the results list has rows |
+
+```toml
+# Show this widget only while the query is empty:
+[widgets.hint]
+type = "text"
+text = "start typing"
+visible_when = "query == empty"
+
+# Highlight a mode button while its mode is active:
+[widgets.mode_btn_apps]
+text = "Apps"
+action = "mode:apps"
+selected_when = "mode == apps"
+
+[widgets.mode_btn_apps.selected]
+background = "$accent"
+color = "$surface"
+```
+
+- **`visible_when`** (text, icon, image, divider, box): the widget is
+  not rendered while the predicate is false — and the `auto_height`
+  measurer counts neither its height nor its gap, so the window never
+  reserves space for a hidden widget.
+- **`selected_when`** (buttons): a pure *style* state — the
+  `[widgets.<id>.selected]` block (background, color, border_color,
+  border_width, radius, shadow) overrides the base values while the
+  predicate holds. It deliberately cannot change the button's size:
+  a state-dependent height would desync the renderer from the
+  `auto_height` measurer.
+- A predicate outside the grammar is rejected at theme load with a
+  warning naming the widget and the condition (`aerofi: warning:
+  widget 'mode_btn_apps': invalid selected_when predicate ...`); an
+  invalid `visible_when` counts as hidden.
+- A ready-made bar: copy `examples/themes/widgets/mode-switcher.toml`
+  to `~/.config/aerofi/themes/widgets/`, add it to your theme's
+  `imports`, and reference `mode_bar` in `[mainbox] children`.
 ---
 
 ## Performance Optimization

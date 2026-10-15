@@ -77,6 +77,38 @@ impl WidgetRegistry {
         let mut errors = Vec::new();
 
         for def in self.defs.values() {
+            // Warn at startup about state predicates written outside the
+            // grammar — otherwise a typo silently never highlights or
+            // hides.
+            let mut check = |raw: &str, field: &str| {
+                if crate::core::widget_state::parse_condition(raw).is_none() {
+                    errors.push(format!(
+                        "widget '{}': invalid {field} predicate {raw:?} \
+(expected `mode == <name>`, `query == empty|nonempty`, \
+`list == empty|nonempty`)",
+                        def.id()
+                    ));
+                }
+            };
+            let visible = match def {
+                WidgetDef::Text { visible_when, .. }
+                | WidgetDef::Icon { visible_when, .. }
+                | WidgetDef::Image { visible_when, .. }
+                | WidgetDef::Divider { visible_when, .. }
+                | WidgetDef::Box { visible_when, .. } => visible_when.as_deref(),
+                _ => None,
+            };
+            if let Some(raw) = visible {
+                check(raw, "visible_when");
+            }
+            if let WidgetDef::Button {
+                selected_when: Some(raw),
+                ..
+            } = def
+            {
+                check(raw, "selected_when");
+            }
+
             if let WidgetDef::Box { id, children, .. } = def {
                 for child_id in children {
                     if !is_builtin(child_id) && !self.defs.contains_key(child_id) {
@@ -148,6 +180,7 @@ mod tests {
             font_weight: None,
             align: None,
             margin: None,
+            visible_when: None,
         }
     }
 
@@ -176,6 +209,7 @@ mod tests {
             height: None,
             flex: None,
             children: children.into_iter().map(|s| s.to_string()).collect(),
+            visible_when: None,
         }
     }
 
@@ -245,6 +279,8 @@ mod tests {
             font_size: None,
             font_weight: None,
             gap: None,
+            selected_when: None,
+            selected: None,
         }
     }
 
@@ -274,6 +310,39 @@ mod tests {
     fn box_with_builtin_children_passes_validation() {
         let reg =
             WidgetRegistry::from_theme(&[box_widget("main_pane", vec!["InputBar", "ListView"])]);
+        assert!(reg.validate().is_ok());
+    }
+
+    #[test]
+    fn invalid_state_predicates_fail_validation() {
+        // A visible_when typo (no ==) and an out-of-grammar selected_when
+        // value must surface at theme load, not hide silently.
+        let mut bad = text_widget("hint");
+        if let WidgetDef::Text { visible_when, .. } = &mut bad {
+            *visible_when = Some("query empty".to_string());
+        }
+        let mut btn = button_widget("m1", "mode:apps");
+        if let WidgetDef::Button { selected_when, .. } = &mut btn {
+            *selected_when = Some("mode = apps".to_string());
+        }
+        let reg = WidgetRegistry::from_theme(&[bad, btn]);
+        let errs = reg.validate().err().unwrap();
+        // Order is map-iteration order; check the set of findings.
+        assert_eq!(errs.len(), 2, "got: {errs:?}");
+        let all = errs.join("\n");
+        assert!(all.contains("visible_when") && all.contains("hint"));
+        assert!(all.contains("selected_when") && all.contains("m1"));
+
+        // Valid predicates pass.
+        let mut ok1 = text_widget("hint");
+        if let WidgetDef::Text { visible_when, .. } = &mut ok1 {
+            *visible_when = Some("query == empty".to_string());
+        }
+        let mut ok2 = button_widget("m1", "mode:apps");
+        if let WidgetDef::Button { selected_when, .. } = &mut ok2 {
+            *selected_when = Some("mode == apps".to_string());
+        }
+        let reg = WidgetRegistry::from_theme(&[ok1, ok2]);
         assert!(reg.validate().is_ok());
     }
 }

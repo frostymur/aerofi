@@ -64,6 +64,11 @@ pub struct SearchFit {
     /// Screen width the window `Dimension` resolves against (needed to
     /// measure `w_full` images, whose rendered width is the container's).
     pub screen_w: f32,
+    /// Active mode label for `visible_when` predicates — a `[modes]` key
+    /// or plugin name, `all` when unfiltered.
+    pub mode: String,
+    /// Whether the (display) query is empty — the `query` predicate.
+    pub query_empty: bool,
 }
 
 /// Window height for the `Search` / `ArgumentInput` / `Confirming` states.
@@ -219,6 +224,15 @@ fn widget_height(
         return list_slot;
     }
     reg.get(id)
+        .filter(|def| {
+            // `visible_when` mirrors the renderer
+            // (`eval_widget_condition`): a hidden widget occupies no
+            // height and no gap. Invalid grammar (warned at theme load)
+            // counts as hidden, same as the render side.
+            def.visible_when()
+                .and_then(crate::core::widget_state::parse_condition)
+                .is_none_or(|c| c.eval(&state.mode, state.query_empty, state.filtered_len == 0))
+        })
         .and_then(|def| def_height(t, reg, state, image_dims, list_slot, def))
 }
 
@@ -463,6 +477,7 @@ mod tests {
             height: None,
             flex: None,
             children: children.into_iter().map(String::from).collect(),
+            visible_when: None,
         }
     }
 
@@ -491,6 +506,8 @@ mod tests {
             font_weight: None,
             gap: None,
             close: None,
+            selected_when: None,
+            selected: None,
         }
     }
 
@@ -503,6 +520,7 @@ mod tests {
             font_weight: None,
             align: None,
             margin: None,
+            visible_when: None,
         }
     }
 
@@ -513,6 +531,7 @@ mod tests {
             size: Some(size),
             color: None,
             margin: None,
+            visible_when: None,
         }
     }
 
@@ -545,6 +564,7 @@ mod tests {
             border_bottom: None,
             border_left: None,
             shadow: None,
+            visible_when: None,
         }
     }
 
@@ -584,6 +604,8 @@ mod tests {
             element_font_size: font,
             screen_h: 1000.0,
             screen_w: 1400.0,
+            mode: "all".to_string(),
+            query_empty: true,
         }
     }
 
@@ -795,6 +817,153 @@ mod tests {
         // 79.2 + 12 + 36 = 127.2 → + pad 20 = 147.2.
         let h = measure(&t, &fit(true, true, true, true, 1, 1, 17.0));
         assert!((h - 147.2).abs() < 1e-3, "got {h}");
+    }
+
+    /// A `visible_when`-hidden widget occupies neither height nor its
+    /// mainbox gap (the two-sides contract: the renderer skips the
+    /// element itself, so no flex gap is emitted around it).
+    #[test]
+    fn visible_when_hidden_widget_costs_nothing() {
+        let mut t = fit_theme();
+        // bar (19.2) + hint (16.8, hidden) above the input bar; gap 12.
+        t.widgets = vec![
+            box_def("bar", "horizontal", Some(6.0), None, vec!["a", "b"]),
+            button_def("a", 11.0, Some(&[3.0, 8.0])),
+            button_def("b", 11.0, Some(&[3.0, 8.0])),
+            text_def("hint", 14.0),
+        ];
+        // Patch the hint's visible_when: hidden unless the query is empty.
+        if let Some(WidgetDef::Text { visible_when, .. }) = t.widgets.last_mut() {
+            *visible_when = Some("query == empty".into());
+        }
+        t.mainbox.children = vec![
+            Widget::Custom("bar".into()),
+            Widget::Custom("hint".into()),
+            Widget::Builtin(BuiltinWidget::InputBar),
+            Widget::Builtin(BuiltinWidget::ListView),
+        ];
+        let st = |query_empty: bool, n: usize| {
+            let mut s = fit(true, n > 0, n > 0, true, 1, n, 17.0);
+            s.query_empty = query_empty;
+            s
+        };
+        // Query empty → hint visible: bar 19.2 + gap 12 + hint 16.8 +
+        // gap 12 + inputbar 40 + margin 8 = 108 → + pad 20 = 128.
+        let h = measure(&t, &st(true, 0));
+        assert!((h - 128.0).abs() < 1e-3, "got {h}");
+        // Query non-empty → hint hidden: the hint AND its gap vanish.
+        // 19.2 + 12 + 40 + 8 = 79.2 → + pad 20 = 99.2 (matches the
+        // button-bar contract test).
+        let h = measure(&t, &st(false, 0));
+        assert!((h - 99.2).abs() < 1e-3, "got {h}");
+        // Hidden inside a box: a vertical 3-child box (gap 5) with the
+        // middle child mode-gated measures like a 2-child box — the
+        // hidden child's height AND its gap are gone.
+        t.widgets = vec![
+            box_def("vbox", "vertical", Some(5.0), None, vec!["t1", "mid", "t2"]),
+            text_def("t1", 10.0),
+            text_def("mid", 10.0),
+            text_def("t2", 10.0),
+        ];
+        if let Some(WidgetDef::Text { visible_when, .. }) = t.widgets.iter_mut().nth(2) {
+            *visible_when = Some("mode == gone".into());
+        }
+        t.mainbox.children = vec![
+            Widget::Custom("vbox".into()),
+            Widget::Builtin(BuiltinWidget::InputBar),
+            Widget::Builtin(BuiltinWidget::ListView),
+        ];
+        // mid (12.0) + its gap (5) vanish: 12 + 5 + 12 = 29 → 29 + 12 +
+        // 40 + 8 = 89 → + pad 20 = 109.
+        let h = measure(&t, &st(false, 0));
+        assert!((h - 109.0).abs() < 1e-3, "got {h}");
+
+        /// Two-sides invariant for `visible_when`: the measurer must count a
+        /// hidden widget *exactly* the same as if the widget were absent —
+        /// no height, no gap, including inside nested boxes. Structurally:
+        /// for every (mode, query, list) state, measuring the live theme
+        /// must equal measuring a theme with the currently-hidden widgets
+        /// removed from the defs and from every box's children list.
+        #[test]
+        fn visible_when_matches_widget_removal_across_states() {
+            let mut t = fit_theme();
+            t.widgets = vec![
+                // outer: [top_hint (query-gated), inner_box]
+                box_def(
+                    "outer",
+                    "vertical",
+                    Some(7.0),
+                    Some(&[2.0, 2.0]),
+                    vec!["top_hint", "inner"],
+                ),
+                text_def("top_hint", 12.0),
+                // inner: [mode_gate (mode-gated), t2]
+                box_def(
+                    "inner",
+                    "vertical",
+                    Some(5.0),
+                    None,
+                    vec!["mode_gate", "t2"],
+                ),
+                text_def("mode_gate", 10.0),
+                text_def("t2", 10.0),
+            ];
+            if let Some(WidgetDef::Text { visible_when, .. }) =
+                t.widgets.iter_mut().find(|w| w.id() == "top_hint")
+            {
+                *visible_when = Some("query == empty".into());
+            }
+            if let Some(WidgetDef::Text { visible_when, .. }) =
+                t.widgets.iter_mut().find(|w| w.id() == "mode_gate")
+            {
+                *visible_when = Some("mode == dev".into());
+            }
+            t.mainbox.children = vec![
+                Widget::Custom("outer".into()),
+                Widget::Builtin(BuiltinWidget::InputBar),
+                Widget::Builtin(BuiltinWidget::ListView),
+            ];
+
+            // Remove a widget id from every box's children list.
+            fn strip(t: &mut ThemeConfig, id: &str) {
+                for w in t.widgets.iter_mut() {
+                    if let WidgetDef::Box { children, .. } = w {
+                        children.retain(|c| c != id);
+                    }
+                }
+            }
+
+            for mode in ["all", "apps", "dev"] {
+                for query_empty in [true, false] {
+                    for n in [0usize, 3, 7] {
+                        let mut state = fit(true, n > 0, n > 0, true, 1, n, 17.0);
+                        state.mode = mode.to_string();
+                        state.query_empty = query_empty;
+                        let got = measure(&t, &state);
+
+                        // Build the reference: remove every widget that is
+                        // hidden in this state, from the defs and the boxes.
+                        let mut ref_theme = t.clone();
+                        for w in ref_theme.widgets.clone() {
+                            if let Some(raw) = w.visible_when()
+                                && let Some(c) = crate::core::widget_state::parse_condition(raw)
+                                && !c.eval(mode, query_empty, n == 0)
+                            {
+                                let wid = w.id().to_string();
+                                ref_theme.widgets.retain(|x| x.id() != wid.as_str());
+                                strip(&mut ref_theme, &wid);
+                            }
+                        }
+                        let want = measure(&ref_theme, &state);
+                        assert!(
+                            (got - want).abs() < 1e-3,
+                            "state (mode={mode}, query_empty={query_empty}, n={n}): \
+live measured {got}, removed-widget reference {want}"
+                        );
+                    }
+                }
+            }
+        }
     }
 
     /// A header bar (icon + title + spacer) above the input bar is counted
@@ -1103,6 +1272,8 @@ mod tests {
             ib_h: t.inputbar.height,
             columns: t.listview.columns,
             screen_w: 1400.0,
+            mode: "all".to_string(),
+            query_empty: true,
             filtered_len,
             element_font_size: t.font.size,
             screen_h: 1000.0,
@@ -1237,6 +1408,8 @@ mod tests {
             element_font_size: t.font.size,
             screen_h: 1000.0,
             screen_w: 1400.0,
+            mode: "all".to_string(),
+            query_empty: true,
         }
     }
 
