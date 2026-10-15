@@ -1,14 +1,17 @@
 //! Persistent cache for application icons extracted via AppKit.
 //!
-//! Icons are written as `.tiff` files under `~/.cache/aerofi/icons/`.
+//! Icons are written as `.tiff` files under `dirs::cache_dir()/aerofi/`
+//! — `~/Library/Caches/aerofi/icons/` on macOS. The cache contract is
+//! stable for v1: a `VERSION` marker file plus one `.tiff` per app,
+//! named `<sanitised name>-<16-hex bundle hash>.tiff` — third-party
+//! tooling may rely on it, so key or size changes must bump
+//! `CACHE_VERSION` (which wipes the cache on the next start).
 //! GPUI's `img()` element handles decoding the TIFF data at render time.
 //! The cache persists across restarts, so AppKit is only called once per
-//! application.
+//! application build.
 //!
 //! User image files (script `@aerofi.icon` paths and plugin item icons)
 //! are additionally downscaled to bounded-size thumbnails under
-//! `~/.cache/aerofi/thumbs/` so the renderer never decodes — and the
-//! GPU asset cache never retains — a full-resolution photo.
 
 use crate::core::item::Target;
 use std::fs;
@@ -17,13 +20,13 @@ use std::sync::OnceLock;
 
 /// Cache format version — bump to invalidate stale icons after size or
 /// format changes.  Stored as `VERSION` inside the icon directory.
-const CACHE_VERSION: u32 = 4; // v1 = 128×128, v2 = 64×64, v3 = 128×128, v4 = 96×96 (Lanczos3)
+const CACHE_VERSION: u32 = 5; // v1 = 128×128, v2 = 64×64, v3 = 128×128, v4 = 96×96 (Lanczos3), v5 = bundle-hash key
 
 /// Keep at most this many app icons on disk; the oldest are pruned so the
 /// cache can't grow without bound as apps are installed and removed.
 const ICON_MAX_FILES: usize = 1024;
 
-/// Lazily-created persistent cache directory: `~/.cache/aerofi/icons/`.
+/// Lazily-created persistent cache directory: `dirs::cache_dir()/aerofi/icons/`.
 fn icon_dir() -> &'static PathBuf {
     static DIR: OnceLock<PathBuf> = OnceLock::new();
     DIR.get_or_init(|| {
@@ -73,16 +76,50 @@ fn sanitise_name(name: &str) -> String {
         .collect()
 }
 
+/// Cache file name for an app icon: the sanitised app name plus a
+/// deterministic 64-bit hash of the *resolved* bundle path and its
+/// modification time. The hash changes when the bundle is re-pointed
+/// (e.g. brew → nix re-creating the `/Applications` symlink at a new
+/// store path), moved, or updated in place — so a re-pointed or updated
+/// app gets a fresh icon instead of the stale one. The name keeps the
+/// file human-readable in the cache directory.
+fn icon_cache_name(name: &str, path: &Path) -> String {
+    let resolved = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    let mtime = fs::metadata(&resolved)
+        .ok()
+        .and_then(|m| m.modified().ok())
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let h = fnv1a(&format!("{}|{}", resolved.display(), mtime));
+    format!("{}-{:016x}.tiff", sanitise_name(name), h)
+}
+
+/// Write, recreating the parent directory if it has gone away. The
+/// cache directory is a process-lifetime singleton: if something deletes
+/// it while we run, a plain `fs::write` fails *silently and forever*
+/// after, and every row renders icon-less until a restart. One
+/// `create_dir_all` + retry turns that incident into a self-heal.
+fn write_with_repair(path: &Path, bytes: &[u8]) -> Option<()> {
+    if fs::write(path, bytes).is_ok() {
+        return Some(());
+    }
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).ok()?;
+    }
+    fs::write(path, bytes).ok()
+}
+
 /// Persist raw TIFF bytes for the given application and return the path
 /// to the cached `.tiff` file. Returns `None` on I/O failure.
-pub fn cache_icon(name: &str, tiff_bytes: &[u8]) -> Option<PathBuf> {
-    let path = icon_dir().join(format!("{}.tiff", sanitise_name(name)));
-    if path.exists() {
-        return Some(path);
+pub fn cache_icon(name: &str, path: &Path, tiff_bytes: &[u8]) -> Option<PathBuf> {
+    let p = icon_dir().join(icon_cache_name(name, path));
+    if p.exists() {
+        return Some(p);
     }
-    fs::write(&path, tiff_bytes).ok()?;
+    write_with_repair(&p, tiff_bytes)?;
     prune_icons();
-    Some(path)
+    Some(p)
 }
 
 /// Drop the oldest app icons when the cache directory exceeds
@@ -141,7 +178,7 @@ pub fn prepare_icon_jobs(targets: &mut [Target]) -> Vec<IconJob> {
         if icon_path.is_some() {
             continue;
         }
-        let cached = dir.join(format!("{}.tiff", sanitise_name(name)));
+        let cached = dir.join(icon_cache_name(name, path));
         if cached.exists() {
             *icon_path = Some(std::sync::Arc::from(cached));
             continue;
@@ -167,8 +204,9 @@ pub fn process_icon_jobs(
 )> {
     jobs.into_iter()
         .map(|job| {
-            let icon = crate::sys::appkit::process_icon_tiff(&job.raw_tiff)
-                .and_then(|tiff| cache_icon(&job.name, &tiff).map(std::sync::Arc::from));
+            let icon = crate::sys::appkit::process_icon_tiff(&job.raw_tiff).and_then(|tiff| {
+                cache_icon(&job.name, &job.target, &tiff).map(std::sync::Arc::from)
+            });
             (job.target, icon)
         })
         .collect()
@@ -228,7 +266,7 @@ const THUMB_MAX_SOURCE_PIXELS: u64 = 64 * 1024 * 1024;
 /// Keep at most this many thumbnails on disk; the oldest are pruned.
 const THUMB_MAX_FILES: usize = 1024;
 
-/// Lazily-created thumbnail cache directory: `~/.cache/aerofi/thumbs/`.
+/// Lazily-created thumbnail cache directory: `dirs::cache_dir()/aerofi/thumbs/`.
 fn thumb_dir() -> &'static PathBuf {
     static DIR: OnceLock<PathBuf> = OnceLock::new();
     DIR.get_or_init(|| {
@@ -380,6 +418,52 @@ mod tests {
             *px = image::Rgba([x as u8, y as u8, 128, 255]);
         }
         img.save(path).unwrap();
+    }
+
+    #[test]
+    fn icon_cache_name_tracks_repointed_and_updated_bundles() {
+        let base = std::env::temp_dir().join(format!("aerofi-icon-key-{}", std::process::id()));
+        let a = base.join("brew");
+        let b = base.join("nix");
+        for d in [a.clone(), b.clone()] {
+            std::fs::create_dir_all(&d).unwrap();
+            std::fs::write(d.join("payload"), b"x").unwrap();
+        }
+        let t = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000);
+        for d in [a.clone(), b.clone()] {
+            std::fs::File::open(&d).unwrap().set_modified(t).unwrap();
+        }
+
+        // Same name, different resolved paths (brew vs nix store) ->
+        // different keys.
+        assert_ne!(icon_cache_name("My App", &a), icon_cache_name("My App", &b));
+        // Deterministic per (path, mtime) — the check and the write must
+        // agree across calls.
+        assert_eq!(icon_cache_name("My App", &a), icon_cache_name("My App", &a));
+        // Human-readable name survives sanitisation.
+        assert!(icon_cache_name("My App", &a).starts_with("My_App-"));
+        // An in-place update (new mtime) -> new key.
+        std::fs::File::open(&a).unwrap().set_modified(t + std::time::Duration::from_secs(1)).unwrap();
+        let after = icon_cache_name("My App", &a);
+        assert_ne!(icon_cache_name("My App", &b), after);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn icon_write_heals_a_deleted_cache_dir() {
+        let base = std::env::temp_dir().join(format!("aerofi-icon-heal-{}", std::process::id()));
+        let dir = base.join("icons");
+        std::fs::create_dir_all(&dir).unwrap();
+        let target = dir.join("X-0000000000000001.tiff");
+
+        // First write into a live dir.
+        write_with_repair(&target, b"tiff").unwrap();
+        // The dir goes away out from under us (the October incident).
+        std::fs::remove_dir_all(&dir).unwrap();
+        // The write self-heals instead of failing silently.
+        write_with_repair(&target, b"tiff-2").unwrap();
+        assert_eq!(std::fs::read(&target).unwrap(), b"tiff-2");
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]

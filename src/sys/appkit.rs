@@ -587,7 +587,88 @@ pub fn raw_icon_for_app_bundle(path: &Path) -> Option<Vec<u8>> {
 
     // Get the raw multi-resolution TIFF from AppKit.
     let tiff_data = unsafe { image.TIFFRepresentation() }?;
-    Some(tiff_data.bytes().to_vec())
+    let bytes = tiff_data.bytes().to_vec();
+    // `iconForFile` consults the icon-services database and *never* fails
+    // — a cold database (fresh install, disabled indexing, a launch
+    // outside an Aqua session) just yields the generic app icon. Catch
+    // that and fall back to the bundle's own icon, which never depends
+    // on the database.
+    if bytes == *generic_app_icon_tiff() {
+        return bundle_icon_tiff(path);
+    }
+    Some(bytes)
+}
+
+/// The system's generic application icon, fetched once. Baseline for
+/// detecting `iconForFile` results that are "the fallback, not the app".
+static GENERIC_ICON: std::sync::OnceLock<Vec<u8>> = std::sync::OnceLock::new();
+
+fn generic_app_icon_tiff() -> &'static Vec<u8> {
+    GENERIC_ICON.get_or_init(|| {
+        let workspace = unsafe { NSWorkspace::sharedWorkspace() };
+        // `iconForFile` on a nonexistent `.app` path resolves the UTI from
+        // the extension and returns the generic application icon — the
+        // exact image it substitutes for an app whose real icon it cannot
+        // resolve.
+        let fake = NSString::from_str("/nonexistent/aerofi-generic-baseline/app.app");
+        let image = unsafe { workspace.iconForFile(&fake) };
+        unsafe { image.TIFFRepresentation() }
+            .map(|d| d.bytes().to_vec())
+            .unwrap_or_default()
+    })
+}
+
+/// Minimal raw-FFI `NSBundle`: `[[NSBundle alloc] initWithPath:]` +
+/// `icon` + `TIFFRepresentation`. objc2-app-kit 0.2.2 ships no NSBundle
+/// binding. Must run on the main thread (AppKit). The intermediate
+/// objects are autoreleased, but every message runs synchronously inside
+/// this single main-thread call, so the copies made before returning are
+/// safe.
+fn bundle_icon_tiff(path: &Path) -> Option<Vec<u8>> {
+    let _mtm = MainThreadMarker::new()?;
+    let cstr = std::ffi::CString::new(path.to_string_lossy().as_ref()).ok()?;
+    // objc_msgSend is C-variadic; transmute to the exact shapes we send
+    // (the pattern objc2's own layered-safety docs use).
+    let send: unsafe extern "C" fn() = objc2::ffi::objc_msgSend;
+    let msg0: unsafe extern "C" fn(*mut c_void, *const c_void) -> *mut c_void =
+        unsafe { std::mem::transmute(send) };
+    let msg1: unsafe extern "C" fn(*mut c_void, *const c_void, *const c_void) -> *mut c_void =
+        unsafe { std::mem::transmute(send) };
+    unsafe {
+        let sel = |name: &std::ffi::CStr| objc2::ffi::sel_registerName(name.as_ptr()).cast();
+        // NSString is also not in our feature set, so build it raw too.
+        let nscls: *mut c_void = objc2::ffi::objc_getClass(c"NSString".as_ptr()) as *mut c_void;
+        let path_str = msg1(nscls, sel(c"stringWithUTF8String:"), cstr.as_ptr().cast());
+        if path_str.is_null() {
+            return None;
+        }
+        let cls: *mut c_void = objc2::ffi::objc_getClass(c"NSBundle".as_ptr()) as *mut c_void;
+        if cls.is_null() {
+            return None;
+        }
+        let bundle = msg0(cls, sel(c"alloc"));
+        if bundle.is_null() {
+            return None;
+        }
+        let bundle = msg1(bundle, sel(c"initWithPath:"), path_str);
+        if bundle.is_null() {
+            return None;
+        }
+        let image = msg0(bundle, sel(c"icon"));
+        if image.is_null() {
+            return None;
+        }
+        let data = msg0(image, sel(c"TIFFRepresentation"));
+        if data.is_null() {
+            return None;
+        }
+        let bytes: *const u8 = msg0(data, sel(c"bytes")) as *const u8;
+        let len: u64 = msg0(data, sel(c"length")) as u64;
+        if bytes.is_null() || len == 0 {
+            return None;
+        }
+        Some(std::slice::from_raw_parts(bytes, len as usize).to_vec())
+    }
 }
 
 /// Downsample a raw AppKit TIFF to 96×96 via the `image` crate so each
