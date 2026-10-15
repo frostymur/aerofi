@@ -443,7 +443,10 @@ mod tests {
         // Human-readable name survives sanitisation.
         assert!(icon_cache_name("My App", &a).starts_with("My_App-"));
         // An in-place update (new mtime) -> new key.
-        std::fs::File::open(&a).unwrap().set_modified(t + std::time::Duration::from_secs(1)).unwrap();
+        std::fs::File::open(&a)
+            .unwrap()
+            .set_modified(t + std::time::Duration::from_secs(1))
+            .unwrap();
         let after = icon_cache_name("My App", &a);
         assert_ne!(icon_cache_name("My App", &b), after);
         let _ = std::fs::remove_dir_all(&base);
