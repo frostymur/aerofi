@@ -116,6 +116,22 @@ system_settings = true
 
 
 # ------------------------------------------------------------------------------
+# [actions] - Action Menus (Cmd+K)
+# ------------------------------------------------------------------------------
+# Per-target-kind action menus opened with Cmd+K on the highlighted row.
+# Built-ins are all on by default; set them to false to remove, or add
+# custom shell entries ({path}/{name} are substituted before running).
+# Apps: reveal (open -R), copy_path (clipboard + toast), new_window
+#       (smart launch)
+# Scripts: reveal, copy_path
+# Example:
+# [actions.apps]
+# copy_path = false
+# [[actions.apps.custom]]
+# label = "Open in Terminal"
+# command = "open -a Terminal {path}"
+
+# ------------------------------------------------------------------------------
 # [scripts] - Script Directories
 # ------------------------------------------------------------------------------
 [scripts]

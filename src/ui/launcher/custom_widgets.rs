@@ -306,6 +306,9 @@ impl Launcher {
         let Some(cond) = crate::core::widget_state::parse_condition(raw) else {
             return false;
         };
+        // `display_query()` is allocation-free (a str borrow), so this
+        // costs only the parse + one enum compare per gated widget per
+        // frame — same order as the colour resolutions around it.
         let active_mode = self.mode_name.as_deref().unwrap_or("all");
         cond.eval(
             active_mode,

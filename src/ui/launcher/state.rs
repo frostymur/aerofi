@@ -4,7 +4,10 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use gpui::{Context, Font, ListAlignment, ListState, ScrollStrategy, UniformListScrollHandle, px};
+use gpui::{
+    AppContext, AsyncApp, Context, Font, ListAlignment, ListState, ScrollStrategy,
+    UniformListScrollHandle, px,
+};
 
 use crate::core::config::{AppConfig, NewInstanceMode};
 use crate::core::history::History;
@@ -711,6 +714,43 @@ no plugin by that name)"
         self.execute_item(&item, new_instance)
     }
 
+    /// Execute an action-menu row against its target. The caller has
+    /// already left the ActionMenu state.
+    pub(super) fn execute_target_action(
+        &mut self,
+        target: &Target,
+        action: Option<crate::core::item::ActionSpec>,
+    ) -> LauncherAction {
+        let Some(action) = action else {
+            return LauncherAction::None;
+        };
+        match action.kind {
+            crate::core::item::ActionKind::RevealInFinder => {
+                let (Target::App { path, .. } | Target::Script { path, .. }) = target else {
+                    return LauncherAction::None;
+                };
+                LauncherAction::RevealInFinder(std::path::PathBuf::from(path.as_ref()))
+            }
+            crate::core::item::ActionKind::CopyPath => {
+                let (Target::App { path, .. } | Target::Script { path, .. }) = target else {
+                    return LauncherAction::None;
+                };
+                let p = path.to_string_lossy().into_owned();
+                LauncherAction::CopyWithToast {
+                    text: p,
+                    toast: format!("Copied path · {}", target.name()),
+                }
+            }
+            // The same smart-launch path Shift+Enter uses — apps only
+            // (script menus never offer this row).
+            crate::core::item::ActionKind::NewWindow => match target {
+                Target::App { .. } => self.execute_item(target, true),
+                _ => LauncherAction::None,
+            },
+            crate::core::item::ActionKind::Custom(cmd) => LauncherAction::RunShell(cmd),
+        }
+    }
+
     /// Run a target: built-in actions act in place, apps open and scripts
     /// run asynchronously via `LauncherAction::ExecuteScript`.
     pub(super) fn execute_item(&mut self, item: &Target, new_instance: bool) -> LauncherAction {
@@ -909,6 +949,60 @@ no plugin by that name)"
                     cx.notify();
                     crate::ui::window::hide();
                 }
+            }
+            LauncherAction::RevealInFinder(path) => {
+                crate::core::executor::reveal_in_finder(&path);
+                self.on_hide();
+                cx.notify();
+                crate::ui::window::hide();
+            }
+            LauncherAction::CopyWithToast { text, toast } => {
+                cx.write_to_clipboard(gpui::ClipboardItem::new_string(text.clone()));
+                // Silent toast confirmation — the same pattern the script
+                // status toasts use.
+                let (win_handle, toast) =
+                    crate::ui::toast_window::open_toast_window(&mut *cx, self.theme.clone(), toast);
+                let cx_async = cx.to_async();
+                let toast_window = win_handle;
+                toast.update(&mut *cx, |t, cx| {
+                    t.set_done(text, false);
+                    cx.notify();
+                    let task = cx.spawn({
+                        let mut cx_async = cx_async.clone();
+                        move |_: gpui::WeakEntity<crate::ui::toast_window::ToastWindow>,
+                              _: &mut AsyncApp| {
+                            let toast_window = toast_window;
+                            async move {
+                                cx_async
+                                    .background_executor()
+                                    .timer(std::time::Duration::from_secs(3))
+                                    .await;
+                                let _ = cx_async.update_window(toast_window, |_, window, _| {
+                                    window.remove_window()
+                                });
+                            }
+                        }
+                    });
+                    task.detach();
+                });
+                self.on_hide();
+                cx.notify();
+                crate::ui::window::hide();
+            }
+            LauncherAction::RunShell(cmd) => {
+                let _ = std::thread::Builder::new()
+                    .name("aerofi-action".to_string())
+                    .stack_size(128 * 1024)
+                    .spawn(move || {
+                        if let Ok(mut child) =
+                            std::process::Command::new("sh").arg("-c").arg(cmd).spawn()
+                        {
+                            let _ = child.wait();
+                        }
+                    });
+                self.on_hide();
+                cx.notify();
+                crate::ui::window::hide();
             }
         }
     }

@@ -18,6 +18,7 @@
 //! - `# @raycast.author <author>` -> author name
 //! - `# @raycast.authorURL <url>` -> author website/URL
 
+use crate::core::config::ActionSetConfig;
 use String;
 use serde::{Deserialize, Serialize};
 use std::io::Read;
@@ -266,6 +267,100 @@ pub enum Target {
         /// The internal name of the plugin that generated this item.
         plugin_name: String,
     },
+}
+
+/// One row of a target's action menu (Cmd+K).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ActionSpec {
+    /// Menu row label.
+    pub label: String,
+    /// Single glyph for the row (emoji/symbol), matching how rows show icons.
+    pub icon: char,
+    /// What executing the row does.
+    pub kind: ActionKind,
+}
+
+/// The effect of executing an action-menu row.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ActionKind {
+    /// `open -R <target path>` — select the item in Finder.
+    RevealInFinder,
+    /// Copy the target's full path to the clipboard.
+    CopyPath,
+    /// Smart-launch a new window (apps only; the `make new window`
+    /// AppleScript path with the `open -n` fallback).
+    NewWindow,
+    /// A user-configured shell command, fully template-substituted.
+    Custom(String),
+}
+
+impl Target {
+    /// The action menu offered for this target (Cmd+K), resolved against
+    /// `[actions]` config: built-ins in a fixed order (disabled ones
+    /// dropped), then custom entries in file order. App and script rows
+    /// get built-ins; built-in and plugin rows get an empty menu.
+    pub fn actions(&self, config: &crate::core::config::AppConfig) -> Vec<ActionSpec> {
+        let (name, path) = match self {
+            Self::App { name, path, .. } => (name.clone(), path.to_string_lossy().into_owned()),
+            Self::Script { name, path, .. } => (name.clone(), path.to_string_lossy().into_owned()),
+            Self::Builtin { .. } | Self::PluginItem { .. } => return Vec::new(),
+        };
+        let set: ActionSetConfig = match self {
+            Self::App { .. } => config
+                .actions
+                .as_ref()
+                .and_then(|a| a.apps.as_ref())
+                .cloned()
+                .unwrap_or_default(),
+            _ => config
+                .actions
+                .as_ref()
+                .and_then(|a| a.scripts.as_ref())
+                .cloned()
+                .unwrap_or_default(),
+        };
+        // `new_window` is app-only: script menus never offer a new
+        // window regardless of the config value.
+        let set = if matches!(self, Self::Script { .. }) {
+            ActionSetConfig {
+                new_window: false,
+                ..set
+            }
+        } else {
+            set
+        };
+        let mut out = Vec::new();
+        if set.reveal {
+            out.push(ActionSpec {
+                label: "Reveal in Finder".to_string(),
+                icon: '\u{1F4C2}',
+                kind: ActionKind::RevealInFinder,
+            });
+        }
+        if set.copy_path {
+            out.push(ActionSpec {
+                label: "Copy Path".to_string(),
+                icon: '\u{1F4CB}',
+                kind: ActionKind::CopyPath,
+            });
+        }
+        if set.new_window {
+            out.push(ActionSpec {
+                label: "New Window".to_string(),
+                icon: '\u{2795}',
+                kind: ActionKind::NewWindow,
+            });
+        }
+        for c in &set.custom {
+            let command = c.command.replace("{path}", &path).replace("{name}", &name);
+            out.push(ActionSpec {
+                label: c.label.clone(),
+                icon: '\u{2699}',
+                kind: ActionKind::Custom(command),
+            });
+        }
+        out
+    }
 }
 
 impl Target {
@@ -986,5 +1081,84 @@ echo "Theme switcher..."
         assert_eq!(mode, ScriptMode::FullOutput);
 
         let _ = std::fs::remove_file(&file_path);
+    }
+
+    #[test]
+    fn target_actions_defaults_and_config() {
+        use crate::core::config::{ActionSetConfig, ActionsConfig, AppConfig, CustomActionConfig};
+        let app = Target::App {
+            name: "Safari".into(),
+            path: Arc::from(PathBuf::from("/Applications/Safari.app")),
+            icon_path: None,
+        };
+        let script = Target::Script {
+            name: "my-script".into(),
+            path: Arc::from(PathBuf::from("/usr/local/bin/my-script.sh")),
+            mode: ScriptMode::FullOutput,
+            icon: None,
+            icon_image_path: None,
+            metadata: Arc::new(RaycastMetadata::default()),
+            metatags: ScriptMetatags::default(),
+            inline_output: None,
+        };
+        let builtins = Target::reload_config();
+
+        // No [actions] config: app gets all three built-ins, script gets
+        // two (no New Window), builtins get nothing.
+        let cfg = AppConfig::default();
+        let app_actions = app.actions(&cfg);
+        assert_eq!(app_actions.len(), 3);
+        assert_eq!(app_actions[0].label, "Reveal in Finder");
+        assert_eq!(app_actions[1].label, "Copy Path");
+        assert_eq!(app_actions[2].kind, ActionKind::NewWindow);
+        let script_actions = script.actions(&cfg);
+        assert_eq!(script_actions.len(), 2);
+        assert!(builtins.actions(&cfg).is_empty());
+
+        // Config: disable copy_path, add a custom with templates.
+        let mut cfg = AppConfig::default();
+        cfg.actions = Some(ActionsConfig {
+            apps: Some(ActionSetConfig {
+                reveal: true,
+                copy_path: false,
+                new_window: true,
+                custom: vec![CustomActionConfig {
+                    label: "Open in Terminal".into(),
+                    command: "open -a Terminal {path}".into(),
+                }],
+            }),
+            scripts: None,
+        });
+        let app_actions = app.actions(&cfg);
+        assert_eq!(app_actions.len(), 3);
+        assert_eq!(app_actions[0].label, "Reveal in Finder");
+        assert_eq!(app_actions[1].label, "New Window");
+        assert_eq!(
+            app_actions[2].kind,
+            ActionKind::Custom("open -a Terminal /Applications/Safari.app".into())
+        );
+        // The scripts section is unaffected by the apps section.
+        assert_eq!(script.actions(&cfg).len(), 2);
+
+        // Template substitution covers {name} too.
+        let mut cfg = AppConfig::default();
+        cfg.actions = Some(ActionsConfig {
+            apps: None,
+            scripts: Some(ActionSetConfig {
+                reveal: false,
+                copy_path: false,
+                new_window: false,
+                custom: vec![CustomActionConfig {
+                    label: "Edit".into(),
+                    command: "code {name}".into(),
+                }],
+            }),
+        });
+        let script_actions = script.actions(&cfg);
+        assert_eq!(script_actions.len(), 1);
+        assert_eq!(
+            script_actions[0].kind,
+            ActionKind::Custom("code my-script".into())
+        );
     }
 }

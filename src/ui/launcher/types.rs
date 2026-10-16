@@ -32,6 +32,12 @@ pub enum LauncherAction {
         plugin_id: String,
         action_code: u32,
     },
+    /// Reveal a path in Finder (action menu).
+    RevealInFinder(std::path::PathBuf),
+    /// Copy text to the clipboard, confirm with a silent toast, hide.
+    CopyWithToast { text: String, toast: String },
+    /// Run a shell command detached (action-menu custom entries).
+    RunShell(String),
 }
 
 /// GPUI styling for one markdown text block, precomputed once when the
@@ -110,5 +116,17 @@ pub enum LauncherState {
         markup_rows: bool,
         /// Mode name from `@aerofi.preset` for theme `[presets.*]` overrides.
         layout: Option<String>,
+    },
+    /// Action menu for the highlighted row (Cmd+K): a transient list of
+    /// actions for the selected app/script. The list, query and
+    /// selection underneath are untouched, so Escape restores the
+    /// previous list exactly (the ArgumentInput pattern).
+    ActionMenu {
+        /// The row the menu was opened for.
+        target: Target,
+        /// Resolved action rows (config-resolved at open time).
+        actions: Vec<crate::core::item::ActionSpec>,
+        /// Highlighted action row.
+        selected: usize,
     },
 }

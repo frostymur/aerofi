@@ -295,6 +295,70 @@ pub struct AppConfig {
     /// valid mode (it enters the plugin's session). `BTreeMap` so the
     /// Cmd+. cycle order is deterministic.
     pub modes: std::collections::BTreeMap<String, String>,
+    /// Per-target action menus (Cmd+K): `[actions.apps]` /
+    /// `[actions.scripts]`.
+    #[serde(default)]
+    pub actions: Option<ActionsConfig>,
+}
+
+/// Built-in action toggles plus custom actions for one target kind.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ActionsConfig {
+    /// Actions offered for application rows.
+    #[serde(default)]
+    pub apps: Option<ActionSetConfig>,
+    /// Actions offered for script rows.
+    #[serde(default)]
+    pub scripts: Option<ActionSetConfig>,
+}
+
+/// One target kind's action menu: the built-ins (each defaulting to on)
+/// followed by the custom entries in file order.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ActionSetConfig {
+    /// "Reveal in Finder" (`open -R`).
+    #[serde(default = "default_true")]
+    pub reveal: bool,
+    /// "Copy Path" — copies the target's full path to the clipboard.
+    #[serde(default = "default_true")]
+    pub copy_path: bool,
+    /// "New Window" (smart launch) — application rows only.
+    #[serde(default = "default_true")]
+    pub new_window: bool,
+    /// Extra shell actions; `{path}` and `{name}` are replaced with the
+    /// target's path and display name before running. Application menus
+    /// default `new_window` on; script menus never offer it (the section
+    /// is parsed identically — see `Target::actions`).
+    #[serde(default)]
+    pub custom: Vec<CustomActionConfig>,
+}
+
+impl Default for ActionSetConfig {
+    /// No-config default: every built-in offered. (A derived `Default`
+    /// would be all-`false` — `bool::default()` — which is wrong here;
+    /// serde's `default_true` only covers TOML parsing, not this impl.)
+    fn default() -> Self {
+        Self {
+            reveal: true,
+            copy_path: true,
+            new_window: true,
+            custom: Vec::new(),
+        }
+    }
+}
+
+/// A user-defined action-menu entry (`[[actions.apps.custom]]`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CustomActionConfig {
+    /// Label shown in the menu.
+    pub label: String,
+    /// Shell command, run detached via `sh -c`; `{path}` / `{name}`
+    /// template variables are substituted at menu-open time.
+    pub command: String,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl Default for AppConfig {
@@ -309,6 +373,7 @@ impl Default for AppConfig {
             bindings: BindingsConfig::default(),
             pinned: Vec::new(),
             modes: std::collections::BTreeMap::new(),
+            actions: None,
         }
     }
 }
@@ -591,5 +656,35 @@ mod tests {
         // No [modes] section at all: empty, old configs keep parsing.
         let c: AppConfig = toml::from_str(r#"theme = "default""#).unwrap();
         assert!(c.modes.is_empty());
+    }
+
+    #[test]
+    fn actions_section_parses_and_defaults() {
+        let c: AppConfig = toml::from_str(
+            r#"
+            theme = "default"
+            [actions.apps]
+            copy_path = false
+            [[actions.apps.custom]]
+            label = "Open in Terminal"
+            command = "open -a Terminal {path}"
+            [actions.scripts]
+            reveal = false
+            "#,
+        )
+        .unwrap();
+        let apps = c.actions.as_ref().and_then(|a| a.apps.as_ref()).unwrap();
+        assert!(apps.reveal, "untouched built-ins default on");
+        assert!(!apps.copy_path);
+        assert!(apps.new_window);
+        assert_eq!(apps.custom.len(), 1);
+        assert_eq!(apps.custom[0].command, "open -a Terminal {path}");
+        let scripts = c.actions.as_ref().and_then(|a| a.scripts.as_ref()).unwrap();
+        assert!(!scripts.reveal);
+        assert!(scripts.copy_path);
+
+        // No [actions] section at all: None (the code defaults kick in).
+        let c: AppConfig = toml::from_str(r#"theme = "default""#).unwrap();
+        assert!(c.actions.is_none());
     }
 }

@@ -877,90 +877,90 @@ mod tests {
         // 40 + 8 = 89 → + pad 20 = 109.
         let h = measure(&t, &st(false, 0));
         assert!((h - 109.0).abs() < 1e-3, "got {h}");
+    }
 
-        /// Two-sides invariant for `visible_when`: the measurer must count a
-        /// hidden widget *exactly* the same as if the widget were absent —
-        /// no height, no gap, including inside nested boxes. Structurally:
-        /// for every (mode, query, list) state, measuring the live theme
-        /// must equal measuring a theme with the currently-hidden widgets
-        /// removed from the defs and from every box's children list.
-        #[test]
-        fn visible_when_matches_widget_removal_across_states() {
-            let mut t = fit_theme();
-            t.widgets = vec![
-                // outer: [top_hint (query-gated), inner_box]
-                box_def(
-                    "outer",
-                    "vertical",
-                    Some(7.0),
-                    Some(&[2.0, 2.0]),
-                    vec!["top_hint", "inner"],
-                ),
-                text_def("top_hint", 12.0),
-                // inner: [mode_gate (mode-gated), t2]
-                box_def(
-                    "inner",
-                    "vertical",
-                    Some(5.0),
-                    None,
-                    vec!["mode_gate", "t2"],
-                ),
-                text_def("mode_gate", 10.0),
-                text_def("t2", 10.0),
-            ];
-            if let Some(WidgetDef::Text { visible_when, .. }) =
-                t.widgets.iter_mut().find(|w| w.id() == "top_hint")
-            {
-                *visible_when = Some("query == empty".into());
-            }
-            if let Some(WidgetDef::Text { visible_when, .. }) =
-                t.widgets.iter_mut().find(|w| w.id() == "mode_gate")
-            {
-                *visible_when = Some("mode == dev".into());
-            }
-            t.mainbox.children = vec![
-                Widget::Custom("outer".into()),
-                Widget::Builtin(BuiltinWidget::InputBar),
-                Widget::Builtin(BuiltinWidget::ListView),
-            ];
+    /// Two-sides invariant for `visible_when`: the measurer must count a
+    /// hidden widget *exactly* the same as if the widget were absent —
+    /// no height, no gap, including inside nested boxes. Structurally:
+    /// for every (mode, query, list) state, measuring the live theme
+    /// must equal measuring a theme with the currently-hidden widgets
+    /// removed from the defs and from every box's children list.
+    #[test]
+    fn visible_when_matches_widget_removal_across_states() {
+        let mut t = fit_theme();
+        t.widgets = vec![
+            // outer: [top_hint (query-gated), inner_box]
+            box_def(
+                "outer",
+                "vertical",
+                Some(7.0),
+                Some(&[2.0, 2.0]),
+                vec!["top_hint", "inner"],
+            ),
+            text_def("top_hint", 12.0),
+            // inner: [mode_gate (mode-gated), t2]
+            box_def(
+                "inner",
+                "vertical",
+                Some(5.0),
+                None,
+                vec!["mode_gate", "t2"],
+            ),
+            text_def("mode_gate", 10.0),
+            text_def("t2", 10.0),
+        ];
+        if let Some(WidgetDef::Text { visible_when, .. }) =
+            t.widgets.iter_mut().find(|w| w.id() == "top_hint")
+        {
+            *visible_when = Some("query == empty".into());
+        }
+        if let Some(WidgetDef::Text { visible_when, .. }) =
+            t.widgets.iter_mut().find(|w| w.id() == "mode_gate")
+        {
+            *visible_when = Some("mode == dev".into());
+        }
+        t.mainbox.children = vec![
+            Widget::Custom("outer".into()),
+            Widget::Builtin(BuiltinWidget::InputBar),
+            Widget::Builtin(BuiltinWidget::ListView),
+        ];
 
-            // Remove a widget id from every box's children list.
-            fn strip(t: &mut ThemeConfig, id: &str) {
-                for w in t.widgets.iter_mut() {
-                    if let WidgetDef::Box { children, .. } = w {
-                        children.retain(|c| c != id);
-                    }
+        // Remove a widget id from every box's children list.
+        fn strip(t: &mut ThemeConfig, id: &str) {
+            for w in t.widgets.iter_mut() {
+                if let WidgetDef::Box { children, .. } = w {
+                    children.retain(|c| c != id);
                 }
             }
+        }
 
-            for mode in ["all", "apps", "dev"] {
-                for query_empty in [true, false] {
-                    for n in [0usize, 3, 7] {
-                        let mut state = fit(true, n > 0, n > 0, true, 1, n, 17.0);
-                        state.mode = mode.to_string();
-                        state.query_empty = query_empty;
-                        let got = measure(&t, &state);
+        for mode in ["all", "apps", "dev"] {
+            for query_empty in [true, false] {
+                for n in [0usize, 3, 7] {
+                    let mut state = fit(true, n > 0, n > 0, true, 1, n, 17.0);
+                    state.mode = mode.to_string();
+                    state.query_empty = query_empty;
+                    let got = measure(&t, &state);
 
-                        // Build the reference: remove every widget that is
-                        // hidden in this state, from the defs and the boxes.
-                        let mut ref_theme = t.clone();
-                        for w in ref_theme.widgets.clone() {
-                            if let Some(raw) = w.visible_when()
-                                && let Some(c) = crate::core::widget_state::parse_condition(raw)
-                                && !c.eval(mode, query_empty, n == 0)
-                            {
-                                let wid = w.id().to_string();
-                                ref_theme.widgets.retain(|x| x.id() != wid.as_str());
-                                strip(&mut ref_theme, &wid);
-                            }
+                    // Build the reference: remove every widget that is
+                    // hidden in this state, from the defs and the boxes.
+                    let mut ref_theme = t.clone();
+                    for w in ref_theme.widgets.clone() {
+                        if let Some(raw) = w.visible_when()
+                            && let Some(c) = crate::core::widget_state::parse_condition(raw)
+                            && !c.eval(mode, query_empty, n == 0)
+                        {
+                            let wid = w.id().to_string();
+                            ref_theme.widgets.retain(|x| x.id() != wid.as_str());
+                            strip(&mut ref_theme, &wid);
                         }
-                        let want = measure(&ref_theme, &state);
-                        assert!(
-                            (got - want).abs() < 1e-3,
-                            "state (mode={mode}, query_empty={query_empty}, n={n}): \
-live measured {got}, removed-widget reference {want}"
-                        );
                     }
+                    let want = measure(&ref_theme, &state);
+                    assert!(
+                        (got - want).abs() < 1e-3,
+                        "state (mode={mode}, query_empty={query_empty}, n={n}): \
+live measured {got}, removed-widget reference {want}"
+                    );
                 }
             }
         }

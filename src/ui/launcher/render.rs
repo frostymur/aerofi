@@ -52,7 +52,8 @@ impl Render for Launcher {
             LauncherState::RofiMode { .. } => (self.rofi_fit_height(screen_h), 0.0),
             LauncherState::Search
             | LauncherState::ArgumentInput { .. }
-            | LauncherState::Confirming { .. } => {
+            | LauncherState::Confirming { .. }
+            | LauncherState::ActionMenu { .. } => {
                 // Argument chips wrap onto extra rows in narrow bars, so the
                 // bar — and the window that fits to it — may need to be
                 // taller than its nominal height.
@@ -74,7 +75,13 @@ impl Render for Launcher {
                     require_input,
                     ib_h,
                     columns,
-                    filtered_len: self.filtered.len(),
+                    filtered_len: match &self.state {
+                        // The action menu renders in the list slot, so the
+                        // window sizes to the menu's rows — the same
+                        // N-rows math, no new measurement path.
+                        LauncherState::ActionMenu { actions, .. } => actions.len(),
+                        _ => self.filtered.len(),
+                    },
                     element_font_size: self.element_font_val.1,
                     screen_h,
                     screen_w,
@@ -145,6 +152,7 @@ impl Render for Launcher {
                 LauncherState::Search
                     | LauncherState::ArgumentInput { .. }
                     | LauncherState::Confirming { .. }
+                    | LauncherState::ActionMenu { .. }
             );
             let anchor_height = if (auto_height || require_input) && is_search_state {
                 Some(t.window.height.resolve(screen_h) as f64)
@@ -238,6 +246,12 @@ impl Render for Launcher {
                             if let Some(options) = self.render_argument_options(cx) {
                                 inner_box = inner_box.child(options);
                             }
+                        }
+                        LauncherState::ActionMenu {
+                            actions, selected, ..
+                        } => {
+                            inner_box =
+                                inner_box.child(self.render_action_menu(actions, *selected));
                         }
                         _ => {}
                     },
@@ -578,7 +592,17 @@ impl Launcher {
             // placeholder/query text. Always visible: the active filter or
             // plugin name, "All" when no mode is active, so the label slot
             // never reads empty.
-            let badge_label = self.mode_name.clone().unwrap_or_else(|| "All".into());
+            let badge_label: String = match &self.state {
+                // The action menu shows where the actions are aimed at.
+                LauncherState::ActionMenu { target, .. } => {
+                    format!("Actions · {}", target.name())
+                }
+                _ => self
+                    .mode_name
+                    .clone()
+                    .map(|m| m.to_string())
+                    .unwrap_or_else(|| "All".into()),
+            };
             row = row.child(
                 div()
                     .flex_shrink_0()
@@ -1566,6 +1590,75 @@ impl Launcher {
         cell.into_any()
     }
 
+    /// Render the Cmd+K action menu in the list slot. Rows use the exact
+    /// `[element]` metrics of list rows (`list_height` counts them with
+    /// the same formula), with the list's row spacing between them.
+    fn render_action_menu(
+        &self,
+        actions: &[crate::core::item::ActionSpec],
+        selected: usize,
+    ) -> gpui::AnyElement {
+        let t = &self.theme;
+        let el = &t.element;
+        let pad_v = el.padding.first().copied().unwrap_or(8.0);
+        let pad_h = el.padding.get(1).copied().unwrap_or(12.0);
+        // Same row-height expression as `render_row` — the fit mirror
+        // (`core::fit::list_height`) counts menu rows with this value.
+        let text_h = self.element_font_val.1 * 1.2;
+        let row_h = pad_v * 2.0 + el.icon_size.max(text_h) + el.border_width * 2.0;
+        let sel_bg = rgba(Self::color(&el.selected.background));
+        let text_color = rgba(Self::color(&el.text_color));
+        let sel_text_color = rgba(Self::color(&el.selected.text_color));
+
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(t.listview.spacing))
+            .children(actions.iter().enumerate().map(|(i, a)| {
+                let is_sel = i == selected;
+                let name_color = if is_sel { sel_text_color } else { text_color };
+                let mut row = div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .w_full()
+                    .h(px(row_h))
+                    .px(px(pad_h))
+                    .rounded(px(el.corner_radius))
+                    .bg(if is_sel { sel_bg } else { rgba(0x00000000) });
+                if is_sel {
+                    row = row
+                        .border(px(el.border_width))
+                        .border_color(rgba(Self::color(&t.status_colors.accent)));
+                }
+                row = row
+                    .child(
+                        div()
+                            .flex_shrink_0()
+                            .w(px(el.icon_size))
+                            .flex()
+                            .justify_center()
+                            .font(self.element_font_val.0.clone())
+                            .text_size(px(self.element_font_val.1))
+                            .text_color(name_color)
+                            .child(a.icon.to_string()),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w(px(0.0))
+                            .line_clamp(1)
+                            .text_ellipsis()
+                            .overflow_hidden()
+                            .font(self.element_font_val.0.clone())
+                            .text_size(px(self.element_font_val.1))
+                            .text_color(name_color)
+                            .child(a.label.clone()),
+                    );
+                row.into_any()
+            }))
+            .into_any()
+    }
     /// Render the `LauncherState::Confirming` view when a dangerous action requires confirmation.
     pub(super) fn render_confirmation(
         &self,

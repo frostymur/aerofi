@@ -230,6 +230,7 @@ runs natively on macOS instead of through a Linux translation stack:
 | `↑` / `↓` (or `Ctrl+P` / `Ctrl+N`) | Launcher | Navigate result list |
 | `Enter` | Launcher | Launch item (activates a running app) |
 | `Shift+Enter` | Launcher | Open a new window of a running app (AppleScript, `open -n` fallback) |
+| `Cmd+K` | Launcher | Action menu for the highlighted row (Reveal in Finder, Copy Path, New Window, custom) |
 | `Cmd+R` | Launcher | Reload configuration and rescan sources |
 | `Cmd+.` | Launcher | Cycle runtime mode (`[modes]` + loaded plugins): All → each mode → each plugin → All |
 | `Escape` | Launcher | Close aerofi window / Clear search |

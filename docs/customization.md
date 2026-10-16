@@ -33,6 +33,7 @@ aerofi is configured via transparent, human-readable TOML files located in `~/.c
   - [Widget Types & Properties](#widget-types--properties)
   - [Composing a Custom Header and Footer](#composing-a-custom-header-and-footer)
   - [Widget State (`visible_when` / `selected_when`)](#widget-state-visible_when--selected_when)
+  - [Action Menus (Cmd+K, `[actions]`)](#action-menus-cmdk-actions)
 - [Performance Optimization](#performance-optimization)
 
 ---
@@ -146,6 +147,36 @@ the active filter or plugin session's name, or **All** when no mode
 is active (so the input bar's label slot is never empty). Unknown source names are warned about at startup and
 skipped; a mode that resolves to no sources shows an empty list; an
 unknown mode name (not in `[modes]`, not a plugin) warns and is ignored.
+### Action Menus (`Cmd+K`, `[actions]`)
+
+`Cmd+K` opens an action menu for the **highlighted row** — a transient
+list that replaces the result list until Escape (the query and
+selection underneath are untouched, so closing the menu restores them
+exactly). The input bar's badge shows `Actions · <target>` while it's
+open.
+
+Built-in actions: **Apps** — Reveal in Finder (`open -R`), Copy Path,
+New Window (the smart-launch path); **Scripts** — Reveal in Finder,
+Copy Path. Built-in and plugin rows get no menu. "Copy Path" confirms
+with a silent toast; "Reveal" and custom commands run detached so a
+slow shell or Finder never blocks the launcher.
+
+All three built-ins are on by default; `[actions]` trims or extends
+them per target kind, and `[[…custom]]` entries run arbitrary shell
+commands with `{path}` / `{name}` substituted:
+
+```toml
+[actions.apps]
+copy_path = false
+
+[[actions.apps.custom]]
+label = "Open in Terminal"
+command = "open -a Terminal {path}"
+
+[actions.scripts]
+reveal = false
+```
+
 ### Live Source Watching (`watch_sources`)
 
 With `[general] watch_sources = true` (default) the application, script,

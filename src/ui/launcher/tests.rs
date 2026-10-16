@@ -866,3 +866,152 @@ fn element_layout_supports_custom_widgets_in_row() {
         &["icon", "name", "spacer", "btn_run"]
     );
 }
+fn app_target(name: &str, path: &str) -> Target {
+    Target::App {
+        name: name.into(),
+        path: std::sync::Arc::from(PathBuf::from(path)),
+        icon_path: None,
+    }
+}
+
+fn cmd_key(k: &str) -> Keystroke {
+    keystroke(
+        k,
+        Modifiers {
+            platform: true,
+            ..Default::default()
+        },
+    )
+}
+
+#[test]
+fn cmd_k_opens_action_menu_for_app_row() {
+    let mut l = Launcher::new(
+        vec![
+            app_target("Finder", "/System/Library/CoreServices/Finder.app"),
+            item("Script"),
+        ],
+        ThemeConfig::default(),
+        AppConfig::default(),
+        History::test_new(PathBuf::new(), Vec::new()),
+    );
+    assert!(matches!(l.state, LauncherState::Search));
+    let action = l.handle_keystroke(&cmd_key("k"), None);
+    assert_eq!(action, LauncherAction::None);
+    let LauncherState::ActionMenu {
+        target,
+        actions,
+        selected,
+    } = &l.state
+    else {
+        panic!(
+            "expected ActionMenu, got {:?}",
+            std::mem::discriminant(&l.state)
+        );
+    };
+    assert_eq!(target.name(), "Finder");
+    assert_eq!(*selected, 0);
+    assert_eq!(actions.len(), 3);
+    assert_eq!(actions[0].label, "Reveal in Finder");
+}
+
+#[test]
+fn cmd_k_on_builtin_row_does_nothing() {
+    let mut l = Launcher::new(
+        vec![Target::reload_config(), item("Script")],
+        ThemeConfig::default(),
+        AppConfig::default(),
+        History::test_new(PathBuf::new(), Vec::new()),
+    );
+    l.handle_keystroke(&cmd_key("k"), None);
+    assert!(matches!(l.state, LauncherState::Search));
+}
+
+#[test]
+fn action_menu_navigates_and_escape_restores() {
+    let mut l = Launcher::new(
+        vec![
+            app_target("Finder", "/Applications/Finder.app"),
+            item("Script"),
+        ],
+        ThemeConfig::default(),
+        AppConfig::default(),
+        History::test_new(PathBuf::new(), Vec::new()),
+    );
+    l.handle_keystroke(&cmd_key("k"), None);
+    // j/k and arrows navigate the menu rows.
+    l.handle_keystroke(&key("j"), None);
+    l.handle_keystroke(&key("down"), None);
+    if let LauncherState::ActionMenu { selected, .. } = &l.state {
+        assert_eq!(*selected, 2);
+    } else {
+        panic!("expected ActionMenu");
+    }
+    l.handle_keystroke(&key("k"), None);
+    l.handle_keystroke(&key("up"), None);
+    if let LauncherState::ActionMenu { selected, .. } = &l.state {
+        assert_eq!(*selected, 0);
+    } else {
+        panic!("expected ActionMenu");
+    }
+    // Escape closes the menu and the previous state (query + selection)
+    // is untouched.
+    l.handle_keystroke(&key("escape"), None);
+    assert!(matches!(l.state, LauncherState::Search));
+    assert_eq!(l.query, "");
+    assert_eq!(l.selected, 0);
+}
+
+#[test]
+fn action_menu_enter_executes_and_hides() {
+    let mut l = Launcher::new(
+        vec![
+            app_target("Finder", "/Applications/Finder.app"),
+            item("Script"),
+        ],
+        ThemeConfig::default(),
+        AppConfig::default(),
+        History::test_new(PathBuf::new(), Vec::new()),
+    );
+    l.handle_keystroke(&cmd_key("k"), None);
+    // Copy Path is row 1.
+    l.handle_keystroke(&key("j"), None);
+    let action = l.handle_keystroke(&key("enter"), None);
+    match action {
+        LauncherAction::CopyWithToast { text, toast } => {
+            assert_eq!(text, "/Applications/Finder.app");
+            assert!(toast.contains("Finder"));
+        }
+        other => panic!("expected CopyWithToast, got {other:?}"),
+    }
+    assert!(matches!(l.state, LauncherState::Search));
+}
+
+#[test]
+fn action_menu_custom_action_templates() {
+    let mut cfg = AppConfig::default();
+    cfg.actions = Some(crate::core::config::ActionsConfig {
+        apps: Some(crate::core::config::ActionSetConfig {
+            reveal: false,
+            copy_path: false,
+            new_window: false,
+            custom: vec![crate::core::config::CustomActionConfig {
+                label: "Ping".into(),
+                command: "ping -c 1 {name}".into(),
+            }],
+        }),
+        scripts: None,
+    });
+    let mut l = Launcher::new(
+        vec![app_target("Finder", "/Applications/Finder.app")],
+        ThemeConfig::default(),
+        cfg,
+        History::test_new(PathBuf::new(), Vec::new()),
+    );
+    l.handle_keystroke(&cmd_key("k"), None);
+    let action = l.handle_keystroke(&key("enter"), None);
+    match action {
+        LauncherAction::RunShell(cmd) => assert_eq!(cmd, "ping -c 1 Finder"),
+        other => panic!("expected RunShell, got {other:?}"),
+    }
+}

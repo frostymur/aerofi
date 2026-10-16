@@ -30,6 +30,53 @@ impl Launcher {
             return self.handle_rofi_mode_keystroke(ks, cx);
         }
 
+        // Action menu (Cmd+K): owns the keyboard. Navigation, Enter,
+        // Escape — everything else is ignored (the list underneath is
+        // untouched, so Escape restores it exactly).
+        if matches!(&self.state, LauncherState::ActionMenu { .. }) {
+            let plain = !ks.modifiers.platform
+                && !ks.modifiers.control
+                && !ks.modifiers.alt
+                && !ks.modifiers.shift;
+            match (ks.key.as_str(), plain) {
+                ("up" | "k", true) => {
+                    if let LauncherState::ActionMenu {
+                        actions, selected, ..
+                    } = &mut self.state
+                    {
+                        let last = actions.len().saturating_sub(1);
+                        *selected = (*selected).wrapping_sub(1).min(last);
+                    }
+                }
+                ("down" | "j", true) => {
+                    if let LauncherState::ActionMenu {
+                        actions, selected, ..
+                    } = &mut self.state
+                    {
+                        let last = actions.len().saturating_sub(1);
+                        *selected = (*selected + 1).min(last);
+                    }
+                }
+                ("enter" | "return", _) => {
+                    let (target, spec) = match &self.state {
+                        LauncherState::ActionMenu {
+                            target,
+                            actions,
+                            selected,
+                        } => (target.clone(), actions.get(*selected).cloned()),
+                        _ => unreachable!(),
+                    };
+                    self.state = LauncherState::Search;
+                    return self.execute_target_action(&target, spec);
+                }
+                ("escape", _) => {
+                    self.state = LauncherState::Search;
+                }
+                _ => {}
+            }
+            return LauncherAction::None;
+        }
+
         // A configured key-combo shortcut (e.g. "cmd+r") runs its target
         // immediately; explicit config overrides the built-in bindings.
         // Only honoured in plain search mode — while an argument prompt or
@@ -114,6 +161,22 @@ impl Launcher {
                 }
                 // Cmd+. cycles the active source filter ([modes]):
                 // All -> each [modes] entry -> each plugin -> All.
+                // Cmd+K opens the action menu for the highlighted row
+                // (apps/scripts get built-in actions; see core::item).
+                ("k", true, false, false) => {
+                    let Some(item) = self.selected_item() else {
+                        return LauncherAction::None;
+                    };
+                    let actions = item.actions(&self.app_config);
+                    if !actions.is_empty() {
+                        self.state = LauncherState::ActionMenu {
+                            target: item.clone(),
+                            actions,
+                            selected: 0,
+                        };
+                    }
+                    return LauncherAction::None;
+                }
                 (".", true, false, false) => {
                     if let Some(cx) = cx {
                         // Reborrow so `cx` stays usable for notify.

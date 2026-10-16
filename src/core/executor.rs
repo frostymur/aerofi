@@ -209,6 +209,23 @@ pub fn open_app(path: &Path, name: &str, new_instance: bool, background: bool) {
         eprintln!("aerofi: failed to run {name}: {e}");
     }
 }
+
+/// Select `path` in its enclosing Finder window (`open -R`). Used by the
+/// action menu's "Reveal in Finder"; runs on a detached thread so a slow
+/// Finder can never hold the launcher's UI thread.
+pub fn reveal_in_finder(path: &Path) {
+    let p = path.to_path_buf();
+    std::thread::Builder::new()
+        .name("aerofi-reveal".to_string())
+        .stack_size(128 * 1024)
+        .spawn(move || {
+            if let Err(e) = Command::new("open").arg("-R").arg(&p).status() {
+                eprintln!("aerofi: failed to reveal {p:?}: {e}");
+            }
+        })
+        .ok();
+}
+
 /// AppleScript body that asks an app to open a new window in its *existing*
 /// process (no duplicate instance). Terminal is special-cased: its dictionary
 /// is unreliable for `make new window`, but `do script` (no arguments) always
