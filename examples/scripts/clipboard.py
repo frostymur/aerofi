@@ -436,6 +436,51 @@ def main() -> None:
         ensure_daemon(binary)
     last_capture = 0.0
     last_seen_img: str | None = None
+    last_items: list[tuple[str, str, object]] = []
+
+    def preview_frame(event: dict) -> None:
+        """Answer a selection event: one preview-only frame (no rows).
+
+        The row is resolved by id first (stable across re-emits that shift
+        indices), falling back to its index in the last emitted frame.
+        """
+        rid = event.get("id", "")
+        idx = int(event.get("index", "0") or 0)
+        item = next((it for it in last_items if it[0] == rid), None) if rid else None
+        if item is None and 0 <= idx < len(last_items):
+            item = last_items[idx]
+        if item is None:
+            # Nothing to preview (empty history / non-selectable header):
+            # an empty \0preview closes a stale pane.
+            emit_preview(["\0preview\x1f"])
+            return
+        _, kind, payload = item
+        if kind == "image":
+            emit_preview(["\0preview-image\x1f" + str(payload)])
+            return
+        content = str(payload)
+        if len(content) > 4000:
+            content = content[:4000] + "\n… (truncated)"
+        # Pick a fence longer than any backtick run in the content so the
+        # block cannot close early — the fences are part of the text.
+        fence = "```"
+        while fence in content:
+            fence += "`"
+        markdown = f"{fence}text\n{content}\n{fence}"
+        # The protocol is line-oriented: the whole markdown document must
+        # ride on one line — newlines escape as \n, backslashes as \\ (the
+        # launcher unescapes both; raw newlines would split the frame into
+        # stray lines and leave the pane empty).
+        escaped = markdown.replace("\\", "\\\\").replace("\n", "\\n")
+        emit_preview(["\0preview\x1f" + escaped])
+
+    def emit_preview(lines: list[str]) -> None:
+        out = ["\0prompt\x1fSearch clipboard…"]
+        out.extend(lines)
+        out.append("\0keep-rows")
+        out.append("\0flush")
+        sys.stdout.write("\n".join(out) + "\n")
+        sys.stdout.flush()
 
     def fetch() -> list[dict]:
         if binary:
@@ -462,27 +507,49 @@ def main() -> None:
         )[:IMG_LIST_CAP]
 
     def frame(message: str | None = None) -> None:
-        nonlocal last_capture, last_seen_img
+        nonlocal last_capture, last_seen_img, last_items
         now = time.time()
         if now - last_capture >= CAPTURE_INTERVAL:
             last_capture = now
             last_seen_img = capture_image(last_seen_img)
 
-        # One recency-ordered list: images and text interleaved, newest first.
-        combined: list[tuple[float, str]] = []
+        # One recency-ordered list: images and text interleaved, newest
+        # first. Each item keeps its row id (for id-resolved selection
+        # events) and its raw payload (for previews) alongside the
+        # rendered row, so neither needs a re-fetch.
+        combined: list[tuple[float, str, str, str, object]] = []
         for digest, entry in image_entries():
-            combined.append((entry.get("ts", 0), render_image_entry(digest, entry)))
+            combined.append(
+                (
+                    entry.get("ts", 0),
+                    render_image_entry(digest, entry),
+                    f"img:{digest[:8]}",
+                    "image",
+                    entry["path"],
+                )
+            )
         if entries:
             for entry in entries:
-                combined.append((entry.get("updated_at", 0), render_entry(entry)))
+                combined.append(
+                    (
+                        entry.get("updated_at", 0),
+                        render_entry(entry),
+                        entry["id"],
+                        "text",
+                        entry["content"],
+                    )
+                )
         elif binary and pbpaste().strip():
-            combined.append((time.time(), render_current()))
+            cur = pbpaste()
+            combined.append((time.time(), render_current(), "current", "text", cur))
 
         if combined:
-            combined.sort(key=lambda pair: pair[0], reverse=True)
-            emit([row for _, row in combined], message)
+            combined.sort(key=lambda item: item[0], reverse=True)
+            last_items = [(item[2], item[3], item[4]) for item in combined]
+            emit([row for _, row, _, _, _ in combined], message)
             return
         if binary:
+            last_items = []
             emit(
                 [f"Clipboard is empty\0nonselectable\x1ftrue\0icon\x1f{IC_CLIPBOARD}"],
                 "History is empty",
@@ -581,6 +648,10 @@ def main() -> None:
                 entries = fetch()
                 by_id = {e["id"]: e["content"] for e in entries}
                 frame("Entry removed")
+            continue
+
+        if kind == "selection":
+            preview_frame(event)
             continue
 
         # Any other event (context keys, unknown): keep the frame alive.

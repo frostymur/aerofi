@@ -67,6 +67,7 @@ A glamorous, fully functional clipboard history manager for aerofi powered by th
 - **Full-Text Fuzzy Search**: aerofi's high-speed fuzzy search engine matches across the entire un-truncated text of every entry using the `meta` attribute.
 - **Multi-Selection**: Press `Tab` to select multiple clipboard entries; hitting `Enter` copies all selected snippets combined to the clipboard.
 - **Interactive Deletion**: Press `Ctrl+D` (or secondary action) on any entry to immediately delete it from history.
+- **Cursor-Following Preview**: Answers aerofi's `selection` events with `\0preview` / `\0preview-image` + `\0keep-rows`, so a right-side pane live-previews the highlighted entry: text in a verbatim fenced code block, images aspect-fit. Needs `show_preview = true` in the theme's `[element]` table for the two-column layout.
 - **Zero-Config Daemon**: Automatically checks and starts the background `clipy watch` daemon if it is not already running.
 
 ---
