@@ -110,8 +110,8 @@ pub fn notify_visibility(visible: bool) {
 /// apps (standard bundle dirs + `[apps] extra_dirs`/`extra_apps`),
 /// scripts (`[scripts] dirs`), plugins (the plugin directories). A source
 /// disabled in `[sources]` yields nothing. Missing paths are still
-/// returned: `set_watched` skips them with a warning, matching the
-/// scanners' behavior.
+/// returned: `set_watched` skips them silently when they don't exist
+/// (e.g. the secondary plugin dir on machines that only use one).
 pub fn watch_dirs_for(kind: SourceKind, config: &crate::core::config::AppConfig) -> Vec<PathBuf> {
     match kind {
         SourceKind::Apps => crate::core::scanner::app_watch_dirs(config),
@@ -327,6 +327,12 @@ fn set_watched(watcher: &mut RecommendedWatcher, dirs: &[(PathBuf, SourceKind)])
         .filter(|(dir, kind)| !current.contains(&(dir.clone(), *kind)))
         .collect();
     for (dir, kind) in to_add {
+        // Missing dirs are normal for the secondary plugin directory
+        // (only one of the two may exist on a machine) — skip them
+        // quietly; a present-but-unwatchable dir is a real problem.
+        if !dir.exists() {
+            continue;
+        }
         match watcher.watch(dir, RecursiveMode::NonRecursive) {
             Ok(()) => guard.push((dir.clone(), *kind)),
             Err(e) => {
