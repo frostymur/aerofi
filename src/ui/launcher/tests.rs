@@ -916,6 +916,24 @@ fn cmd_k_opens_action_menu_for_app_row() {
 }
 
 #[test]
+fn cmd_k_on_script_row_includes_new_window() {
+    let mut l = Launcher::new(
+        vec![item("deploy.sh")],
+        ThemeConfig::default(),
+        AppConfig::default(),
+        History::test_new(PathBuf::new(), Vec::new()),
+    );
+    l.handle_keystroke(&cmd_key("k"), None);
+    let LauncherState::ActionMenu { actions, .. } = &l.state else {
+        panic!("expected ActionMenu");
+    };
+    // Scripts get the full built-in set: New Window opens them in
+    // Terminal (via execute_item's script path), so it's safe to offer.
+    assert_eq!(actions.len(), 3);
+    assert_eq!(actions[2].label, "New Window");
+}
+
+#[test]
 fn cmd_k_on_builtin_row_does_nothing() {
     let mut l = Launcher::new(
         vec![Target::reload_config(), item("Script")],

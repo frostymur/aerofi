@@ -188,6 +188,8 @@ impl Launcher {
         let image_dims = super::helpers::collect_image_dims(&theme);
         let base_count = all.len();
         Self::validate_modes(&app_config);
+        let plugin_manager = crate::core::plugin_manager::PluginManager::load_all();
+        Self::validate_cycle_plugins(&app_config, &plugin_manager);
         let font_fallbacks = super::helpers::font_fallback_families(&theme.font.fallback);
         let (root_font, inputbar_font, element_font_val, mono_font) =
             Self::build_fonts(&theme, &font_fallbacks);
@@ -217,7 +219,7 @@ impl Launcher {
             last_list_viewport_h: 0.0,
             button_hotkeys,
             rofi_session: None,
-            plugin_manager: crate::core::plugin_manager::PluginManager::load_all(),
+            plugin_manager,
             plugin_search: None,
             plugin_gen: 0,
             icon_task: None,
@@ -327,7 +329,8 @@ impl Launcher {
                 if SourceMask::from_name(source).is_none() {
                     eprintln!(
                         "aerofi: warning: unknown source {source:?} in [modes].{name} \
-(available: apps, scripts, builtins, plugins, all)"
+(available: apps, scripts, builtins, all — `plugins` is the reserved \
+cycle-gate key, not a source)"
                     );
                 }
             }
@@ -340,6 +343,22 @@ the mode will show an empty list"
         }
     }
 
+    /// Warn when the `[modes] plugins` gate names a plugin that did not
+    /// load — otherwise a typo silently removes the stop from the cycle.
+    fn validate_cycle_plugins(config: &AppConfig, pm: &crate::core::plugin_manager::PluginManager) {
+        let Some(names) = &config.cycle_plugins else {
+            return;
+        };
+        for name in names {
+            if !pm.plugins.iter().any(|p| p.name == *name) {
+                eprintln!(
+                    "aerofi: warning: [modes] plugins lists {name:?} but no such \
+plugin loaded — it will never appear in the Cmd+. cycle"
+                );
+            }
+        }
+    }
+
     /// Cycle the active source filter: All -> each `[modes]` entry
     /// (alphabetical, matching the config's deterministic order) -> each
     /// loaded plugin (alphabetical) -> All. A plugin mode enters that
@@ -347,34 +366,29 @@ the mode will show an empty list"
     /// Switching a mode starts from an empty query, like entering a new
     /// rofi mode.
     pub(super) fn cycle_mode(&mut self, cx: Option<&mut Context<Self>>) {
-        let config_modes: Vec<gpui::SharedString> = self
-            .app_config
-            .modes
-            .keys()
-            .map(|k| gpui::SharedString::from(k.clone()))
-            .collect();
-        let plugin_modes: Vec<gpui::SharedString> = self
+        // One flat sequence: [modes] filters (BTreeMap = alphabetical)
+        // followed by the loaded plugins — the order and the mode→plugin
+        // handoff are computed by the pure, unit-tested helper.
+        let config_modes: Vec<String> = self.app_config.modes.keys().cloned().collect();
+        // The `[modes] plugins` gate restricts which loaded plugins
+        // appear as cycle stops (absent/"all" = every loaded plugin).
+        let plugin_modes: Vec<String> = self
             .plugin_manager
             .plugins
             .iter()
-            .map(|p| p.name.clone().into())
+            .map(|p| p.name.clone())
+            .filter(|name| {
+                self.app_config
+                    .cycle_plugins
+                    .as_ref()
+                    .is_none_or(|allowed| allowed.iter().any(|a| a == name))
+            })
             .collect();
-        let next = match self.mode_name.as_deref() {
-            None => config_modes
-                .first()
-                .cloned()
-                .or_else(|| plugin_modes.first().cloned()),
-            Some(current) => config_modes
-                .iter()
-                .position(|n| n == current)
-                .and_then(|p| config_modes.get(p + 1).cloned())
-                .or_else(|| {
-                    plugin_modes
-                        .iter()
-                        .position(|n| n == current)
-                        .and_then(|p| plugin_modes.get(p + 1).cloned())
-                }),
-        };
+        let next = crate::core::config::next_mode_cycle_entry(
+            &config_modes,
+            &plugin_modes,
+            self.mode_name.as_deref(),
+        );
         match next {
             Some(name) => self.activate_mode(&name, cx),
             None => self.clear_mode(),
@@ -741,12 +755,8 @@ no plugin by that name)"
                     toast: format!("Copied path · {}", target.name()),
                 }
             }
-            // The same smart-launch path Shift+Enter uses — apps only
-            // (script menus never offer this row).
-            crate::core::item::ActionKind::NewWindow => match target {
-                Target::App { .. } => self.execute_item(target, true),
-                _ => LauncherAction::None,
-            },
+            // The same smart-launch path Shift+Enter uses.
+            crate::core::item::ActionKind::NewWindow => self.execute_item(target, true),
             crate::core::item::ActionKind::Custom(cmd) => LauncherAction::RunShell(cmd),
         }
     }

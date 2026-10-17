@@ -59,6 +59,10 @@ pub struct SearchFit {
     pub filtered_len: usize,
     /// Element font size (`element_font_val.1`), for text-line metrics.
     pub element_font_size: f32,
+    /// Base theme font size (`t.font.size`) — a row's second line (the
+    /// `show_path` path, the inline-output subtitle) renders at
+    /// `base − 2` in the renderer, so the mirror needs it for row height.
+    pub base_font_size: f32,
     /// Screen height the window `Dimension` resolves against.
     pub screen_h: f32,
     /// Screen width the window `Dimension` resolves against (needed to
@@ -141,6 +145,14 @@ pub fn list_height(t: &ThemeConfig, state: &SearchFit) -> f32 {
     // Same text-line metrics as `render_row` / `render_grid_cell`.
     let list_text_h = state.element_font_size * 1.2;
     let grid_text_h = (state.element_font_size - 1.5).max(11.0) * 1.2;
+    // The `show_path` second line under the row name (one formula for
+    // every row — builtins render a blank line, so heights stay uniform):
+    // same size the renderer's path/subtitle divs use (`base − 2`).
+    let path_line_h = if el.show_path {
+        (state.base_font_size - 2.0) * 1.2
+    } else {
+        0.0
+    };
 
     if state.columns > 1 {
         let rows = state.filtered_len.div_ceil(state.columns);
@@ -148,7 +160,10 @@ pub fn list_height(t: &ThemeConfig, state: &SearchFit) -> f32 {
             el_pad_v * 2.0 + el.icon_size + el.icon_gap + grid_text_h + el.border_width * 2.0;
         rows as f32 * cell_h + (rows.saturating_sub(1)) as f32 * spacing
     } else {
-        let row_h = el_pad_v * 2.0 + el.icon_size.max(list_text_h) + el.border_width * 2.0;
+        // Two-line rows (show_path): the name+path stack replaces the
+        // single text line; the icon still centers against the whole row.
+        let text_block_h = list_text_h + path_line_h;
+        let row_h = el_pad_v * 2.0 + el.icon_size.max(text_block_h) + el.border_width * 2.0;
         state.filtered_len as f32 * row_h + (state.filtered_len.saturating_sub(1)) as f32 * spacing
     }
 }
@@ -602,6 +617,7 @@ mod tests {
             columns,
             filtered_len: n,
             element_font_size: font,
+            base_font_size: 15.0,
             screen_h: 1000.0,
             screen_w: 1400.0,
             mode: "all".to_string(),
@@ -1276,6 +1292,7 @@ live measured {got}, removed-widget reference {want}"
             query_empty: true,
             filtered_len,
             element_font_size: t.font.size,
+            base_font_size: t.font.size,
             screen_h: 1000.0,
         }
     }
@@ -1406,6 +1423,7 @@ live measured {got}, removed-widget reference {want}"
             columns: t.listview.columns,
             filtered_len: n,
             element_font_size: t.font.size,
+            base_font_size: t.font.size,
             screen_h: 1000.0,
             screen_w: 1400.0,
             mode: "all".to_string(),
@@ -1563,5 +1581,58 @@ live measured {got}, removed-widget reference {want}"
                 );
             }
         }
+    }
+
+    #[test]
+    fn show_path_adds_one_second_line_per_row() {
+        // Two-sides contract: with show_path on, every row gains exactly
+        // one second line of `(base_font − 2) × 1.2` — apps, scripts and
+        // the blank line builtins render alike (uniform rows). The
+        // renderer's row_h in `render_row` must match.
+        let mut t = fit_theme();
+        // fit_theme: padding [6,10] (v=6), icon 24, spacing 6, no border;
+        // element font 15 → text_h 18; base font 15 → path line 13×1.2=15.6.
+        // Row: 12 + max(24, 18) + 0 = 36 (off)
+        //      12 + max(24, 18 + 15.6) + 0 = 45.6 (on)
+        t.element.show_path = true;
+
+        let off_theme = ThemeConfig {
+            element: {
+                let mut el = t.element.clone();
+                el.show_path = false;
+                el
+            },
+            ..t.clone()
+        };
+        // Row off: 12 + max(24, 18) = 36 → list 3×36 + 2×6 = 120 →
+        // window 40+8 (ib) + 12 (gap) + 120 + 20 (pad) = 200.
+        // Row on:  text block = 18 + 15.6 (path line) = 33.6 > icon 24,
+        //          so 12 + 33.6 = 45.6 → list 3×45.6 + 12 = 148.8 →
+        //          window 228.8.
+        // (The row delta is 9.6, not 15.6: max() flips from icon- to
+        // text-dominated — the exact point the two sides must agree on.)
+        let off = measure(&off_theme, &fit(true, true, true, false, 1, 3, 15.0));
+        let on = measure(&t, &fit(true, true, true, false, 1, 3, 15.0));
+        assert!((off - 200.0).abs() < 1e-3, "off={off}");
+        assert!((on - 228.8).abs() < 1e-3, "on={on}");
+
+        // Grid mode is untouched: the path line is a list-row feature and
+        // grid cells keep their icon+label formula.
+        let off_grid = measure(
+            &ThemeConfig {
+                element: {
+                    let mut el = t.element.clone();
+                    el.show_path = false;
+                    el
+                },
+                ..t.clone()
+            },
+            &fit(true, true, true, false, 4, 4, 15.0),
+        );
+        let on_grid = measure(&t, &fit(true, true, true, false, 4, 4, 15.0));
+        assert!(
+            (on_grid - off_grid).abs() < 1e-3,
+            "grid rows must not change with show_path"
+        );
     }
 }

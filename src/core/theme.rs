@@ -756,6 +756,11 @@ pub struct ElementConfig {
     pub text_color: String,
     pub description_color: Option<String>,
     pub show_icons: bool,
+    /// Show the target's full path on a second line under the name
+    /// (apps: bundle path, scripts: file path; builtins/plugins have none
+    /// and render a blank line so rows stay uniform). Off by default.
+    #[serde(default)]
+    pub show_path: bool,
     pub icon_size: f32,
     /// Gap between the icon and the name inside a grid cell (points).
     pub icon_gap: f32,
@@ -778,6 +783,7 @@ impl Default for ElementConfig {
             text_color: "#ffffff".to_string(),
             description_color: Some("#888888".to_string()),
             show_icons: true,
+            show_path: false,
             icon_size: 24.0,
             icon_gap: 6.0,
             border_width: 0.0,

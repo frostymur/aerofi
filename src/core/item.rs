@@ -319,16 +319,6 @@ impl Target {
                 .cloned()
                 .unwrap_or_default(),
         };
-        // `new_window` is app-only: script menus never offer a new
-        // window regardless of the config value.
-        let set = if matches!(self, Self::Script { .. }) {
-            ActionSetConfig {
-                new_window: false,
-                ..set
-            }
-        } else {
-            set
-        };
         let mut out = Vec::new();
         if set.reveal {
             out.push(ActionSpec {
@@ -390,6 +380,15 @@ impl Target {
             Self::App { path, .. } | Self::Script { path, .. } => path.to_str().unwrap_or(""),
             Self::Builtin { name, .. } => name.as_str(),
             Self::PluginItem { plugin_id, .. } => plugin_id.as_ref(),
+        }
+    }
+
+    /// The on-disk path of this target (apps: the .app bundle, scripts:
+    /// the script file). Built-in and plugin rows have none.
+    pub fn path(&self) -> Option<&Path> {
+        match self {
+            Self::App { path, .. } | Self::Script { path, .. } => Some(path),
+            Self::Builtin { .. } | Self::PluginItem { .. } => None,
         }
     }
 
@@ -1103,8 +1102,9 @@ echo "Theme switcher..."
         };
         let builtins = Target::reload_config();
 
-        // No [actions] config: app gets all three built-ins, script gets
-        // two (no New Window), builtins get nothing.
+        // No [actions] config: app and script both get the full built-in
+        // set (New Window is an action for both — apps: smart launch,
+        // scripts: open in Terminal); builtins get nothing.
         let cfg = AppConfig::default();
         let app_actions = app.actions(&cfg);
         assert_eq!(app_actions.len(), 3);
@@ -1112,8 +1112,9 @@ echo "Theme switcher..."
         assert_eq!(app_actions[1].label, "Copy Path");
         assert_eq!(app_actions[2].kind, ActionKind::NewWindow);
         let script_actions = script.actions(&cfg);
-        assert_eq!(script_actions.len(), 2);
+        assert_eq!(script_actions.len(), 3);
         assert!(builtins.actions(&cfg).is_empty());
+        assert_eq!(script_actions[2].kind, ActionKind::NewWindow);
 
         // Config: disable copy_path, add a custom with templates.
         let mut cfg = AppConfig::default();
@@ -1137,8 +1138,9 @@ echo "Theme switcher..."
             app_actions[2].kind,
             ActionKind::Custom("open -a Terminal /Applications/Safari.app".into())
         );
-        // The scripts section is unaffected by the apps section.
-        assert_eq!(script.actions(&cfg).len(), 2);
+        // The scripts section is unaffected by the apps section — the
+        // script keeps its full default set.
+        assert_eq!(script.actions(&cfg).len(), 3);
 
         // Template substitution covers {name} too.
         let mut cfg = AppConfig::default();
@@ -1154,6 +1156,7 @@ echo "Theme switcher..."
                 }],
             }),
         });
+        // The scripts section is explicit here, so New Window stays off.
         let script_actions = script.actions(&cfg);
         assert_eq!(script_actions.len(), 1);
         assert_eq!(

@@ -297,6 +297,10 @@ description_color = "$subtle"
 # Type: Boolean, Float (f32)
 show_icons = true
 icon_size = 22.0
+# Show the target's full path on a second line under the name (apps:
+# bundle path, scripts: file path; builtins render a blank line).
+# Off by default — rows are one line.
+show_path = false
 
 # Gap between the icon and the name inside a grid cell (points).
 # Type: Float (f32)

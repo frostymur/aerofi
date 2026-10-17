@@ -83,6 +83,7 @@ impl Render for Launcher {
                         _ => self.filtered.len(),
                     },
                     element_font_size: self.element_font_val.1,
+                    base_font_size: t.font.size,
                     screen_h,
                     screen_w,
                     mode: self
@@ -248,10 +249,12 @@ impl Render for Launcher {
                             }
                         }
                         LauncherState::ActionMenu {
-                            actions, selected, ..
+                            target,
+                            actions,
+                            selected,
                         } => {
-                            inner_box =
-                                inner_box.child(self.render_action_menu(actions, *selected));
+                            inner_box = inner_box
+                                .child(self.render_action_menu(target, actions, *selected));
                         }
                         _ => {}
                     },
@@ -1595,6 +1598,7 @@ impl Launcher {
     /// the same formula), with the list's row spacing between them.
     fn render_action_menu(
         &self,
+        target: &Target,
         actions: &[crate::core::item::ActionSpec],
         selected: usize,
     ) -> gpui::AnyElement {
@@ -1603,9 +1607,16 @@ impl Launcher {
         let pad_v = el.padding.first().copied().unwrap_or(8.0);
         let pad_h = el.padding.get(1).copied().unwrap_or(12.0);
         // Same row-height expression as `render_row` — the fit mirror
-        // (`core::fit::list_height`) counts menu rows with this value.
+        // (`core::fit::list_height`) counts menu rows with this value,
+        // `show_path` included (menu rows are app/script, so they carry
+        // a path second line exactly like list rows).
         let text_h = self.element_font_val.1 * 1.2;
-        let row_h = pad_v * 2.0 + el.icon_size.max(text_h) + el.border_width * 2.0;
+        let path_h = if el.show_path {
+            (t.font.size - 2.0) * 1.2
+        } else {
+            0.0
+        };
+        let row_h = pad_v * 2.0 + el.icon_size.max(text_h + path_h) + el.border_width * 2.0;
         let sel_bg = rgba(Self::color(&el.selected.background));
         let text_color = rgba(Self::color(&el.text_color));
         let sel_text_color = rgba(Self::color(&el.selected.text_color));
@@ -1643,8 +1654,8 @@ impl Launcher {
                             .text_color(name_color)
                             .child(a.icon.to_string()),
                     )
-                    .child(
-                        div()
+                    .child({
+                        let label = div()
                             .flex_1()
                             .min_w(px(0.0))
                             .line_clamp(1)
@@ -1653,8 +1664,38 @@ impl Launcher {
                             .font(self.element_font_val.0.clone())
                             .text_size(px(self.element_font_val.1))
                             .text_color(name_color)
-                            .child(a.label.clone()),
-                    );
+                            .child(a.label.clone());
+                        // `show_path`: the target's full path under the
+                        // action label — mirrors `render_row_name`.
+                        if el.show_path
+                            && let Some(p) = target.path()
+                        {
+                            let p = p.to_string_lossy().into_owned();
+                            div()
+                                .flex()
+                                .flex_col()
+                                .min_w(px(0.0))
+                                .flex_1()
+                                .child(label)
+                                .child(
+                                    div()
+                                        .w_full()
+                                        .line_clamp(1)
+                                        .text_ellipsis()
+                                        .overflow_hidden()
+                                        .text_size(px(t.font.size - 2.0))
+                                        .text_color(rgba(Self::color(
+                                            el.description_color
+                                                .as_deref()
+                                                .unwrap_or(&el.text_color),
+                                        )))
+                                        .child(p),
+                                )
+                                .into_any_element()
+                        } else {
+                            label.into_any_element()
+                        }
+                    });
                 row.into_any()
             }))
             .into_any()
@@ -2458,7 +2499,17 @@ impl Launcher {
         // below it and the icon column would drift. Clamping the name to one
         // line plus a fixed height keeps all rows pixel-identical.
         let text_h = self.element_font_val.1 * 1.2;
-        let row_h = pad_v * 2.0 + el.icon_size.max(text_h) + el.border_width * 2.0;
+        // `show_path` adds a second line (the target's full path) under
+        // the name — one formula for every row, so builtins keep the
+        // uniform height with a blank second line. The mirror in
+        // `core::fit::list_height` must stay in step (two-sides rule).
+        let path_h = if el.show_path {
+            (t.font.size - 2.0) * 1.2
+        } else {
+            0.0
+        };
+        let text_block_h = text_h + path_h;
+        let row_h = pad_v * 2.0 + el.icon_size.max(text_block_h) + el.border_width * 2.0;
 
         let mut row = div()
             .flex()
@@ -2740,6 +2791,7 @@ impl Launcher {
         is_selected: bool,
     ) -> gpui::AnyElement {
         let t = &self.theme;
+        let el = &t.element;
         let subtitle_opt = item.inline_output().or_else(|| item.package_name());
 
         let name = item.name();
@@ -2758,7 +2810,7 @@ impl Launcher {
         // when it truly overflows). It must not `flex_1()`: layouts like
         // ["icon", "name", "spacer"] would otherwise split the leftover width
         // 50/50 between name and spacer, truncating names mid-row.
-        if let Some(subtitle) = subtitle_opt {
+        let name_line: gpui::AnyElement = if let Some(subtitle) = subtitle_opt {
             div()
                 .min_w(px(0.0))
                 .flex()
@@ -2795,6 +2847,32 @@ impl Launcher {
                 .text_color(name_color)
                 .child(name_el)
                 .into_any()
+        };
+        // `show_path`: the full path on a second line under the name.
+        // Only targets that have a path render it (apps/scripts); the
+        // row's fixed height keeps builtins/plugin rows uniform.
+        if el.show_path
+            && let Some(path) = item.path()
+        {
+            let path = path.to_string_lossy().into_owned();
+            div()
+                .min_w(px(0.0))
+                .flex()
+                .flex_col()
+                .child(name_line)
+                .child(
+                    div()
+                        .w_full()
+                        .line_clamp(1)
+                        .text_ellipsis()
+                        .overflow_hidden()
+                        .text_size(px(t.font.size - 2.0))
+                        .text_color(desc_color)
+                        .child(path),
+                )
+                .into_any()
+        } else {
+            name_line
         }
     }
 

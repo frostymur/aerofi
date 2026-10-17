@@ -299,6 +299,12 @@ pub struct AppConfig {
     /// `[actions.scripts]`.
     #[serde(default)]
     pub actions: Option<ActionsConfig>,
+    /// Plugins allowed as `Cmd+.` cycle stops, lifted from the reserved
+    /// `[modes] plugins` key by [`AppConfig::sanitize`]. `None` = every
+    /// loaded plugin cycles (key absent or `= "all"`); `Some(names)` =
+    /// only the named plugins (empty list = no plugin stops).
+    #[serde(skip)]
+    pub cycle_plugins: Option<Vec<String>>,
 }
 
 /// Built-in action toggles plus custom actions for one target kind.
@@ -361,6 +367,47 @@ fn default_true() -> bool {
     true
 }
 
+/// Parse the reserved `[modes] plugins` value: comma-separated plugin
+/// names. `all` (case-insensitive, even alongside names) means "every
+/// loaded plugin" (`None`); an empty value means "no plugin stops"
+/// (`Some([])`).
+pub fn parse_cycle_plugins(raw: &str) -> Option<Vec<String>> {
+    let names: Vec<String> = raw
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .collect();
+    if names.iter().any(|n| n.eq_ignore_ascii_case("all")) {
+        None
+    } else {
+        Some(names)
+    }
+}
+
+/// The next entry of the `Cmd+.` mode cycle: the `[modes]` keys in the
+/// order given (BTreeMap = alphabetical today) followed by the loaded
+/// plugin names. `current = None` starts the cycle at the first entry;
+/// `None` as the result means "wrap back to All". The lookup happens in
+/// the *concatenated* list — a config mode and a plugin mode are one
+/// sequence, so the last config mode hands off to the first plugin.
+pub fn next_mode_cycle_entry(
+    config_modes: &[String],
+    plugin_modes: &[String],
+    current: Option<&str>,
+) -> Option<String> {
+    let all: Vec<&String> = config_modes.iter().chain(plugin_modes.iter()).collect();
+    match current {
+        None => all.first().cloned().cloned(),
+        Some(c) => all
+            .iter()
+            .position(|n| n.as_str() == c)
+            .and_then(|p| all.get(p + 1))
+            .cloned()
+            .cloned(),
+    }
+}
+
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
@@ -374,6 +421,7 @@ impl Default for AppConfig {
             pinned: Vec::new(),
             modes: std::collections::BTreeMap::new(),
             actions: None,
+            cycle_plugins: None,
         }
     }
 }
@@ -492,7 +540,18 @@ impl AppConfig {
             }
         }
 
-        config
+        config.sanitize()
+    }
+
+    /// Post-parse normalization: lifts the reserved `[modes] plugins`
+    /// key out of the modes map. It must happen before the launcher
+    /// validates modes — as a "mode" it would be a dead filter with a
+    /// bogus warning, because `plugins` is not a source name.
+    pub fn sanitize(mut self) -> Self {
+        if let Some(raw) = self.modes.remove("plugins") {
+            self.cycle_plugins = parse_cycle_plugins(&raw);
+        }
+        self
     }
 }
 
@@ -686,5 +745,99 @@ mod tests {
         // No [actions] section at all: None (the code defaults kick in).
         let c: AppConfig = toml::from_str(r#"theme = "default""#).unwrap();
         assert!(c.actions.is_none());
+    }
+
+    #[test]
+    fn mode_cycle_walks_config_modes_then_plugins() {
+        use crate::core::config::next_mode_cycle_entry;
+        let modes: Vec<String> = ["apps", "builtins", "dev", "scripts"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let plugins: Vec<String> = ["file-search", "web-search"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        // The regression this helper pins: the last *config* mode hands
+        // off to the first plugin instead of wrapping to All.
+        assert_eq!(
+            next_mode_cycle_entry(&modes, &plugins, None).as_deref(),
+            Some("apps")
+        );
+        assert_eq!(
+            next_mode_cycle_entry(&modes, &plugins, Some("apps")).as_deref(),
+            Some("builtins")
+        );
+        assert_eq!(
+            next_mode_cycle_entry(&modes, &plugins, Some("dev")).as_deref(),
+            Some("scripts")
+        );
+        assert_eq!(
+            next_mode_cycle_entry(&modes, &plugins, Some("scripts")).as_deref(),
+            Some("file-search")
+        );
+        assert_eq!(
+            next_mode_cycle_entry(&modes, &plugins, Some("file-search")).as_deref(),
+            Some("web-search")
+        );
+        assert_eq!(
+            next_mode_cycle_entry(&modes, &plugins, Some("web-search")),
+            None
+        );
+        // No plugins: last mode wraps to All.
+        assert_eq!(next_mode_cycle_entry(&modes, &[], Some("scripts")), None);
+        // No config modes: plugins alone.
+        let none: Vec<String> = Vec::new();
+        assert_eq!(
+            next_mode_cycle_entry(&none, &plugins, None).as_deref(),
+            Some("file-search")
+        );
+        assert_eq!(
+            next_mode_cycle_entry(&none, &plugins, Some("file-search")).as_deref(),
+            Some("web-search")
+        );
+    }
+
+    #[test]
+    fn modes_plugins_key_is_lifted_into_cycle_gate() {
+        // The reserved `[modes] plugins` key selects which loaded
+        // plugins cycle; it must leave the modes map entirely (it is
+        // not a mode and must not be validated as one).
+        let toml_str = "\
+theme = \"default\"\n\
+[modes]\n\
+apps = \"apps\"\n\
+plugins = \"file-search\"\n";
+        let mut c: AppConfig = toml::from_str(toml_str).unwrap();
+        c = c.sanitize();
+        assert!(!c.modes.contains_key("plugins"));
+        assert_eq!(c.modes.len(), 1);
+        assert_eq!(c.cycle_plugins, Some(vec!["file-search".to_string()]));
+
+        // "all" (any case) means every loaded plugin cycles -> None.
+        let mut c: AppConfig =
+            toml::from_str("theme = \"default\"\n[modes]\nplugins = \"All\"\n").unwrap();
+        c = c.sanitize();
+        assert_eq!(c.cycle_plugins, None);
+
+        // Empty value = no plugin stops (Some([]) — distinct from None).
+        let mut c: AppConfig =
+            toml::from_str("theme = \"default\"\n[modes]\nplugins = \"\"\n").unwrap();
+        c = c.sanitize();
+        assert_eq!(c.cycle_plugins, Some(Vec::new()));
+
+        // No key at all -> None (every loaded plugin cycles).
+        let c: AppConfig = toml::from_str("theme = \"default\"").unwrap();
+        assert_eq!(c.sanitize().cycle_plugins, None);
+
+        // Multiple names keep file order.
+        let mut c: AppConfig =
+            toml::from_str("theme = \"default\"\n[modes]\nplugins = \"web-search, file-search\"")
+                .unwrap();
+        c = c.sanitize();
+        assert_eq!(
+            c.cycle_plugins,
+            Some(vec!["web-search".to_string(), "file-search".to_string()])
+        );
     }
 }

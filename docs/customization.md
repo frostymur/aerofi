@@ -133,14 +133,23 @@ query exits the session.
 [modes]
 scripts = "scripts,builtins"
 dev     = "apps,scripts"
+plugins = "file-search"   # reserved: which loaded plugins join the Cmd+. cycle
 ```
 
 Switching:
 
-- **Cmd+.** cycles `All → each mode (alphabetical) → each plugin (alphabetical) → All`
+- **Cmd+.** cycles `All → each mode (alphabetical) → each gated plugin → All`
 - **Theme buttons** with `action = "mode:<name>"` (a button can carry its
   own `hotkey`), e.g. a sidebar of mode tabs. `mode:all` switches back to
   every source (a mode you named `all`, in any case, wins over the reset — its key becomes the badge label).
+
+**The reserved `plugins` key** controls which loaded plugins are *cycle
+stops*: `plugins = "file-search"` (comma-separated names) limits the
+cycle to those plugins, `plugins = "all"` (or omitting the key) keeps
+every loaded plugin in the cycle, and `plugins = ""` removes all plugin
+stops. The gate affects only the Cmd+. cycle — a gated-out plugin is
+still reachable by its typed prefix or a `mode:<name>` button. Names
+that match no loaded plugin warn at startup.
 
 The current mode is always shown as a small badge in the input bar:
 the active filter or plugin session's name, or **All** when no mode
@@ -155,11 +164,12 @@ selection underneath are untouched, so closing the menu restores them
 exactly). The input bar's badge shows `Actions · <target>` while it's
 open.
 
-Built-in actions: **Apps** — Reveal in Finder (`open -R`), Copy Path,
-New Window (the smart-launch path); **Scripts** — Reveal in Finder,
-Copy Path. Built-in and plugin rows get no menu. "Copy Path" confirms
-with a silent toast; "Reveal" and custom commands run detached so a
-slow shell or Finder never blocks the launcher.
+Built-in actions (all on by default for both target kinds): **Reveal
+in Finder** (`open -R`), **Copy Path** (clipboard + toast), and
+**New Window** — apps: the smart-launch path; scripts: open the script
+in Terminal. Built-in and plugin rows get no menu. "Reveal" and custom
+commands run detached so a slow shell or Finder never blocks the
+launcher.
 
 All three built-ins are on by default; `[actions]` trims or extends
 them per target kind, and `[[…custom]]` entries run arbitrary shell
@@ -564,6 +574,7 @@ text_color = "$text"
 description_color = "$subtle"
 show_icons = true
 icon_size = 22.0
+show_path = false     # full path on a second line under the name
 icon_gap = 6.0        # gap between the icon and name in a grid cell
 border_width = 0.0    # item border width (default: borderless tile)
 icon_radius = 4.0     # corner radius applied to the item's icon
@@ -633,6 +644,15 @@ urgent = "#f7768e"
 ```
 
 ---
+
+**`[element] show_path`** (default `false`): renders the target's full
+path on a second line under the name — `/Applications/…` for apps, the
+file path for scripts; built-in and plugin rows render a blank line so
+all rows keep the uniform height. One formula for every row (and for
+the Cmd+K action menu, which shows the path under each action so you
+can verify the target), so the `auto_height` window sizes to the
+two-line rows. The path is the full on-disk path, left-aligned with a
+trailing ellipsis when it overflows.
 
 ## Custom Widgets System
 

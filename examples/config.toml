@@ -105,14 +105,20 @@ system_settings = true
 # and hidden — automatically, the input box holding only your query.
 #
 # Switching:
-#   - Cmd+. cycles All -> each mode -> each plugin -> All
+#   - Cmd+. cycles All -> each mode -> each gated plugin -> All
 #   - theme button: action = "mode:<name>" (optionally with its own hotkey)
 #
 # Unknown source names are warned about at startup and skipped.
+#
+# The reserved key `plugins` selects which loaded plugins are cycle
+# stops: comma-separated names, "all" (or no key) = every loaded
+# plugin, "" = no plugin stops. It does not affect the typed-prefix or
+# mode:<name> entry points.
 # Example:
 # [modes]
 # scripts = "scripts,builtins"
 # dev     = "apps,scripts"
+# plugins = "file-search"
 
 
 # ------------------------------------------------------------------------------
@@ -121,9 +127,9 @@ system_settings = true
 # Per-target-kind action menus opened with Cmd+K on the highlighted row.
 # Built-ins are all on by default; set them to false to remove, or add
 # custom shell entries ({path}/{name} are substituted before running).
-# Apps: reveal (open -R), copy_path (clipboard + toast), new_window
-#       (smart launch)
-# Scripts: reveal, copy_path
+# Both kinds get all three by default: reveal (open -R), copy_path
+# (clipboard + toast), new_window (apps: smart launch; scripts: open
+# in Terminal)
 # Example:
 # [actions.apps]
 # copy_path = false
