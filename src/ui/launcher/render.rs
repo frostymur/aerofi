@@ -2,8 +2,8 @@
 //! view-building helpers (inputbar, listview, grid, full-output, markdown).
 
 use gpui::{
-    Context, CursorStyle, Render, Window, WindowBackgroundAppearance, div, img, prelude::*, px,
-    rgba, size, uniform_list,
+    ColorExt, Context, CursorStyle, Render, Window, WindowBackgroundAppearance, div, img,
+    prelude::*, px, rgba, size, uniform_list,
 };
 
 use crate::core::fit::{SearchFit, list_height, scrollbar_metrics, search_fit_height};
@@ -2192,15 +2192,9 @@ impl Launcher {
         Self::hsla_hex(Self::color(hex))
     }
 
-    /// Convert a 0xRRGGBB value to an `Hsla`.
-    fn hsla_hex(rgba: u32) -> gpui::Hsla {
-        gpui::Rgba {
-            r: ((rgba >> 24) & 0xff) as f32 / 255.0,
-            g: ((rgba >> 16) & 0xff) as f32 / 255.0,
-            b: ((rgba >> 8) & 0xff) as f32 / 255.0,
-            a: (rgba & 0xff) as f32 / 255.0,
-        }
-        .into()
+    /// Convert a 0xRRGGBBAA value to an `Hsla`.
+    fn hsla_hex(hex: u32) -> gpui::Hsla {
+        gpui::rgb_to_hsla(gpui::rgba(hex))
     }
 
     /// Render the result list styled from `theme.listview` and `theme.element`.
@@ -2779,8 +2773,8 @@ impl Launcher {
     /// produces).
     fn highlight_style(p: crate::core::pango::PangoStyle) -> gpui::HighlightStyle {
         gpui::HighlightStyle {
-            color: p.color.map(gpui::rgba).map(Into::into),
-            background_color: p.background.map(gpui::rgba).map(Into::into),
+            color: p.color.map(|c| gpui::rgb_to_hsla(gpui::rgba(c))),
+            background_color: p.background.map(|c| gpui::rgb_to_hsla(gpui::rgba(c))),
             font_weight: p.bold.then_some(gpui::FontWeight::BOLD),
             font_style: p.italic.then_some(gpui::FontStyle::Italic),
             underline: p.underline.then_some(gpui::UnderlineStyle {
