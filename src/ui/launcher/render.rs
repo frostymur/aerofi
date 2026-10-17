@@ -342,6 +342,27 @@ impl Render for Launcher {
     }
 }
 
+/// Per-row styling state for [`Launcher::render_rofi_row_item`] — the
+/// flat parameter list would exceed clippy's argument budget.
+#[derive(Clone, Copy)]
+struct RofiRowSpec {
+    vis_ix: usize,
+    is_selected: bool,
+    is_active: bool,
+    is_urgent: bool,
+    is_disabled: bool,
+    is_selectable: bool,
+    is_toggled: bool,
+    multi_select: bool,
+    markup_rows: bool,
+    row_h: f32,
+    pad_h: f32,
+    pad_v: f32,
+    radius: f32,
+    icon_size: f32,
+    half: bool,
+}
+
 impl Launcher {
     /// Convenience: resolve a theme hex colour string to a `u32` for
     /// GPUI's `rgb()`, falling back to black on bad input.
@@ -813,6 +834,7 @@ impl Launcher {
             loading,
             active_indices,
             preview_blocks,
+            preview_image,
             multi_select,
             toggled_indices,
             markup_rows,
@@ -951,13 +973,9 @@ impl Launcher {
             let pad_h = mode_el
                 .and_then(|m| m.padding.as_deref().and_then(|p| p.get(1).copied()))
                 .unwrap_or_else(|| el.padding.get(1).copied().unwrap_or(12.0));
-            let icon_size = px(mode_el.and_then(|m| m.icon_size).unwrap_or(el.icon_size));
             let rofi_radius = mode_el
                 .and_then(|m| m.corner_radius)
                 .unwrap_or(el.corner_radius);
-            let desc_color = rgba(Self::color(
-                el.description_color.as_deref().unwrap_or(&el.text_color),
-            ));
             // Explicit uniform row height for the single-column list (the
             // rows are virtualized with `uniform_list`, which only measures
             // the first row — see `render_row`).
@@ -966,6 +984,11 @@ impl Launcher {
                 pad_v_el * 2.0 + icon_size_f32.max(t.font.size * 1.2) + el.border_width * 2.0;
 
             let cols = self.rofi_effective_columns();
+            // `[element] show_preview` + a live preview: two columns of
+            // row-styled items (each a full row at half width).
+            let show_two_cols = cols == 1
+                && el.show_preview
+                && (preview_image.is_some() || preview_blocks.is_some());
             if cols > 1 {
                 // Grid mode: virtualized rows of `cols` cells each.
                 let total_rows = filtered_rows.len().div_ceil(cols);
@@ -982,6 +1005,70 @@ impl Launcher {
                 .flex_1()
                 .w_full();
                 list_container = list_container.child(list);
+            } else if show_two_cols {
+                let filtered_clone = filtered_rows.clone();
+                let rows_clone = rows.clone();
+                let active_indices_clone = active_indices.clone();
+                let selected_val = *selected;
+                let multi_select_val = *multi_select;
+                let toggled_indices_clone = toggled_indices.clone();
+                let markup_rows_val = *markup_rows;
+                let per_row = 2usize;
+                let total_rows = filtered_clone.len().div_ceil(per_row);
+                let list = uniform_list(
+                    "rofi_rows",
+                    total_rows,
+                    cx.processor(move |_this, range: std::ops::Range<usize>, _window, _cx| {
+                        range
+                            .map(|row_ix| {
+                                let mut line = div().flex().flex_row().gap_1().w_full();
+                                for slot in 0..per_row {
+                                    let vis_ix = row_ix * per_row + slot;
+                                    if vis_ix >= filtered_clone.len() {
+                                        line =
+                                            line.child(div().w_1_2().h(px(rofi_row_h)).into_any());
+                                        continue;
+                                    }
+                                    let row_idx = filtered_clone[vis_ix];
+                                    let row = &rows_clone[row_idx];
+                                    let is_selected = vis_ix == selected_val;
+                                    let is_active =
+                                        row.active || active_indices_clone.contains(&row_idx);
+                                    let is_urgent = row.urgent;
+                                    let is_disabled = row.disabled;
+                                    let is_selectable = !row.nonselectable && !is_disabled;
+                                    let is_toggled = toggled_indices_clone.contains(&row_idx);
+                                    line = line.child(_this.render_rofi_row_item(
+                                        row,
+                                        RofiRowSpec {
+                                            vis_ix,
+                                            is_selected,
+                                            is_active,
+                                            is_urgent,
+                                            is_disabled,
+                                            is_selectable,
+                                            is_toggled,
+                                            multi_select: multi_select_val,
+                                            markup_rows: markup_rows_val,
+                                            row_h: rofi_row_h,
+                                            pad_h,
+                                            pad_v: pad_v_el,
+                                            radius: rofi_radius,
+                                            icon_size: icon_size_f32,
+                                            half: true,
+                                        },
+                                        _cx,
+                                    ));
+                                }
+                                line.into_any()
+                            })
+                            .collect()
+                    }),
+                )
+                .flex_1()
+                .w_full()
+                .track_scroll(&self.rofi_rows_scroll);
+                list_container = list_container.child(list);
             } else {
                 let filtered_clone = filtered_rows.clone();
                 let rows_clone = rows.clone();
@@ -995,8 +1082,6 @@ impl Launcher {
                     "rofi_rows",
                     filtered_clone.len(),
                     cx.processor(move |_this, range: std::ops::Range<usize>, _window, _cx| {
-                        let t = &_this.theme;
-                        let el = &t.element;
                         range
                             .map(|vis_ix| {
                                 let row_idx = filtered_clone[vis_ix];
@@ -1008,282 +1093,27 @@ impl Launcher {
                                 let is_disabled = row.disabled;
                                 let is_selectable = !row.nonselectable && !is_disabled;
                                 let is_toggled = toggled_indices_clone.contains(&row_idx);
-
-                                // Shrink padding by border width on the selected
-                                // row so total row height stays constant.
-                                let effective_pad_v = if is_selected && el.border_width > 0.0 {
-                                    (pad_v_el - el.border_width).max(0.0)
-                                } else {
-                                    pad_v_el
-                                };
-
-                                let (row_bg, name_color) = if is_selected {
-                                    (
-                                        rgba(Self::color(&el.selected.background)),
-                                        rgba(Self::color(&el.selected.text_color)),
-                                    )
-                                } else if is_toggled {
-                                    (
-                                        rgba(Self::color(&el.selected.background)).opacity(0.4),
-                                        rgba(Self::color(&el.selected.text_color)),
-                                    )
-                                } else if !is_selectable {
-                                    (rgba(0x00000000), desc_color)
-                                } else if is_urgent {
-                                    (
-                                        rgba(Self::color(&t.status_colors.urgent_row_background)),
-                                        rgba(Self::color(&el.text_color)),
-                                    )
-                                } else if is_active {
-                                    (
-                                        rgba(Self::color(&t.status_colors.active_row_background)),
-                                        rgba(Self::color(&el.text_color)),
-                                    )
-                                } else {
-                                    (rgba(0x00000000), rgba(Self::color(&el.text_color)))
-                                };
-
-                                if is_selectable {
-                                    let id = format!("rofi-row-{vis_ix}");
-                                    let mut row_div = div()
-                                        .id(id)
-                                        .flex()
-                                        .items_center()
-                                        .gap_2()
-                                        .w_full()
-                                        .h(px(rofi_row_h))
-                                        .px(px(pad_h))
-                                        .py(px(effective_pad_v))
-                                        .rounded(px(rofi_radius))
-                                        .bg(row_bg)
-                                        .cursor(CursorStyle::PointingHand);
-
-                                    if is_selected {
-                                        row_div = row_div.border(px(el.border_width)).border_color(
-                                            rgba(Self::color(&t.status_colors.accent)),
-                                        );
-                                    } else if el.background != "transparent" {
-                                        row_div = row_div.border(px(el.border_width)).border_color(
-                                            rgba(Self::color(&t.window.border_color)),
-                                        );
-                                    }
-
-                                    if multi_select_val {
-                                        let toggle_icon = if is_toggled { "☑" } else { "☐" };
-                                        row_div = row_div.child(
-                                            div()
-                                                .text_color(if is_toggled {
-                                                    rgba(Self::color(
-                                                        &t.status_colors.active_background,
-                                                    ))
-                                                } else {
-                                                    desc_color
-                                                })
-                                                .text_size(px(t.font.size))
-                                                .child(toggle_icon),
-                                        );
-                                    }
-
-                                    if el.show_icons {
-                                        row_div = row_div.child(Self::render_rofi_row_icon(
-                                            icon_size, &row.icon, name_color,
-                                        ));
-                                    }
-
-                                    let text_div = div()
-                                        .flex_1()
-                                        .min_w(px(0.0))
-                                        .line_clamp(1)
-                                        .text_ellipsis()
-                                        .overflow_hidden()
-                                        .text_color(name_color);
-                                    let text_div = if markup_rows_val {
-                                        text_div.child(_this.markup_text(&row.text))
-                                    } else if let Some(st) =
-                                        _this.query_highlighted_text(&row.text, None)
-                                    {
-                                        text_div.child(st)
-                                    } else {
-                                        text_div.child(row.text.clone())
-                                    };
-                                    row_div = row_div.child(text_div);
-
-                                    if is_urgent {
-                                        row_div = row_div.child(
-                                            div()
-                                                .px_2()
-                                                .py(px(2.0))
-                                                .rounded_sm()
-                                                .bg(rgba(Self::color(
-                                                    &t.status_colors.urgent_background,
-                                                )))
-                                                .text_color(rgba(Self::color(
-                                                    &t.status_colors.urgent_text,
-                                                )))
-                                                .text_size(px(t.font.size * 0.72))
-                                                .child("URGENT"),
-                                        );
-                                    }
-
-                                    if is_active {
-                                        row_div = row_div.child(
-                                            div()
-                                                .px_2()
-                                                .py(px(2.0))
-                                                .rounded_sm()
-                                                .bg(rgba(Self::color(
-                                                    &t.status_colors.active_background,
-                                                )))
-                                                .text_color(rgba(Self::color(
-                                                    &t.status_colors.active_text,
-                                                )))
-                                                .text_size(px(t.font.size * 0.72))
-                                                .child("ACTIVE"),
-                                        );
-                                    }
-
-                                    if let Some(info) = &row.info {
-                                        let info_color = rgba(Self::color(
-                                            el.description_color
-                                                .as_deref()
-                                                .unwrap_or(&el.text_color),
-                                        ));
-                                        let info_el = div()
-                                            .text_color(info_color)
-                                            .text_size(px(t.font.size * 0.82))
-                                            .flex_shrink_0();
-                                        let info_el = if markup_rows_val {
-                                            info_el.child(_this.markup_text(info))
-                                        } else {
-                                            info_el.child(info.clone())
-                                        };
-                                        row_div = row_div.child(info_el);
-                                    }
-
-                                    row_div
-                                        .on_click(_cx.listener(move |this, event, _window, cx| {
-                                            if is_primary_click(event) {
-                                                if let LauncherState::RofiMode {
-                                                    selected, ..
-                                                } = &mut this.state
-                                                {
-                                                    *selected = vis_ix;
-                                                }
-                                                this.rofi_select_row(cx);
-                                                cx.notify();
-                                            }
-                                        }))
-                                        .into_any()
-                                } else {
-                                    let mut row_div = div()
-                                        .flex()
-                                        .items_center()
-                                        .gap_2()
-                                        .w_full()
-                                        .h(px(rofi_row_h))
-                                        .px(px(pad_h))
-                                        .py(px(pad_v_el))
-                                        .rounded(px(rofi_radius))
-                                        .bg(row_bg);
-
-                                    if is_disabled {
-                                        row_div = row_div.opacity(0.4);
-                                    }
-
-                                    if multi_select_val {
-                                        let toggle_icon = if is_toggled { "☑" } else { "☐" };
-                                        row_div = row_div.child(
-                                            div()
-                                                .text_color(if is_toggled {
-                                                    rgba(Self::color(
-                                                        &t.status_colors.active_background,
-                                                    ))
-                                                } else {
-                                                    desc_color
-                                                })
-                                                .text_size(px(t.font.size))
-                                                .child(toggle_icon),
-                                        );
-                                    }
-
-                                    if el.show_icons {
-                                        row_div = row_div.child(Self::render_rofi_row_icon(
-                                            icon_size, &row.icon, name_color,
-                                        ));
-                                    }
-
-                                    let text_div = div()
-                                        .flex_1()
-                                        .min_w(px(0.0))
-                                        .line_clamp(1)
-                                        .text_ellipsis()
-                                        .overflow_hidden()
-                                        .text_color(name_color);
-                                    let text_div = if markup_rows_val {
-                                        text_div.child(_this.markup_text(&row.text))
-                                    } else if let Some(st) =
-                                        _this.query_highlighted_text(&row.text, None)
-                                    {
-                                        text_div.child(st)
-                                    } else {
-                                        text_div.child(row.text.clone())
-                                    };
-                                    row_div = row_div.child(text_div);
-
-                                    if is_urgent {
-                                        row_div = row_div.child(
-                                            div()
-                                                .px_2()
-                                                .py(px(2.0))
-                                                .rounded_sm()
-                                                .bg(rgba(Self::color(
-                                                    &t.status_colors.urgent_background,
-                                                )))
-                                                .text_color(rgba(Self::color(
-                                                    &t.status_colors.urgent_text,
-                                                )))
-                                                .text_size(px(t.font.size * 0.72))
-                                                .child("URGENT"),
-                                        );
-                                    }
-
-                                    if is_active {
-                                        row_div = row_div.child(
-                                            div()
-                                                .px_2()
-                                                .py(px(2.0))
-                                                .rounded_sm()
-                                                .bg(rgba(Self::color(
-                                                    &t.status_colors.active_background,
-                                                )))
-                                                .text_color(rgba(Self::color(
-                                                    &t.status_colors.active_text,
-                                                )))
-                                                .text_size(px(t.font.size * 0.72))
-                                                .child("ACTIVE"),
-                                        );
-                                    }
-
-                                    if let Some(info) = &row.info {
-                                        let info_color = rgba(Self::color(
-                                            el.description_color
-                                                .as_deref()
-                                                .unwrap_or(&el.text_color),
-                                        ));
-                                        let info_el = div()
-                                            .text_color(info_color)
-                                            .text_size(px(t.font.size * 0.82))
-                                            .flex_shrink_0();
-                                        let info_el = if markup_rows_val {
-                                            info_el.child(_this.markup_text(info))
-                                        } else {
-                                            info_el.child(info.clone())
-                                        };
-                                        row_div = row_div.child(info_el);
-                                    }
-
-                                    row_div.into_any()
-                                }
+                                _this.render_rofi_row_item(
+                                    row,
+                                    RofiRowSpec {
+                                        vis_ix,
+                                        is_selected,
+                                        is_active,
+                                        is_urgent,
+                                        is_disabled,
+                                        is_selectable,
+                                        is_toggled,
+                                        multi_select: multi_select_val,
+                                        markup_rows: markup_rows_val,
+                                        row_h: rofi_row_h,
+                                        pad_h,
+                                        pad_v: pad_v_el,
+                                        radius: rofi_radius,
+                                        icon_size: icon_size_f32,
+                                        half: false,
+                                    },
+                                    _cx,
+                                )
                             })
                             .collect()
                     }),
@@ -1291,36 +1121,60 @@ impl Launcher {
                 .flex_1()
                 .w_full()
                 .track_scroll(&self.rofi_rows_scroll);
-
                 list_container = list_container.child(list);
             }
         }
 
-        if preview_blocks.is_some() {
-            let preview_panel = gpui::list(
-                self.preview_list.clone(),
-                cx.processor(move |this: &mut Launcher, ix: usize, _window, _cx| {
-                    if let LauncherState::RofiMode {
-                        preview_blocks: Some(b),
-                        preview_styled,
-                        ..
-                    } = &this.state
-                    {
-                        let styled = preview_styled
-                            .as_ref()
-                            .and_then(|v| v.get(ix))
-                            .and_then(|s| s.as_ref());
-                        b.get(ix)
-                            .map(|blk| this.render_md_block(blk, styled))
-                            .unwrap_or_else(|| div().into_any())
-                    } else {
-                        div().into_any()
-                    }
-                }),
-            )
-            .flex_1()
-            .w_full()
-            .pl_3();
+        if preview_image.is_some() || preview_blocks.is_some() {
+            // Image previews (\0preview-image) render aspect-fit inside
+            // the panel — GPUI's ObjectFit::Contain letterboxes, so the
+            // panel never crops. Markdown previews keep the block list.
+            let preview_panel: gpui::AnyElement = if let Some(img_path) = preview_image {
+                let resolved = crate::ui::launcher::helpers::expand_tilde_path(img_path);
+                div()
+                    .w_full()
+                    .h_full()
+                    .p_2()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .overflow_hidden()
+                    .bg(rgba(Self::color(&t.window.background)))
+                    .child(
+                        img(std::path::PathBuf::from(resolved))
+                            .w_full()
+                            .h_full()
+                            .object_fit(gpui::ObjectFit::Contain)
+                            .into_any(),
+                    )
+                    .into_any()
+            } else {
+                gpui::list(
+                    self.preview_list.clone(),
+                    cx.processor(move |this: &mut Launcher, ix: usize, _window, _cx| {
+                        if let LauncherState::RofiMode {
+                            preview_blocks: Some(b),
+                            preview_styled,
+                            ..
+                        } = &this.state
+                        {
+                            let styled = preview_styled
+                                .as_ref()
+                                .and_then(|v| v.get(ix))
+                                .and_then(|s| s.as_ref());
+                            b.get(ix)
+                                .map(|blk| this.render_md_block(blk, styled))
+                                .unwrap_or_else(|| div().into_any())
+                        } else {
+                            div().into_any()
+                        }
+                    }),
+                )
+                .flex_1()
+                .w_full()
+                .pl_3()
+                .into_any()
+            };
 
             container = container.child(
                 div()
@@ -1330,9 +1184,15 @@ impl Launcher {
                     .w_full()
                     .child(list_container.w_1_2())
                     .child(
+                        // Flex column: the markdown list below sizes itself
+                        // with `flex_1`, which only yields height inside a
+                        // flex parent — as a plain block it collapses to
+                        // zero height and the pane renders empty.
                         div()
                             .w_1_2()
                             .h_full()
+                            .flex()
+                            .flex_col()
                             .border_l_1()
                             .border_color(rgba(Self::color(&t.window.border_color)))
                             .child(preview_panel),
@@ -1343,6 +1203,195 @@ impl Launcher {
         }
 
         container.into_any()
+    }
+    /// Build one Rofi-mode row's element (the single-column list and the
+    /// two-column `show_preview` grid share this builder — keep the two
+    /// call sites in step). `half` narrows the row to half width for the
+    /// two-column layout.
+    fn render_rofi_row_item(
+        &self,
+        row: &crate::core::rofi_protocol::RofiRow,
+        spec: RofiRowSpec,
+        cx: &mut Context<Self>,
+    ) -> gpui::AnyElement {
+        let RofiRowSpec {
+            vis_ix,
+            is_selected,
+            is_active,
+            is_urgent,
+            is_disabled,
+            is_selectable,
+            is_toggled,
+            multi_select,
+            markup_rows,
+            row_h,
+            pad_h,
+            pad_v,
+            radius,
+            icon_size,
+            half,
+        } = spec;
+        let t = &self.theme;
+        let el = &t.element;
+        let desc_color = rgba(Self::color(
+            el.description_color.as_deref().unwrap_or(&el.text_color),
+        ));
+
+        let (row_bg, name_color) = if is_selected {
+            (
+                rgba(Self::color(&el.selected.background)),
+                rgba(Self::color(&el.selected.text_color)),
+            )
+        } else if is_toggled {
+            (
+                rgba(Self::color(&el.selected.background)).opacity(0.4),
+                rgba(Self::color(&el.selected.text_color)),
+            )
+        } else if !is_selectable {
+            (rgba(0x00000000), desc_color)
+        } else if is_urgent {
+            (
+                rgba(Self::color(&t.status_colors.urgent_row_background)),
+                rgba(Self::color(&el.text_color)),
+            )
+        } else if is_active {
+            (
+                rgba(Self::color(&t.status_colors.active_row_background)),
+                rgba(Self::color(&el.text_color)),
+            )
+        } else {
+            (rgba(0x00000000), rgba(Self::color(&el.text_color)))
+        };
+
+        // Shrink padding by border width on the selected row so the total
+        // height stays constant.
+        let effective_pad_v = if is_selected && el.border_width > 0.0 {
+            (pad_v - el.border_width).max(0.0)
+        } else {
+            pad_v
+        };
+
+        // `.id(...)` upgrades the Div to a Stateful one, so build the
+        // typed variable only after the id is applied.
+        let base = div()
+            .flex()
+            .items_center()
+            .gap_2()
+            .w_full()
+            .h(px(row_h))
+            .px(px(pad_h))
+            .py(px(effective_pad_v))
+            .rounded(px(radius))
+            .bg(row_bg)
+            .cursor(CursorStyle::PointingHand)
+            .id(format!("rofi-row-{vis_ix}"));
+        let mut row_div: gpui::Stateful<gpui::Div> = if half { base.w_1_2() } else { base };
+
+        if is_selected {
+            row_div = row_div
+                .border(px(el.border_width))
+                .border_color(rgba(Self::color(&t.status_colors.accent)));
+        } else if el.background != "transparent" {
+            row_div = row_div
+                .border(px(el.border_width))
+                .border_color(rgba(Self::color(&t.window.border_color)));
+        }
+
+        if multi_select {
+            let toggle_icon = if is_toggled { "☑" } else { "☐" };
+            row_div = row_div.child(
+                div()
+                    .text_color(if is_toggled {
+                        rgba(Self::color(&t.status_colors.active_background))
+                    } else {
+                        desc_color
+                    })
+                    .text_size(px(t.font.size))
+                    .child(toggle_icon),
+            );
+        }
+
+        if el.show_icons {
+            row_div = row_div.child(Self::render_rofi_row_icon(
+                px(icon_size),
+                &row.icon,
+                name_color,
+            ));
+        }
+
+        let text_div = div()
+            .flex_1()
+            .min_w(px(0.0))
+            .line_clamp(1)
+            .text_ellipsis()
+            .overflow_hidden()
+            .text_color(name_color);
+        let text_div = if markup_rows {
+            text_div.child(self.markup_text(&row.text))
+        } else if let Some(st) = self.query_highlighted_text(&row.text, None) {
+            text_div.child(st)
+        } else {
+            text_div.child(row.text.clone())
+        };
+        row_div = row_div.child(text_div);
+
+        if is_urgent {
+            row_div = row_div.child(
+                div()
+                    .px_2()
+                    .py(px(2.0))
+                    .rounded_sm()
+                    .bg(rgba(Self::color(&t.status_colors.urgent_background)))
+                    .text_color(rgba(Self::color(&t.status_colors.urgent_text)))
+                    .text_size(px(t.font.size * 0.72))
+                    .child("URGENT"),
+            );
+        }
+
+        if is_active {
+            row_div = row_div.child(
+                div()
+                    .px_2()
+                    .py(px(2.0))
+                    .rounded_sm()
+                    .bg(rgba(Self::color(&t.status_colors.active_background)))
+                    .text_color(rgba(Self::color(&t.status_colors.active_text)))
+                    .text_size(px(t.font.size * 0.72))
+                    .child("ACTIVE"),
+            );
+        }
+
+        if let Some(info) = &row.info {
+            let info_color = rgba(Self::color(
+                el.description_color.as_deref().unwrap_or(&el.text_color),
+            ));
+            let info_el = div()
+                .text_color(info_color)
+                .text_size(px(t.font.size * 0.82))
+                .flex_shrink_0();
+            let info_el = if markup_rows {
+                info_el.child(self.markup_text(info))
+            } else {
+                info_el.child(info.clone())
+            };
+            row_div = row_div.child(info_el);
+        }
+
+        if is_selectable {
+            row_div = row_div.on_click(cx.listener(move |this, event, _window, cx| {
+                if is_primary_click(event) {
+                    if let LauncherState::RofiMode { selected, .. } = &mut this.state {
+                        *selected = vis_ix;
+                    }
+                    this.rofi_select_row(cx);
+                    cx.notify();
+                }
+            }));
+        } else if is_disabled {
+            row_div = row_div.opacity(0.4);
+        }
+
+        row_div.into_any()
     }
 
     /// Render the icon element for a Rofi-mode row. Glyph icons use the

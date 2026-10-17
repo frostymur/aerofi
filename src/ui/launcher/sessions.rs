@@ -72,7 +72,7 @@ impl Launcher {
                                 // mode. If the script exited without output,
                                 // `rofi_leave()` below clears them again.
                                 launcher.sticky_metatags = metatags_burst;
-                                launcher.rofi_handle_read_result(burst, &title2);
+                                launcher.rofi_handle_read_result(burst, &title2, Some(cx));
                                 cx.notify();
                             });
                         });
@@ -153,6 +153,7 @@ impl Launcher {
             data: None,
             preview_blocks: None,
             preview_styled: None,
+            preview_image: None,
             multi_select: false,
             toggled_indices: std::collections::HashSet::new(),
             markup_rows: false,
@@ -212,14 +213,72 @@ impl Launcher {
         self.rofi_launched_from_hidden = from_hidden;
     }
 
+    /// Build the `selection` event for the currently highlighted row, if
+    /// any. `index` is the row's position in the *emitted* row list — the
+    /// same coordinate `select`/`action` events use — so scripts can index
+    /// the frame they last emitted (a visible/filtered position would be
+    /// wrong whenever a search query is active). `id` leads the fallback.
+    pub(super) fn rofi_selection_event(&self) -> Option<crate::core::rofi_protocol::RofiEvent> {
+        let LauncherState::RofiMode {
+            rows,
+            filtered_rows,
+            selected,
+            ..
+        } = &self.state
+        else {
+            return None;
+        };
+        let &row_idx = filtered_rows.get(*selected)?;
+        let row = rows.get(row_idx)?;
+        Some(crate::core::rofi_protocol::RofiEvent::Selection {
+            index: row_idx,
+            id: row.id.clone().unwrap_or_default(),
+        })
+    }
+
+    /// Send a `selection` event to the session script so its preview can
+    /// follow the cursor. Coalesced through the same pump as live search
+    /// (the newest selection wins — rapid arrow mashing never piles up).
+    fn rofi_notify_selection(&mut self, cx: &mut Context<Self>) {
+        let Some(event) = self.rofi_selection_event() else {
+            return;
+        };
+        let Some(session) = self.rofi_session.clone() else {
+            return;
+        };
+
+        // Reuse the live-search pump: one thread per session, and it
+        // coalesces to the newest message — fast navigation sends at most
+        // one pending event at a time.
+        let pump = match self.rofi_live_search.as_mut() {
+            Some(p) => p,
+            None => {
+                let title = match &self.state {
+                    LauncherState::RofiMode { title, .. } => title.clone(),
+                    _ => String::new(),
+                };
+                let pump = Self::start_live_search_pump(session.clone(), title, cx.entity(), cx);
+                self.rofi_live_search = Some(pump);
+                self.rofi_live_search.as_mut().expect("pump just started")
+            }
+        };
+        let generation = pump.latest_enqueued.fetch_add(1, Ordering::Relaxed) + 1;
+        let _ = pump.tx.send((PumpMessage::Selection(event), generation));
+    }
+
     /// Handle the read result from a Rofi session burst.
-    fn rofi_handle_read_result(&mut self, result: ReadResult, title: &str) {
+    fn rofi_handle_read_result(
+        &mut self,
+        result: ReadResult,
+        title: &str,
+        cx: Option<&mut Context<Self>>,
+    ) {
         match result {
             ReadResult::Burst(burst) => {
-                self.rofi_apply_burst(burst, title);
+                self.rofi_apply_burst(burst, title, cx);
             }
             ReadResult::BurstThenExit(burst) => {
-                self.rofi_apply_burst(burst, title);
+                self.rofi_apply_burst(burst, title, cx);
                 // Script exited after this burst — mark session as done and
                 // drop its live-search pump (a new session must not reuse it).
                 // The UI will stay showing the last rows but selecting will
@@ -243,6 +302,7 @@ impl Launcher {
         &mut self,
         burst: crate::core::rofi_protocol::RofiBurst,
         title: &str,
+        cx: Option<&mut Context<Self>>,
     ) {
         // Whether we're updating an existing Rofi session (live-search burst)
         // or entering Rofi mode for the first time (search → Rofi transition).
@@ -260,7 +320,10 @@ impl Launcher {
         let mut data = None;
         let mut preview_blocks = None;
         let mut preview_styled = None;
+        let mut preview_image: Option<String> = None;
         let mut preview_changed = false;
+        let mut keep_rows = false;
+        let mut query = String::new();
         let mut multi_select = false;
         let mut toggled_indices = std::collections::HashSet::new();
         let mut markup_rows = false;
@@ -271,11 +334,13 @@ impl Launcher {
             prompt: prev_prompt,
             no_custom: prev_no_custom,
             columns: prev_columns,
+            query: prev_query,
             live_search: prev_live_search,
             active_indices: prev_active_indices,
             data: prev_data,
             preview_blocks: prev_preview_blocks,
             preview_styled: prev_preview_styled,
+            preview_image: prev_preview_image,
             multi_select: prev_multi_select,
             toggled_indices: prev_toggled_indices,
             markup_rows: prev_markup_rows,
@@ -286,11 +351,13 @@ impl Launcher {
             prompt = prev_prompt.clone();
             no_custom = *prev_no_custom;
             columns = columns.or(*prev_columns);
+            query = prev_query.clone();
             live_search = *prev_live_search;
             active_indices = prev_active_indices.clone();
             data = prev_data.clone();
             preview_blocks = prev_preview_blocks.clone();
             preview_styled = prev_preview_styled.clone();
+            preview_image = prev_preview_image.clone();
             multi_select = *prev_multi_select;
             toggled_indices = prev_toggled_indices.clone();
             markup_rows = *prev_markup_rows;
@@ -320,10 +387,29 @@ impl Launcher {
                 RofiCommand::SetActiveIndices(indices) => active_indices = indices.clone(),
                 RofiCommand::SetData(d) => data = Some(d.clone()),
                 RofiCommand::PreviewText(text) => {
-                    let blocks = crate::core::markdown::parse(text);
-                    preview_styled = Some(blocks.iter().map(|b| self.build_md_styled(b)).collect());
-                    preview_blocks = Some(blocks);
+                    if text.trim().is_empty() {
+                        // Empty preview clears the panel (both flavours).
+                        preview_blocks = None;
+                        preview_styled = None;
+                        preview_image = None;
+                    } else {
+                        let blocks = crate::core::markdown::parse(text);
+                        preview_styled =
+                            Some(blocks.iter().map(|b| self.build_md_styled(b)).collect());
+                        preview_blocks = Some(blocks);
+                        preview_image = None;
+                    }
                     preview_changed = true;
+                }
+                RofiCommand::PreviewImage(path) => {
+                    let resolved = super::helpers::expand_tilde_path(path);
+                    preview_image = Some(resolved);
+                    preview_blocks = None;
+                    preview_styled = None;
+                    preview_changed = true;
+                }
+                RofiCommand::KeepRows => {
+                    keep_rows = true;
                 }
                 RofiCommand::PreviewFile(file_path) => {
                     let resolved = super::helpers::expand_tilde_path(file_path);
@@ -359,30 +445,45 @@ impl Launcher {
                 .reset(preview_blocks.as_ref().map_or(0, |b| b.len()));
         }
 
-        let row_count = burst.rows.len();
-        let filtered_rows: Vec<usize> = (0..row_count).collect();
-
-        // Find pre-selected row if requested.
-        let selected = keep_selection
-            .and_then(|sel| burst.rows.iter().position(|r| r.text == sel))
-            .unwrap_or(0);
+        // `\0keep-rows` (preview-only frames): the burst carries no rows —
+        // keep the current list, selection and row set as-is.
+        let (rows, filtered_rows, selected) = if keep_rows {
+            match &self.state {
+                LauncherState::RofiMode {
+                    rows: prev,
+                    filtered_rows: prev_filtered,
+                    selected: prev_selected,
+                    ..
+                } => (prev.clone(), prev_filtered.clone(), *prev_selected),
+                _ => (Arc::new(Vec::new()), Vec::new(), 0),
+            }
+        } else {
+            let row_count = burst.rows.len();
+            let filtered_rows: Vec<usize> = (0..row_count).collect();
+            // Find pre-selected row if requested.
+            let selected = keep_selection
+                .and_then(|sel| burst.rows.iter().position(|r| r.text == sel))
+                .unwrap_or(0);
+            (Arc::new(burst.rows), filtered_rows, selected)
+        };
 
         self.state = LauncherState::RofiMode {
             title: title.to_string(),
-            rows: Arc::new(burst.rows),
+            rows,
             filtered_rows,
             prompt,
             message,
             no_custom,
             selected,
             columns,
-            query: String::new(),
+            query,
             loading,
             live_search,
             active_indices,
             data,
             preview_blocks,
             preview_styled,
+            preview_image,
             multi_select,
             toggled_indices,
             markup_rows,
@@ -394,6 +495,18 @@ impl Launcher {
         // both a hotkey launch (window hidden) and picking the script from the
         // search list (window already visible at the search size). Live-search
         // bursts (already in RofiMode) skip this to avoid an alpha flicker.
+        // Tell the script where the cursor is now — on the first burst
+        // too, so the script can preview row 0 without the user moving.
+        // Only a burst that replaces the rows can move the selection; a
+        // preview-only reply (`\0keep-rows`) leaves it untouched, and
+        // answering it with another selection event would ping-pong
+        // frames between the launcher and the script forever.
+        if let Some(cx) = cx
+            && !keep_rows
+        {
+            self.rofi_notify_selection(cx);
+        }
+
         if !was_rofi {
             self.reveal_rofi_transition();
         }
@@ -403,7 +516,7 @@ impl Launcher {
     pub(super) fn handle_rofi_mode_keystroke(
         &mut self,
         ks: &gpui::Keystroke,
-        cx: Option<&mut Context<Self>>,
+        mut cx: Option<&mut Context<Self>>,
     ) -> LauncherAction {
         let cmd = ks.modifiers.platform;
         let ctrl = ks.modifiers.control;
@@ -474,30 +587,30 @@ impl Launcher {
             | ("p", false, true, false, false)
             | ("k", false, true, false, false) => {
                 let cols = self.rofi_columns() as isize;
-                self.rofi_move_selection(-cols);
+                self.rofi_move_selection(-cols, cx.as_deref_mut());
                 LauncherAction::None
             }
             ("down", false, false, false, false)
             | ("n", false, true, false, false)
             | ("j", false, true, false, false) => {
                 let cols = self.rofi_columns() as isize;
-                self.rofi_move_selection(cols);
+                self.rofi_move_selection(cols, cx.as_deref_mut());
                 LauncherAction::None
             }
             ("up", true, false, false, false) => {
-                self.rofi_jump_to_edge(true);
+                self.rofi_jump_to_edge(true, cx.as_deref_mut());
                 LauncherAction::None
             }
             ("down", true, false, false, false) => {
-                self.rofi_jump_to_edge(false);
+                self.rofi_jump_to_edge(false, cx.as_deref_mut());
                 LauncherAction::None
             }
             ("left", false, false, false, false) | ("b", false, true, false, false) => {
-                self.rofi_move_selection(-1);
+                self.rofi_move_selection(-1, cx.as_deref_mut());
                 LauncherAction::None
             }
             ("right", false, false, false, false) | ("f", false, true, false, false) => {
-                self.rofi_move_selection(1);
+                self.rofi_move_selection(1, cx.as_deref_mut());
                 LauncherAction::None
             }
             ("tab", false, false, false, false) => {
@@ -564,7 +677,7 @@ impl Launcher {
     }
 
     /// Move the selection cursor within the filtered Rofi rows.
-    fn rofi_move_selection(&mut self, delta: isize) {
+    fn rofi_move_selection(&mut self, delta: isize, cx: Option<&mut Context<Self>>) {
         let (new_selected, row_count) = if let LauncherState::RofiMode {
             filtered_rows,
             selected,
@@ -598,9 +711,13 @@ impl Launcher {
             self.rofi_rows_scroll
                 .scroll_to_item(item_ix, ScrollStrategy::Nearest);
         }
+        // The script may follow the cursor with a preview.
+        if let Some(cx) = cx {
+            self.rofi_notify_selection(cx);
+        }
     }
 
-    fn rofi_jump_to_edge(&mut self, top: bool) {
+    fn rofi_jump_to_edge(&mut self, top: bool, cx: Option<&mut Context<Self>>) {
         let new_selected = if let LauncherState::RofiMode {
             filtered_rows,
             selected,
@@ -623,6 +740,9 @@ impl Launcher {
         };
         self.rofi_rows_scroll
             .scroll_to_item(item_ix, ScrollStrategy::Nearest);
+        if let Some(cx) = cx {
+            self.rofi_notify_selection(cx);
+        }
     }
 
     /// Toggle selection of the currently focused row if multi-select is enabled.
@@ -652,7 +772,7 @@ impl Launcher {
         };
 
         if selected_copy.is_some() {
-            self.rofi_move_selection(delta);
+            self.rofi_move_selection(delta, None);
         }
     }
 
@@ -790,7 +910,7 @@ impl Launcher {
             if let Ok(result) = rx.await {
                 cx_async.update(|cx| {
                     view.update(cx, |launcher, cx| {
-                        launcher.rofi_handle_read_result(result, &title);
+                        launcher.rofi_handle_read_result(result, &title, Some(cx));
                         cx.notify();
                     });
                 });
@@ -844,7 +964,7 @@ impl Launcher {
             }
         };
         let query_generation = pump.latest_enqueued.fetch_add(1, Ordering::Relaxed) + 1;
-        let _ = pump.tx.send((query, query_generation));
+        let _ = pump.tx.send((PumpMessage::Query(query), query_generation));
     }
 
     /// Spawn the live-search pump thread for `session` and return its
@@ -857,7 +977,7 @@ impl Launcher {
         cx: &mut Context<Self>,
     ) -> LiveSearchPump {
         let latest_enqueued = Arc::new(AtomicU64::new(0));
-        let (query_tx, query_rx) = mpsc::channel::<(String, u64)>();
+        let (query_tx, query_rx) = mpsc::channel::<(PumpMessage, u64)>();
         // The pump thread is a plain OS thread (it blocks on pipes), so it
         // can't hold GPUI handles; finished results are handed to a
         // GPUI-side task over this channel. Dropping `result_tx` (when the
@@ -869,16 +989,22 @@ impl Launcher {
             .name("aerofi-rofi-live-search".to_string())
             .stack_size(256 * 1024)
             .spawn(move || {
-                while let Ok((mut query, mut query_generation)) = query_rx.recv() {
-                    // Coalesce: if the user typed several keys while we
-                    // were busy, only the newest (query, generation) matters.
-                    while let Ok((later_query, later_generation)) = query_rx.try_recv() {
-                        query = later_query;
-                        query_generation = later_generation;
+                while let Ok((mut message, mut generation)) = query_rx.recv() {
+                    // Coalesce: if the user typed several keys (or moved
+                    // the cursor several times) while we were busy, only
+                    // the newest message matters.
+                    while let Ok((later_message, later_generation)) = query_rx.try_recv() {
+                        message = later_message;
+                        generation = later_generation;
                     }
 
-                    let result = Self::send_and_drain(&session, &query);
-                    let stale = pump_latest.load(Ordering::Relaxed) != query_generation;
+                    let result = match &message {
+                        PumpMessage::Query(query) => Self::send_and_drain(&session, query),
+                        PumpMessage::Selection(event) => {
+                            Self::send_event_and_drain(&session, event)
+                        }
+                    };
+                    let stale = pump_latest.load(Ordering::Relaxed) != generation;
                     let _ = result_tx.try_send(LiveSearchApply {
                         result,
                         title: title.clone(),
@@ -909,7 +1035,7 @@ impl Launcher {
                             .is_some_and(|s| Arc::ptr_eq(s, &session));
                         if active && !stale {
                             if let Some(result) = result {
-                                launcher.rofi_handle_read_result(result, &title);
+                                launcher.rofi_handle_read_result(result, &title, Some(cx));
                             }
                             if let LauncherState::RofiMode { loading, .. } = &mut launcher.state {
                                 *loading = false;
@@ -1011,16 +1137,33 @@ impl Launcher {
         PluginSearchPump { tx: query_tx }
     }
 
-    /// Send a live-search query to the script, then drain its output until
-    /// the script goes quiet. Returns `None` if the script produced nothing
-    /// within the first-line deadline (the UI stays on its current rows).
+    /// Send a selection event to the script, then drain its output (a
+    /// preview-only frame: `\0keep-rows` + preview commands).
+    fn send_event_and_drain(
+        session: &Mutex<RofiSession>,
+        event: &crate::core::rofi_protocol::RofiEvent,
+    ) -> Option<ReadResult> {
+        let line = event.to_event_line();
+        Self::send_line_and_drain(session, &line)
+    }
+
+    /// Send a live-search query to the script, then drain its output
+    /// until the script goes quiet.
     fn send_and_drain(session: &Mutex<RofiSession>, query: &str) -> Option<ReadResult> {
+        let line = format!("\0change\x1f{query}");
+        Self::send_line_and_drain(session, &line)
+    }
+
+    /// Send a line to the script's stdin, then drain its output until the
+    /// script goes quiet. Returns `None` if the script produced nothing
+    /// within the first-line deadline (the UI stays on its current rows).
+    fn send_line_and_drain(session: &Mutex<RofiSession>, line: &str) -> Option<ReadResult> {
         // Lock is held only for the stdin write itself.
         {
             let mut s = session
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
-            if s.send_query_change(query).is_err() {
+            if s.send_line(line).is_err() {
                 return Some(ReadResult::Exited);
             }
         }
@@ -1159,13 +1302,24 @@ impl Launcher {
 ///
 /// Dropping the value (on `rofi_leave` / `on_hide`) drops the sender half,
 /// which makes the pump thread's `recv()` return and the thread exit.
+/// A message for the per-session rofi event pump. One pump thread per
+/// session coalesces to the newest message, so rapid typing or arrow
+/// navigation never piles up round-trips.
+pub(super) enum PumpMessage {
+    /// A live-search query change (`\0change`).
+    Query(String),
+    /// A cursor-moved event (`\0event\x1fselection...`) — the script may
+    /// answer with a preview-only frame (`\0keep-rows`).
+    Selection(crate::core::rofi_protocol::RofiEvent),
+}
+
 pub(super) struct LiveSearchPump {
     /// Generation of the newest enqueued query. The pump skips applying a
     /// result once a newer query has been enqueued (the next loop
     /// iteration, coalesced to the latest, renders the fresh result).
     latest_enqueued: Arc<AtomicU64>,
     /// Sender half: each live-search keystroke pushes (query, generation).
-    tx: mpsc::Sender<(String, u64)>,
+    tx: mpsc::Sender<(PumpMessage, u64)>,
 }
 
 /// One finished live-search round, handed from the pump thread to the

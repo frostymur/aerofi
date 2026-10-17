@@ -212,9 +212,10 @@ impl RofiSession {
         self.stdin.flush()
     }
 
-    /// Write a live-search query change to the script's stdin.
-    pub fn send_query_change(&mut self, query: &str) -> std::io::Result<()> {
-        writeln!(self.stdin, "\0change\x1f{query}")?;
+    /// Write an arbitrary protocol line to the script's stdin (used by
+    /// the event pump for selection events).
+    pub fn send_line(&mut self, line: &str) -> std::io::Result<()> {
+        writeln!(self.stdin, "{line}")?;
         self.stdin.flush()
     }
 

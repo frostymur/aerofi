@@ -170,8 +170,12 @@ Control commands start with `\0` (null byte) and use `\x1f` (unit separator) to 
 | `\0columns` | `<number>` | Dynamically sets grid column count (e.g. 1, 2, 4) |
 | `\0loading` | `true` \| `false` | Toggles async loading indicator |
 | `\0live-search` | `true` \| `false` | Streams search queries to script stdin for server-side search |
-| `\0preview` | `<text>` | Updates preview pane with custom text or markdown |
+| `\0preview` | `<text>` | Updates preview pane with custom text or markdown (empty clears it). The value is one line: escape newlines as `\n` and backslashes as `\\` (the launcher unescapes them) |
 | `\0preview-file`| `<path>` | Displays a file preview in the preview pane |
+| `\0preview-image`| `<path>` | Displays an image (aspect-fitted, never cropped) in the preview pane |
+| `\0keep-rows` | none | This frame's `\0flush` must not replace the current rows — used for preview-only frames |
+
+With `[element] show_preview = true`, the rows render **two per line** while a preview pane is open, so long lists and the preview share the width instead of stacking (off by default).
 | `\0no-custom` | `true` \| `false` | Restricts selection to existing items only |
 | `\0keep-selection` | `<row text>` | Pre-select (highlight) the row whose text matches on the next frame, instead of resetting to row 0 |
 
@@ -226,6 +230,22 @@ When a user interacts with aerofi (presses `Enter`, a contextual key like `Shift
 Event types: `select` (plain `Enter`), `action` (contextual keys: `Shift+Enter`, `Alt+Enter`, `Ctrl+<key>`), `custom` (free-form text submitted while no row is highlighted). Note that `Tab` multi-selection is handled inside aerofi — it never reaches the script; the toggled rows arrive in `ids`/`texts` of the next `select` event.
 
 **Live-search mode:** when `\0live-search\x1ftrue` is set, aerofi also sends a separate `\0change\x1f<query>` line to `stdin` on every keystroke and backspace, carrying the current search text for server-side filtering (in addition to the event lines above).
+
+**Selection events (preview-following):** aerofi also sends a `selection` event whenever the highlighted row moves — on session open (row 0), on arrow keys / `j` / `k`, and after any re-emit that resets the selection:
+
+```
+\0event\x1fselection\x1findex:3\x1fid:row-3
+```
+
+These are coalesced through the same per-session pump as live search: rapid arrow-key navigation sends at most one pending event at a time, and only the newest selection is delivered. `index` is the row's position in the last emitted frame and `id` its `id` field — the same coordinate `select`/`action` events use — so a script can index the rows it last printed. To answer one, emit the preview and a frame that must not replace your rows:
+
+```
+\0preview-image\x1f/tmp/thumb.png
+\0keep-rows
+\0flush
+```
+
+`\0keep-rows` tells aerofi this flush carries no rows — the current list, selection and query stay untouched (a zero-row flush *without* the marker still clears the list, as before). A preview-only frame is never answered with another `selection` event, so the round-trip cannot loop. A script that ignores selection events sees no difference in behavior.
 
 > [!WARNING]
 > **Bash scripts:** event lines begin with a NUL byte (`\0`), and bash variables cannot store NUL — a plain `read -r line` stops at the NUL and returns an empty string. Consume the NUL first, then read the line:

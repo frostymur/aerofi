@@ -368,6 +368,7 @@ fn rofi_arrow_key_defers_scroll_to_selected_row() {
         data: None,
         preview_blocks: None,
         preview_styled: None,
+        preview_image: None,
         multi_select: false,
         toggled_indices: std::collections::HashSet::new(),
         markup_rows: false,
@@ -1031,5 +1032,242 @@ fn action_menu_custom_action_templates() {
     match action {
         LauncherAction::RunShell(cmd) => assert_eq!(cmd, "ping -c 1 Finder"),
         other => panic!("expected RunShell, got {other:?}"),
+    }
+}
+
+#[test]
+fn rofi_keep_rows_burst_preserves_list_and_selection() {
+    // Preview-only frame (\0keep-rows, no rows): the list, the selection
+    // and the query must be untouched; the preview command applies.
+    let mut l = Launcher::new(
+        Vec::new(),
+        ThemeConfig::default(),
+        AppConfig::default(),
+        History::test_new(PathBuf::new(), Vec::new()),
+    );
+    l.state = LauncherState::RofiMode {
+        title: "Clipboard".to_string(),
+        rows: std::sync::Arc::new(
+            (0..5)
+                .map(|i| crate::core::rofi_protocol::RofiRow::new(format!("item {i}")))
+                .collect(),
+        ),
+        filtered_rows: (0..5).collect(),
+        prompt: None,
+        message: None,
+        no_custom: false,
+        selected: 3,
+        columns: None,
+        query: "abc".to_string(),
+        loading: false,
+        live_search: false,
+        active_indices: Vec::new(),
+        data: None,
+        preview_blocks: None,
+        preview_styled: None,
+        preview_image: None,
+        multi_select: false,
+        toggled_indices: std::collections::HashSet::new(),
+        markup_rows: false,
+        layout: None,
+    };
+
+    let burst = crate::core::rofi_protocol::RofiBurst {
+        commands: vec![
+            crate::core::rofi_protocol::RofiCommand::PreviewImage("/tmp/clip.png".to_string()),
+            // The preview-only marker: without it a zero-row burst still
+            // replaces the list (legacy "clear" behavior).
+            crate::core::rofi_protocol::RofiCommand::KeepRows,
+        ],
+        rows: Vec::new(),
+    };
+    l.rofi_apply_burst(burst, "Clipboard", None);
+
+    let LauncherState::RofiMode {
+        rows,
+        filtered_rows,
+        selected,
+        query,
+        preview_image,
+        ..
+    } = &l.state
+    else {
+        panic!("expected RofiMode");
+    };
+    assert_eq!(rows.len(), 5, "rows must be preserved");
+    assert_eq!(filtered_rows.len(), 5);
+    assert_eq!(*selected, 3, "selection must be preserved");
+    assert_eq!(query, "abc", "query must be preserved");
+    assert_eq!(preview_image.as_deref(), Some("/tmp/clip.png"));
+}
+
+#[test]
+fn rofi_zero_row_burst_without_keep_rows_clears() {
+    // Legacy contract: a zero-row burst *without* \0keep-rows replaces
+    // (clears) the list — scripts that clear via an empty flush keep
+    // working.
+    let mut l = Launcher::new(
+        Vec::new(),
+        ThemeConfig::default(),
+        AppConfig::default(),
+        History::test_new(PathBuf::new(), Vec::new()),
+    );
+    l.state = LauncherState::RofiMode {
+        title: "Clipboard".to_string(),
+        rows: std::sync::Arc::new(
+            (0..5)
+                .map(|i| crate::core::rofi_protocol::RofiRow::new(format!("item {i}")))
+                .collect(),
+        ),
+        filtered_rows: (0..5).collect(),
+        prompt: None,
+        message: None,
+        no_custom: false,
+        selected: 3,
+        columns: None,
+        query: String::new(),
+        loading: false,
+        live_search: false,
+        active_indices: Vec::new(),
+        data: None,
+        preview_blocks: None,
+        preview_styled: None,
+        preview_image: None,
+        multi_select: false,
+        toggled_indices: std::collections::HashSet::new(),
+        markup_rows: false,
+        layout: None,
+    };
+    let burst = crate::core::rofi_protocol::RofiBurst {
+        commands: vec![crate::core::rofi_protocol::RofiCommand::SetPrompt(
+            "Empty".to_string(),
+        )],
+        rows: Vec::new(),
+    };
+    l.rofi_apply_burst(burst, "Clipboard", None);
+    if let LauncherState::RofiMode { rows, selected, .. } = &l.state {
+        assert!(rows.is_empty());
+        assert_eq!(*selected, 0);
+    } else {
+        panic!("expected RofiMode");
+    }
+}
+
+#[test]
+fn rofi_selection_event_indexes_emitted_rows_not_filtered_position() {
+    // With an active search filter, `selected` is a position in
+    // `filtered_rows`. The selection event must carry the row's index in
+    // the *emitted* row list (the coordinate select/action events use),
+    // not the visible position — scripts index their last emitted frame.
+    let mut l = Launcher::new(
+        Vec::new(),
+        ThemeConfig::default(),
+        AppConfig::default(),
+        History::test_new(PathBuf::new(), Vec::new()),
+    );
+    let rows: Vec<_> = (0..5)
+        .map(|i| {
+            let mut row = crate::core::rofi_protocol::RofiRow::new(format!("item {i}"));
+            row.id = Some(format!("id-{i}"));
+            row
+        })
+        .collect();
+    l.state = LauncherState::RofiMode {
+        title: "Clipboard".to_string(),
+        rows: std::sync::Arc::new(rows),
+        // A query filtered the list down to emitted rows 2 and 3.
+        filtered_rows: vec![2, 3],
+        prompt: None,
+        message: None,
+        no_custom: false,
+        selected: 1,
+        columns: None,
+        query: "it".to_string(),
+        loading: false,
+        live_search: false,
+        active_indices: Vec::new(),
+        data: None,
+        preview_blocks: None,
+        preview_styled: None,
+        preview_image: None,
+        multi_select: false,
+        toggled_indices: std::collections::HashSet::new(),
+        markup_rows: false,
+        layout: None,
+    };
+    match l.rofi_selection_event() {
+        Some(crate::core::rofi_protocol::RofiEvent::Selection { index, id }) => {
+            assert_eq!(
+                index, 3,
+                "index must be the row's position in the emitted frame"
+            );
+            assert_eq!(id, "id-3");
+        }
+        other => panic!("expected Selection event, got {other:?}"),
+    }
+
+    // Outside Rofi mode there is nothing to notify about.
+    l.state = LauncherState::Search;
+    assert!(l.rofi_selection_event().is_none());
+}
+
+#[test]
+fn rofi_preview_escaped_codeblock_roundtrip() {
+    // The clipboard script's preview shape: a fenced code block whose
+    // newlines ride escaped on the single protocol line. The launcher must
+    // unescape it into a real CodeBlock — a raw multi-line emission would
+    // be split into stray rows and leave the pane empty.
+    let mut l = Launcher::new(
+        Vec::new(),
+        ThemeConfig::default(),
+        AppConfig::default(),
+        History::test_new(PathBuf::new(), Vec::new()),
+    );
+    l.state = LauncherState::RofiMode {
+        title: "Clipboard".to_string(),
+        rows: std::sync::Arc::new(vec![crate::core::rofi_protocol::RofiRow::new("item 0")]),
+        filtered_rows: vec![0],
+        prompt: None,
+        message: None,
+        no_custom: false,
+        selected: 0,
+        columns: None,
+        query: String::new(),
+        loading: false,
+        live_search: false,
+        active_indices: Vec::new(),
+        data: None,
+        preview_blocks: None,
+        preview_styled: None,
+        preview_image: None,
+        multi_select: false,
+        toggled_indices: std::collections::HashSet::new(),
+        markup_rows: false,
+        layout: None,
+    };
+    let lines = vec![
+        "\0preview\x1f```text\\nhello\\nworld\\n```".to_string(),
+        "\0keep-rows".to_string(),
+        "\0flush".to_string(),
+    ];
+    let burst = crate::core::rofi_protocol::RofiBurst::from_lines(&lines);
+    l.rofi_apply_burst(burst, "Clipboard", None);
+
+    let LauncherState::RofiMode {
+        preview_blocks,
+        preview_image,
+        ..
+    } = &l.state
+    else {
+        panic!("expected RofiMode");
+    };
+    assert!(preview_image.is_none());
+    let blocks = preview_blocks.as_ref().expect("preview must be set");
+    match blocks.as_slice() {
+        [crate::core::markdown::MdBlock::CodeBlock { lang, text }] => {
+            assert_eq!(lang.as_deref(), Some("text"));
+            assert_eq!(text, "hello\nworld");
+        }
+        other => panic!("expected one code block, got {other:?}"),
     }
 }

@@ -108,6 +108,9 @@ pub enum LauncherState {
         preview_blocks: Option<Vec<crate::core::markdown::MdBlock>>,
         /// Precomputed markdown styling, parallel to `preview_blocks`.
         preview_styled: Option<Vec<Option<MdStyled>>>,
+        /// Image file for the right-side preview (`\0preview-image`),
+        /// aspect-fitted; mutually exclusive with `preview_blocks`.
+        preview_image: Option<String>,
         /// Whether multi-selection is enabled.
         multi_select: bool,
         /// The set of row indices that have been toggled for multi-selection.

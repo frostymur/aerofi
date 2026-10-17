@@ -301,6 +301,8 @@ icon_size = 22.0
 # bundle path, scripts: file path; builtins render a blank line).
 # Off by default — rows are one line.
 show_path = false
+# Render rofi-script rows two per line while a preview pane is open.
+show_preview = false
 
 # Gap between the icon and the name inside a grid cell (points).
 # Type: Float (f32)

@@ -761,6 +761,10 @@ pub struct ElementConfig {
     /// and render a blank line so rows stay uniform). Off by default.
     #[serde(default)]
     pub show_path: bool,
+    /// Render right-side preview rows (scripts that emit preview data) in
+    /// two columns instead of a stacked list.
+    #[serde(default)]
+    pub show_preview: bool,
     pub icon_size: f32,
     /// Gap between the icon and the name inside a grid cell (points).
     pub icon_gap: f32,
@@ -784,6 +788,7 @@ impl Default for ElementConfig {
             description_color: Some("#888888".to_string()),
             show_icons: true,
             show_path: false,
+            show_preview: false,
             icon_size: 24.0,
             icon_gap: 6.0,
             border_width: 0.0,

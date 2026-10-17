@@ -47,8 +47,15 @@ pub enum RofiCommand {
     SetActiveIndices(Vec<usize>),
     /// Store a data token to be passed back to the script on the next event.
     SetData(String),
-    /// Display markdown preview text in the right panel.
+    /// Display markdown preview text in the right panel. An empty string
+    /// clears the preview panel.
     PreviewText(String),
+    /// Display an image file in the right panel (aspect-fitted /
+    /// letterboxed, never cropped), replacing any markdown preview.
+    PreviewImage(String),
+    /// The burst's flush must not replace the current rows — used for
+    /// preview-only updates (e.g. following the cursor).
+    KeepRows,
     /// Load and display markdown from a file in the right panel.
     PreviewFile(String),
     /// Enable multi-selection via Tab/Shift+Tab.
@@ -146,6 +153,10 @@ pub enum RofiEvent {
     /// Input query changed in live search mode
     #[allow(dead_code)]
     Change { query: String },
+    /// The highlighted row moved (arrow keys / j/k / re-emit reset). Sent
+    /// without a full row re-emit so scripts can update a right-side
+    /// preview to follow the cursor.
+    Selection { index: usize, id: String },
 }
 
 impl RofiEvent {
@@ -207,6 +218,9 @@ impl RofiEvent {
             RofiEvent::Change { query } => {
                 format!("\0change\x1f{query}")
             }
+            RofiEvent::Selection { index, id } => {
+                format!("\0event\x1fselection\x1findex:{index}\x1fid:{id}")
+            }
         }
     }
 
@@ -224,6 +238,8 @@ impl RofiEvent {
             }
             RofiEvent::Custom { text, .. } => text.clone(),
             RofiEvent::Change { query } => format!("\0change\x1f{query}"),
+            // No pipe-line form: preview-follow events carry no row text.
+            RofiEvent::Selection { index, .. } => format!("\x1f{index}"),
         }
     }
 }
@@ -296,13 +312,39 @@ fn try_parse_command(rest: &str) -> Option<RofiCommand> {
             Some(RofiCommand::SetActiveIndices(indices))
         }
         "data" => Some(RofiCommand::SetData(value.to_string())),
-        "preview" => Some(RofiCommand::PreviewText(value.to_string())),
+        "preview" => Some(RofiCommand::PreviewText(unescape_command_value(value))),
+        "preview-image" => Some(RofiCommand::PreviewImage(value.to_string())),
+        "keep-rows" => Some(RofiCommand::KeepRows),
         "preview-file" => Some(RofiCommand::PreviewFile(value.to_string())),
         "multi-select" => Some(RofiCommand::MultiSelect(value.eq_ignore_ascii_case("true"))),
         "markup-rows" => Some(RofiCommand::MarkupRows(value.eq_ignore_ascii_case("true"))),
         "reload" => Some(RofiCommand::Reload),
         _ => None,
     }
+}
+
+/// Unescape a command value: `\n` becomes a newline, `\\` a literal
+/// backslash. The protocol is line-oriented, so multi-line content (a
+/// markdown preview) must arrive escaped on a single line.
+fn unescape_command_value(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    let mut chars = value.chars();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            match chars.next() {
+                Some('n') => out.push('\n'),
+                Some('\\') => out.push('\\'),
+                Some(other) => {
+                    out.push('\\');
+                    out.push(other);
+                }
+                None => out.push('\\'),
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
 }
 
 /// Parse a data row: the display text is everything before the first `\0`;
@@ -695,6 +737,93 @@ mod tests {
                 )),
                 RofiLineResult::Command(RofiCommand::SetColumns(8))
             ]
+        );
+    }
+
+    #[test]
+    fn selection_event_line_format() {
+        // The script's parse_event expects key:value fields after the
+        // type: fields[0] = "event", fields[1] = "selection".
+        let ev = RofiEvent::Selection {
+            index: 3,
+            id: "clip-1".to_string(),
+        };
+        assert_eq!(
+            ev.to_event_line(),
+            "\0event\x1fselection\x1findex:3\x1fid:clip-1"
+        );
+    }
+
+    #[test]
+    fn preview_image_and_keep_rows_parse() {
+        assert_eq!(
+            one("\0preview-image\x1f/tmp/x.png"),
+            RofiLineResult::Command(RofiCommand::PreviewImage("/tmp/x.png".to_string()))
+        );
+        assert_eq!(
+            one("\0keep-rows"),
+            RofiLineResult::Command(RofiCommand::KeepRows)
+        );
+    }
+
+    #[test]
+    fn preview_only_frame_keeps_rows() {
+        // The preview-follow round-trip: the script answers a selection
+        // event with preview commands + \0keep-rows + flush, and no rows.
+        // The burst must carry the commands and zero rows — the UI keeps
+        // its list (checked in the UI-layer test), and the drain loop must
+        // treat this burst as activity, not silence.
+        let mut lines = Vec::new();
+        lines.push("\0preview-image\x1f/tmp/clip.png".to_string());
+        lines.push("\0keep-rows".to_string());
+        lines.push("\0flush".to_string());
+        // Parse through the same entry point the session pump uses.
+        let mut commands = Vec::new();
+        let mut rows = 0;
+        for line in &lines {
+            for result in parse_rofi_line(line) {
+                match result {
+                    RofiLineResult::Command(c) => {
+                        if !matches!(c, RofiCommand::Flush) {
+                            commands.push(c);
+                        }
+                    }
+                    RofiLineResult::Row(_) => rows += 1,
+                    RofiLineResult::Empty => {}
+                }
+            }
+        }
+        assert_eq!(rows, 0);
+        assert!(matches!(commands[0], RofiCommand::PreviewImage(_)));
+        assert!(matches!(commands[1], RofiCommand::KeepRows));
+    }
+
+    #[test]
+    fn preview_value_unescapes_newlines() {
+        // Multi-line markdown rides on one protocol line: the script
+        // escapes newlines (`\\n` on the wire), the parser restores them.
+        let line = "\0preview\x1f```text\\nline one\\nline two\\n```";
+        let results = parse_rofi_line(line);
+        assert_eq!(
+            results,
+            vec![RofiLineResult::Command(RofiCommand::PreviewText(
+                "```text\nline one\nline two\n```".to_string()
+            ))]
+        );
+        // A literal backslash survives as `\\\\` on the wire.
+        let line = "\0preview\x1fc:\\\\temp";
+        let results = parse_rofi_line(line);
+        assert_eq!(
+            results,
+            vec![RofiLineResult::Command(RofiCommand::PreviewText(
+                "c:\\temp".to_string()
+            ))]
+        );
+        // Values without escapes pass through untouched.
+        let results = one("\0preview\x1fplain text");
+        assert_eq!(
+            results,
+            RofiLineResult::Command(RofiCommand::PreviewText("plain text".to_string()))
         );
     }
 }
