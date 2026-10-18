@@ -68,7 +68,18 @@ Known limitation, not a bug to "fix" by switching defaults: Carbon `RegisterEven
 
 ## GPUI dependency policy
 
-GPUI is pinned to a specific git commit SHA in `Cargo.toml`, never `main` and never a floating branch. GPUI is pre-1.0 with breaking changes expected between revisions. Bumping the pin is a deliberate PR on its own — not bundled with feature work — that must (a) pass the full test suite and (b) re-verify the RSS baseline above before merging.
+GPUI comes from [`gpui-ce`](https://crates.io/crates/gpui-ce) (GPUI –
+Community Edition, the community-maintained fork of Zed's framework),
+pinned to an exact `0.2.x` release in `Cargo.toml` — never `main`, never
+a floating branch or range, and never a git revision. The macOS backend
+is `gpui_ce_platform` with `runtime_shaders` + `font-kit`. The move from
+the zed git pin to the crate is a deliberate engine swap: the framework
+now versions independently of Zed's editor schedule, so upgrades become
+"bump the version, re-run the suite" instead of chasing a moving SHA.
+GPUI is still pre-1.0 with breaking changes expected between releases.
+Bumping the pin is a deliberate PR on its own — not bundled with feature
+work — that must (a) pass the full test suite and (b) re-verify the RSS
+baseline above before merging.
 
 ## Script execution modes
 

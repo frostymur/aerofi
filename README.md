@@ -283,6 +283,6 @@ MIT — See [LICENSE](./LICENSE)
 
 ## Credits
 
-- Built on [GPUI](https://github.com/zed-industries/zed) — the GPU-accelerated UI framework from Zed
+- Built on [GPUI-CE](https://gpui-ce.github.io/) — the community-edition fork of Zed's GPU-accelerated UI framework
 - Inspired by [rofi](https://github.com/davatorium/rofi)
 - Drop-in compatibility with community [script-commands](https://github.com/raycast/script-commands)
