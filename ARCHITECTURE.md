@@ -54,9 +54,9 @@ so a future GPUI bump or engine swap never has to touch `core`'s data.
 
 ## Validated performance baseline
 
-Current operational baseline: **25–35 MB RSS (idle and active alike), ~0.1% CPU idle**, fully interactive GPUI window. Treat this as the baseline to protect:
+Current operational baseline: **30–45 MB RSS (idle and active alike), ~0.1% CPU idle**, fully interactive GPUI window. Treat this as the baseline to protect:
 
-- RSS: stays in the 25–35 MB range whether backgrounded (textures dropped, Metal buffers compressed once hidden) or active (search index and applications loaded).
+- RSS: stays in the 30–45 MB range whether backgrounded (textures dropped, Metal buffers compressed once hidden) or active (search index and applications loaded).
 
 Any PR that grows RSS by more than ~10% needs a one-line justification in the PR description. Measure with Activity Monitor or `footprint <pid>`, before and after hiding the window.
 
